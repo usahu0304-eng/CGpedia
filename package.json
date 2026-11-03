@@ -4,9 +4,10 @@
   "private": true,
   "description": "CGpedia - CGPSC & CGSSB Bilingual Test Series, 24-Hour Current Affairs Stories & Exam Preparation Portal",
   "scripts": {
-    "start": "node serve-apk.js",
     "dev": "node serve-apk.js",
-    "build": "echo 'CGpedia Root Web Application ready for Vercel deployment'"
+    "start": "node serve-apk.js",
+    "build": "node build-web.js",
+    "vercel-build": "node build-web.js"
   },
   "keywords": [
     "CGPSC",

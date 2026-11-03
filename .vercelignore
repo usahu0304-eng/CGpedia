@@ -1,0 +1,15 @@
+# Exclude Android & Gradle folders from Vercel deployment
+app/
+gradle/
+.gradle/
+.kotlin/
+.idea/
+.build-outputs/
+build/
+build.gradle.kts
+settings.gradle.kts
+gradle.properties
+debug.keystore
+debug.keystore.base64
+local.properties
+*.iml

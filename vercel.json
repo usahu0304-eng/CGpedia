@@ -1,5 +1,7 @@
 {
   "version": 2,
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
   "cleanUrls": true,
   "trailingSlash": false,
   "headers": [
@@ -40,7 +42,7 @@
       "destination": "/CGpedia.apk"
     },
     {
-      "source": "/((?!CGpedia\\.apk|styles\\.css|app\\.js|manifest\\.webmanifest|public/).*)",
+      "source": "/((?!CGpedia\\.apk|styles\\.css|app\\.js|manifest\\.webmanifest|download/).*)",
       "destination": "/index.html"
     }
   ]

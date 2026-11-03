@@ -1,0 +1,19 @@
+{
+  "name": "CGpedia - CGPSC & CGSSB Exam Portal",
+  "short_name": "CGpedia",
+  "description": "Bilingual (Hindi & English) CGPSC & CGSSB Test Series, 24h Current Affairs Stories, and Live CBT Mock Exams.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0A192F",
+  "theme_color": "#1E3A8A",
+  "orientation": "portrait-primary",
+  "lang": "hi-IN",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='42' fill='%231E3A8A'/%3E%3Ccircle cx='96' cy='96' r='72' fill='none' stroke='%23F59E0B' stroke-width='6'/%3E%3Ctext x='96' y='112' font-family='sans-serif' font-size='56' font-weight='800' fill='%23FFFFFF' text-anchor='middle'%3ECG%3C/text%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
