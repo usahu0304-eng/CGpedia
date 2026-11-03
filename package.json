@@ -1,8 +1,8 @@
 {
-  "name": "cgpedia-web",
-  "version": "2.0.0",
+  "name": "cgpedia-pwa",
+  "version": "3.0.0",
   "private": true,
-  "description": "CGpedia - CGPSC & CGSSB Bilingual Test Series, 24-Hour Current Affairs Stories & Exam Preparation Portal",
+  "description": "CGpedia — Clean Mobile-First Bilingual Web Application & Installable PWA (CGPSC & CGSSB)",
   "scripts": {
     "dev": "node serve-apk.js",
     "start": "node serve-apk.js",
@@ -12,10 +12,9 @@
   "keywords": [
     "CGPSC",
     "CGSSB",
-    "CG Vyapam",
-    "Chhattisgarh GK",
-    "Bilingual Test Series",
-    "CGpedia"
+    "CGpedia",
+    "PWA",
+    "Bilingual Test Series"
   ],
   "author": "CGpedia Official (usahu0304@gmail.com)"
 }

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="hi" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+  <title>CGpedia — CGPSC &amp; CGSSB Bilingual Web App</title>
+  <meta name="description" content="CGpedia (CGPSC & CGSSB) Mobile-First Bilingual Web Application & Installable PWA. Live CBT Test Series, 24-Hour Current Affairs Stories & Instant Quizzes." />
+  <meta name="theme-color" content="#0F2557" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="CGpedia" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Security Blur Overlay when Screenshot Restriction is ON and Window Loses Focus -->
+  <div class="security-blur-overlay">
+    <div>
+      <div style="font-size:2.5rem;margin-bottom:10px;">🛡️</div>
+      <h2 style="font-size:1.3rem;font-weight:800;margin-bottom:6px;">Screen Capture &amp; Recording Restricted</h2>
+      <p style="font-size:0.9rem;color:#CBD5E1;">सुरक्षा कारणों से स्क्रीनशॉट और स्क्रीन रिकॉर्डिंग प्रतिबंधित है। वापस लौटने के लिए स्क्रीन पर टैप करें।</p>
+    </div>
+  </div>
+
+  <!-- Installable PWA Banner (No APK Needed) -->
+  <div class="pwa-install-banner" id="pwaInstallBanner">
+    <div class="pwa-install-inner">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span class="badge badge-paid" style="background:#F59E0B;color:#09152E;border:none;">INSTALLABLE WEB APP</span>
+        <span id="pwaBannerText"><strong>CGpedia App:</strong> बिना किसी APK के सीधे अपने फोन की होम स्क्रीन पर इंस्टॉल करें (Instant Live Updates)</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <button class="pwa-install-btn" id="installPwaBtn">📲 Install CGpedia App</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sticky Application Header -->
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="brand-identity" id="brandHomeTrigger">
+        <div class="brand-logo-box" id="headerBrandLogo">CG</div>
+        <div>
+          <div class="brand-title">
+            <span id="headerBrandTitle">CGpedia</span>
+            <span class="badge badge-free" style="font-size:0.65rem;">Bilingual</span>
+          </div>
+          <div class="brand-subtitle" id="headerBrandSubtitle">CGPSC &amp; CGSSB</div>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button class="btn btn-outline btn-sm" id="anthemToggleBtn" style="display:inline-flex;">
+          🎵 <span id="anthemBtnLabel">Anthem</span>
+        </button>
+        <button class="btn btn-outline btn-sm" id="studentProfileBtn">
+          👤 <span id="activeUserLabel">Student Profile</span>
+        </button>
+        <button class="btn btn-outline btn-sm" id="themeSwitchBtn" title="Switch Dark / Light Mode">
+          🌙 Theme
+        </button>
+      </div>
+    </div>
+
+    <!-- Primary Navigation Bar -->
+    <nav class="nav-tabs" id="mainNavTabs">
+      <button class="nav-tab active" data-tab="dashboard">🏠 Exam Folders</button>
+      <button class="nav-tab" data-tab="current-affairs">⚡ Current Affairs &amp; Quiz</button>
+      <button class="nav-tab" data-tab="notifications">📢 Notifications &amp; Upcoming <span id="notifBadgeCount" class="badge badge-live" style="display:none;">0</span></button>
+      <button class="nav-tab" data-tab="support">💬 Ask Query / Support</button>
+      <button class="nav-tab" data-tab="admin">⚙️ Admin Panel</button>
+    </nav>
+  </header>
+
+  <!-- Dynamic Application Container -->
+  <main class="main-container" id="appRoot"></main>
+
+  <!-- Fullscreen Story Modal Container -->
+  <div id="storyModalContainer"></div>
+
+  <!-- Generic Modal Container (Payment, Safe Submit, Question Editor, PWA Guide) -->
+  <div id="genericModalContainer"></div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
