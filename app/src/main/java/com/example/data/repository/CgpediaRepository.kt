@@ -2,196 +2,1379 @@ package com.example.data.repository
 
 import android.content.Context
 import android.util.Base64
-import com.example.R
-import com.example.data.error.OperationType
-import com.example.data.error.handleFirestoreError
-import com.example.data.model.AnthemAudioChunk
+import android.util.Log
 import com.example.data.model.AppConfig
 import com.example.data.model.BilingualQuestion
 import com.example.data.model.BookmarkedQuestion
+import com.example.data.model.BroadcastNotification
 import com.example.data.model.CurrentAffairItem
 import com.example.data.model.ExamFolder
+import com.example.data.model.GLOBAL_CONFIG_DOC_ID
+import com.example.data.model.OWNER_ADMIN_EMAIL
 import com.example.data.model.PurchaseRecord
+import com.example.data.model.StudentQuery
 import com.example.data.model.SubjectFolder
 import com.example.data.model.TestAttempt
 import com.example.data.model.TestSeriesItem
+import com.example.data.model.UiState
+import com.example.data.model.UpcomingTestItem
 import com.example.data.model.UserProfile
 import com.example.data.seed.CgpediaStarterCatalog
 import com.google.firebase.Firebase
 import com.google.firebase.Timestamp
+import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.auth
-import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.snapshots
-import java.util.UUID
-import kotlinx.coroutines.CancellationException
+import com.google.firebase.firestore.SetOptions
+import com.google.firebase.firestore.firestore
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.emitAll
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
+import org.json.JSONArray
+import org.json.JSONObject
 
-/**
- * Primary Cloud Firestore Repository for CGpedia.
- * Always initialized with the named database ID (R.string.firestore_database_id).
- */
-class CgpediaRepository(private val db: FirebaseFirestore) {
+class CgpediaRepository(
+    private val context: Context? = null,
+    private val db: FirebaseFirestore = Firebase.firestore
+) {
+    constructor(db: FirebaseFirestore) : this(context = null, db = db)
 
-    constructor(context: Context) : this(
-        FirebaseFirestore.getInstance(
-            context.applicationContext.getString(R.string.firestore_database_id)
-        )
-    )
-
-    private val auth = Firebase.auth
-
-    private fun requireUserId(): String {
-        return auth.currentUser?.uid
-            ?: throw IllegalStateException("User must be signed in with Google before accessing Firestore.")
+    private val prefs by lazy {
+        context?.getSharedPreferences("cgpedia_offline_cache", Context.MODE_PRIVATE)
     }
 
-    // --- 1. Admin Registry Check ---
-    suspend fun checkTrustedAdminDoc(uid: String): Boolean {
-        val path = "admins/$uid"
-        return try {
-            db.collection("admins").document(uid).get().await().exists()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.GET, path)
+    private fun logFirestoreFailure(operation: String, path: String, error: Throwable) {
+        Log.e("CgpediaRepository", "Firestore $operation failed on $path: ${error.message}", error)
+    }
+
+    private fun currentUid(): String? = Firebase.auth.currentUser?.uid
+
+    fun isVerifiedOwnerAdmin(user: FirebaseUser? = Firebase.auth.currentUser): Boolean {
+        val email = user?.email?.trim()?.lowercase() ?: return false
+        return email == OWNER_ADMIN_EMAIL && user.isEmailVerified
+    }
+
+    // =========================================================================
+    // 1. User Profile & Student Settings
+    // =========================================================================
+    suspend fun ensureUserProfile(user: FirebaseUser): Result<UserProfile> = runCatching {
+        val uid = user.uid
+        val docRef = db.collection("users").document(uid)
+        val snap = docRef.get().await()
+        val isAdminUser = isVerifiedOwnerAdmin(user)
+        val expectedRole = if (isAdminUser) "admin" else "student"
+
+        if (snap.exists()) {
+            val existing = snap.toObject(UserProfile::class.java)?.copy(id = snap.id) ?: UserProfile(id = uid, userId = uid)
+            if (isAdminUser && existing.role != "admin") {
+                val updatedMap = mapOf(
+                    "userId" to uid,
+                    "displayName" to existing.displayName.ifBlank { user.displayName ?: "CGpedia Admin" }.take(100),
+                    "email" to (user.email ?: existing.email).take(160),
+                    "phoneNumber" to existing.phoneNumber.take(25),
+                    "photoUrl" to existing.photoUrl.take(1200),
+                    "targetExam" to existing.targetExam.ifBlank { "CGPSC & CGSSB" }.take(80),
+                    "preferredLanguage" to existing.preferredLanguage.takeIf { it in listOf("en", "hi") }.orEmpty().ifBlank { "en" },
+                    "darkMode" to existing.darkMode,
+                    "notifyCurrentAffairs" to existing.notifyCurrentAffairs,
+                    "notifyNewTests" to existing.notifyNewTests,
+                    "role" to "admin",
+                    "createdAt" to (existing.createdAt ?: Timestamp.now()),
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+                docRef.set(updatedMap).await()
+                return@runCatching existing.copy(role = "admin")
+            }
+            return@runCatching existing
+        } else {
+            val now = Timestamp.now()
+            val newProfile = UserProfile(
+                id = uid,
+                userId = uid,
+                displayName = (user.displayName ?: "CGPSC Aspirant").ifBlank { "CGPSC Aspirant" }.take(100),
+                email = (user.email ?: "").take(160),
+                phoneNumber = (user.phoneNumber ?: "").take(25),
+                photoUrl = (user.photoUrl?.toString() ?: "").take(1200),
+                targetExam = "CGPSC & CGSSB",
+                preferredLanguage = "en",
+                darkMode = false,
+                notifyCurrentAffairs = true,
+                notifyNewTests = true,
+                role = expectedRole,
+                createdAt = now,
+                updatedAt = now
+            )
+            val payload = mapOf(
+                "userId" to newProfile.userId,
+                "displayName" to newProfile.displayName,
+                "email" to newProfile.email,
+                "phoneNumber" to newProfile.phoneNumber,
+                "photoUrl" to newProfile.photoUrl,
+                "targetExam" to newProfile.targetExam,
+                "preferredLanguage" to newProfile.preferredLanguage,
+                "darkMode" to newProfile.darkMode,
+                "notifyCurrentAffairs" to newProfile.notifyCurrentAffairs,
+                "notifyNewTests" to newProfile.notifyNewTests,
+                "role" to newProfile.role,
+                "createdAt" to FieldValue.serverTimestamp(),
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+            docRef.set(payload).await()
+            newProfile
+        }
+    }.onFailure { e ->
+        logFirestoreFailure("ensureUserProfile", "users/${user.uid}", e)
+    }
+
+    fun observeUserProfile(uid: String): Flow<UiState<UserProfile>> = callbackFlow {
+        trySend(UiState.Loading)
+        val reg = db.collection("users").document(uid)
+            .addSnapshotListener { snap, err ->
+                if (err != null) {
+                    logFirestoreFailure("observeUserProfile", "users/$uid", err)
+                    trySend(UiState.Error(err.localizedMessage ?: "Failed to load profile"))
+                    return@addSnapshotListener
+                }
+                val profile = snap?.toObject(UserProfile::class.java)?.copy(id = snap.id)
+                if (profile != null) {
+                    trySend(UiState.Success(profile))
+                }
+            }
+        awaitClose { reg.remove() }
+    }
+
+    suspend fun updateUserProfile(updated: UserProfile): Result<Unit> = runCatching {
+        val uid = currentUid() ?: error("Not signed in")
+        val docRef = db.collection("users").document(uid)
+        val snap = docRef.get().await()
+        val existingCreatedAt = snap.getTimestamp("createdAt") ?: updated.createdAt ?: Timestamp.now()
+        val existingRole = snap.getString("role") ?: updated.role.ifBlank { "student" }
+
+        val payload = mapOf(
+            "userId" to uid,
+            "displayName" to updated.displayName.trim().ifBlank { "CGPSC Aspirant" }.take(100),
+            "email" to updated.email.trim().take(160),
+            "phoneNumber" to updated.phoneNumber.trim().take(25),
+            "photoUrl" to updated.photoUrl.trim().take(1200),
+            "targetExam" to updated.targetExam.trim().ifBlank { "CGPSC & CGSSB" }.take(80),
+            "preferredLanguage" to (if (updated.preferredLanguage == "hi") "hi" else "en"),
+            "darkMode" to updated.darkMode,
+            "notifyCurrentAffairs" to updated.notifyCurrentAffairs,
+            "notifyNewTests" to updated.notifyNewTests,
+            "role" to existingRole,
+            "createdAt" to existingCreatedAt,
+            "updatedAt" to FieldValue.serverTimestamp()
+        )
+        docRef.set(payload).await()
+        Unit
+    }.onFailure { e ->
+        logFirestoreFailure("updateUserProfile", "users/${updated.userId}", e)
+    }
+
+    // =========================================================================
+    // 2. Global App Config & Channel Anthem Audio Chunks
+    // =========================================================================
+    fun observeAppConfig(): Flow<AppConfig> = callbackFlow {
+        val reg = db.collection("app_config").document(GLOBAL_CONFIG_DOC_ID)
+            .addSnapshotListener { snap, err ->
+                if (err != null) {
+                    logFirestoreFailure("observeAppConfig", "app_config/global", err)
+                    trySend(AppConfig())
+                    return@addSnapshotListener
+                }
+                val cfg = snap?.toObject(AppConfig::class.java)?.copy(id = snap.id) ?: AppConfig()
+                trySend(cfg)
+            }
+        awaitClose { reg.remove() }
+    }
+
+    suspend fun saveAppConfigAdmin(config: AppConfig): Result<Unit> = runCatching {
+        val uid = currentUid() ?: error("Admin authentication required")
+        val docRef = db.collection("app_config").document(GLOBAL_CONFIG_DOC_ID)
+        val snap = docRef.get().await()
+        val createdAtVal = snap.getTimestamp("createdAt") ?: Timestamp.now()
+
+        val payload = mapOf(
+            "configKey" to "global",
+            "anthemTitleHi" to config.anthemTitleHi.trim().ifBlank { "सीजीपीडिया चैनल एंथम" }.take(160),
+            "anthemTitleEn" to config.anthemTitleEn.trim().ifBlank { "CGpedia Official Channel Anthem" }.take(160),
+            "anthemSourceType" to config.anthemSourceType.takeIf { it in listOf("bundled", "url", "cloud_chunks") }.orEmpty().ifBlank { "bundled" },
+            "anthemAudioUrl" to config.anthemAudioUrl.trim().take(1200),
+            "anthemChunkCount" to config.anthemChunkCount.coerceIn(0L, 25L),
+            "anthemMimeType" to config.anthemMimeType.ifBlank { "audio/mpeg" }.take(80),
+            "telegramChannelUrl" to config.telegramChannelUrl.trim().take(500),
+            "supportEmail" to config.supportEmail.trim().ifBlank { OWNER_ADMIN_EMAIL }.take(160),
+            "whatsappSupportNumber" to config.whatsappSupportNumber.trim().ifBlank { "9238810070" }.take(40),
+            "supportPolicyHi" to config.supportPolicyHi.trim().ifBlank {
+                "भुगतान, टेस्ट सीरीज अनलॉक या तकनीकी सहायता के लिए कृपया हमारे आधिकारिक व्हाट्सएप नंबर 9238810070 पर संपर्क करें।"
+            }.take(4000),
+            "supportPolicyEn" to config.supportPolicyEn.trim().ifBlank {
+                "For test series activation, payment receipts, or technical help, message our official WhatsApp support at 9238810070."
+            }.take(4000),
+            "latestVersionCode" to config.latestVersionCode.coerceIn(1L, 100000L),
+            "latestVersionName" to config.latestVersionName.trim().ifBlank { "2.0.0" }.take(40),
+            "apkDownloadUrl" to config.apkDownloadUrl.trim().take(1200),
+            "updateNotesHi" to config.updateNotesHi.trim().take(2000),
+            "updateNotesEn" to config.updateNotesEn.trim().take(2000),
+            "updatedBy" to uid,
+            "createdAt" to createdAtVal,
+            "updatedAt" to FieldValue.serverTimestamp()
+        )
+        docRef.set(payload).await()
+        Unit
+    }.onFailure { e ->
+        logFirestoreFailure("saveAppConfigAdmin", "app_config/global", e)
+    }
+
+    suspend fun uploadCustomAnthemAudioAdmin(
+        rawBytes: ByteArray,
+        mimeType: String,
+        titleHi: String,
+        titleEn: String
+    ): Result<Int> = runCatching {
+        val uid = currentUid() ?: error("Admin authentication required")
+        val chunkByteSize = 350_000
+        val chunks = rawBytes.toList().chunked(chunkByteSize).take(20)
+        if (chunks.isEmpty()) error("Selected audio file is empty")
+
+        val total = chunks.size
+        chunks.forEachIndexed { idx, byteList ->
+            val b64 = Base64.encodeToString(byteList.toByteArray(), Base64.NO_WRAP)
+            val chunkPayload = mapOf(
+                "chunkIndex" to idx.toLong(),
+                "totalChunks" to total.toLong(),
+                "base64Data" to b64,
+                "updatedBy" to uid,
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+            db.collection("anthem_chunks").document("chunk_$idx").set(chunkPayload).await()
+        }
+
+        val currentSnap = db.collection("app_config").document(GLOBAL_CONFIG_DOC_ID).get().await()
+        val existingConfig = currentSnap.toObject(AppConfig::class.java) ?: AppConfig()
+        saveAppConfigAdmin(
+            existingConfig.copy(
+                anthemTitleHi = titleHi.ifBlank { existingConfig.anthemTitleHi },
+                anthemTitleEn = titleEn.ifBlank { existingConfig.anthemTitleEn },
+                anthemSourceType = "cloud_chunks",
+                anthemAudioUrl = "",
+                anthemChunkCount = total.toLong(),
+                anthemMimeType = mimeType.ifBlank { "audio/mpeg" }
+            )
+        ).getOrThrow()
+        total
+    }.onFailure { e ->
+        logFirestoreFailure("uploadCustomAnthemAudioAdmin", "anthem_chunks", e)
+    }
+
+    suspend fun fetchCloudAnthemAudioBytes(chunkCount: Int): Result<ByteArray> = runCatching {
+        val count = chunkCount.coerceIn(1, 25)
+        val output = ArrayList<Byte>()
+        for (idx in 0 until count) {
+            val doc = db.collection("anthem_chunks").document("chunk_$idx").get().await()
+            val b64 = doc.getString("base64Data").orEmpty()
+            if (b64.isNotBlank()) {
+                val decoded = Base64.decode(b64, Base64.DEFAULT)
+                output.addAll(decoded.toList())
+            }
+        }
+        output.toByteArray()
+    }.onFailure { e ->
+        logFirestoreFailure("fetchCloudAnthemAudioBytes", "anthem_chunks", e)
+    }
+
+    // =========================================================================
+    // 3. Exam-Wise & Subject-Wise Folders
+    // =========================================================================
+    fun observeExamFolders(): Flow<UiState<List<ExamFolder>>> = callbackFlow {
+        trySend(UiState.Loading)
+        val reg = db.collection("exam_folders")
+            .whereEqualTo("visibility", "published")
+            .addSnapshotListener { snap, err ->
+                if (err != null) {
+                    logFirestoreFailure("observeExamFolders", "exam_folders", err)
+                    trySend(UiState.Success(CgpediaStarterCatalog.defaultExamFolders()))
+                    return@addSnapshotListener
+                }
+                val items = snap?.documents?.mapNotNull { d ->
+                    d.toObject(ExamFolder::class.java)?.copy(id = d.id)
+                }?.sortedBy { it.sortOrder }.orEmpty()
+                trySend(
+                    UiState.Success(
+                        if (items.isNotEmpty()) items else CgpediaStarterCatalog.defaultExamFolders()
+                    )
+                )
+            }
+        awaitClose { reg.remove() }
+    }
+
+    fun observeSubjectFolders(): Flow<UiState<List<SubjectFolder>>> = callbackFlow {
+        trySend(UiState.Loading)
+        val reg = db.collection("subject_folders")
+            .whereEqualTo("visibility", "published")
+            .addSnapshotListener { snap, err ->
+                if (err != null) {
+                    logFirestoreFailure("observeSubjectFolders", "subject_folders", err)
+                    trySend(UiState.Success(CgpediaStarterCatalog.defaultSubjectFolders()))
+                    return@addSnapshotListener
+                }
+                val items = snap?.documents?.mapNotNull { d ->
+                    d.toObject(SubjectFolder::class.java)?.copy(id = d.id)
+                }?.sortedBy { it.sortOrder }.orEmpty()
+                trySend(
+                    UiState.Success(
+                        if (items.isNotEmpty()) items else CgpediaStarterCatalog.defaultSubjectFolders()
+                    )
+                )
+            }
+        awaitClose { reg.remove() }
+    }
+
+    suspend fun saveExamFolderAdmin(folder: ExamFolder): Result<Unit> = runCatching {
+        val uid = currentUid() ?: error("Admin authentication required")
+        val docId = folder.id.ifBlank { "exam_${System.currentTimeMillis()}" }
+        val docRef = db.collection("exam_folders").document(docId)
+        val snap = docRef.get().await()
+        val createdAtVal = snap.getTimestamp("createdAt") ?: Timestamp.now()
+
+        val payload = mapOf(
+            "titleHi" to folder.titleHi.trim().take(160),
+            "titleEn" to folder.titleEn.trim().take(160),
+            "descriptionHi" to folder.descriptionHi.trim().ifBlank { folder.titleHi }.take(600),
+            "descriptionEn" to folder.descriptionEn.trim().ifBlank { folder.titleEn }.take(600),
+            "examCode" to folder.examCode.trim().ifBlank { "CGPSC" }.take(50),
+            "sortOrder" to folder.sortOrder.coerceIn(0L, 1000L),
+            "isFreeFolder" to folder.isFreeFolder,
+            "priceInr" to (if (folder.isFreeFolder) 0L else folder.priceInr.coerceIn(1L, 50000L)),
+            "validityDays" to folder.validityDays.coerceIn(1L, 3650L),
+            "testCount" to folder.testCount.coerceAtLeast(0L),
+            "visibility" to folder.visibility.takeIf { it in listOf("published", "archived") }.orEmpty().ifBlank { "published" },
+            "createdBy" to uid,
+            "createdAt" to createdAtVal,
+            "updatedAt" to FieldValue.serverTimestamp()
+        )
+        docRef.set(payload).await()
+        Unit
+    }.onFailure { e ->
+        logFirestoreFailure("saveExamFolderAdmin", "exam_folders/${folder.id}", e)
+    }
+
+    suspend fun deleteExamFolderAdmin(folderId: String): Result<Unit> = runCatching {
+        db.collection("exam_folders").document(folderId).delete().await()
+        Unit
+    }.onFailure { e ->
+        logFirestoreFailure("deleteExamFolderAdmin", "exam_folders/$folderId", e)
+    }
+
+    suspend fun saveSubjectFolderAdmin(folder: SubjectFolder): Result<Unit> = runCatching {
+        val uid = currentUid() ?: error("Admin authentication required")
+        val docId = folder.id.ifBlank { "subj_${System.currentTimeMillis()}" }
+        val docRef = db.collection("subject_folders").document(docId)
+        val snap = docRef.get().await()
+        val createdAtVal = snap.getTimestamp("createdAt") ?: Timestamp.now()
+
+        val payload = mapOf(
+            "titleHi" to folder.titleHi.trim().take(160),
+            "titleEn" to folder.titleEn.trim().take(160),
+            "descriptionHi" to folder.descriptionHi.trim().ifBlank { folder.titleHi }.take(600),
+            "descriptionEn" to folder.descriptionEn.trim().ifBlank { folder.titleEn }.take(600),
+            "subjectCode" to folder.subjectCode.trim().ifBlank { "CG_GS" }.take(50),
+            "sortOrder" to folder.sortOrder.coerceIn(0L, 1000L),
+            "isFreeFolder" to folder.isFreeFolder,
+            "priceInr" to (if (folder.isFreeFolder) 0L else folder.priceInr.coerceIn(1L, 50000L)),
+            "validityDays" to folder.validityDays.coerceIn(1L, 3650L),
+            "testCount" to folder.testCount.coerceAtLeast(0L),
+            "visibility" to folder.visibility.takeIf { it in listOf("published", "archived") }.orEmpty().ifBlank { "published" },
+            "createdBy" to uid,
+            "createdAt" to createdAtVal,
+            "updatedAt" to FieldValue.serverTimestamp()
+        )
+        docRef.set(payload).await()
+        Unit
+    }.onFailure { e ->
+        logFirestoreFailure("saveSubjectFolderAdmin", "subject_folders/${folder.id}", e)
+    }
+
+    suspend fun deleteSubjectFolderAdmin(folderId: String): Result<Unit> = runCatching {
+        db.collection("subject_folders").document(folderId).delete().await()
+        Unit
+    }.onFailure { e ->
+        logFirestoreFailure("deleteSubjectFolderAdmin", "subject_folders/$folderId", e)
+    }
+
+    // =========================================================================
+    // 4. Tests & Bilingual Questions (Student Published Feed + Admin Draft/Published)
+    // =========================================================================
+    fun observePublishedTests(): Flow<UiState<List<TestSeriesItem>>> = callbackFlow {
+        trySend(UiState.Loading)
+        val reg = db.collection("tests")
+            .whereEqualTo("status", "published")
+            .addSnapshotListener { snap, err ->
+                if (err != null) {
+                    logFirestoreFailure("observePublishedTests", "tests?status=published", err)
+                    trySend(UiState.Success(CgpediaStarterCatalog.defaultTests()))
+                    return@addSnapshotListener
+                }
+                val items = snap?.documents?.mapNotNull { d ->
+                    d.toObject(TestSeriesItem::class.java)?.copy(id = d.id)
+                }?.sortedByDescending { it.createdAt?.seconds ?: 0L }.orEmpty()
+                trySend(
+                    UiState.Success(
+                        if (items.isNotEmpty()) items else CgpediaStarterCatalog.defaultTests()
+                    )
+                )
+            }
+        awaitClose { reg.remove() }
+    }
+
+    fun observeAllTestsForAdmin(): Flow<UiState<List<TestSeriesItem>>> = callbackFlow {
+        trySend(UiState.Loading)
+        val reg = db.collection("tests")
+            .addSnapshotListener { snap, err ->
+                if (err != null) {
+                    logFirestoreFailure("observeAllTestsForAdmin", "tests", err)
+                    trySend(UiState.Error(err.localizedMessage ?: "Failed to load admin tests"))
+                    return@addSnapshotListener
+                }
+                val items = snap?.documents?.mapNotNull { d ->
+                    d.toObject(TestSeriesItem::class.java)?.copy(id = d.id)
+                }?.sortedByDescending { it.updatedAt?.seconds ?: 0L }.orEmpty()
+                trySend(UiState.Success(items))
+            }
+        awaitClose { reg.remove() }
+    }
+
+    suspend fun getPublishedQuestionsForTest(testId: String): Result<List<BilingualQuestion>> = runCatching {
+        val snap = db.collection("tests").document(testId)
+            .collection("questions")
+            .whereEqualTo("visibility", "published")
+            .get()
+            .await()
+
+        val cloudQuestions = snap.documents.mapNotNull { d ->
+            d.toObject(BilingualQuestion::class.java)?.copy(id = d.id)
+        }.sortedBy { it.orderIndex }
+
+        if (cloudQuestions.isNotEmpty()) {
+            cloudQuestions
+        } else {
+            CgpediaStarterCatalog.defaultQuestions().filter { it.testId == testId }.sortedBy { it.orderIndex }
+        }
+    }.onFailure { e ->
+        logFirestoreFailure("getPublishedQuestionsForTest", "tests/$testId/questions", e)
+    }
+
+    suspend fun getAllQuestionsForTestAdmin(testId: String): Result<List<BilingualQuestion>> = runCatching {
+        val snap = db.collection("tests").document(testId)
+            .collection("questions")
+            .get()
+            .await()
+
+        snap.documents.mapNotNull { d ->
+            d.toObject(BilingualQuestion::class.java)?.copy(id = d.id)
+        }.sortedBy { it.orderIndex }
+    }.onFailure { e ->
+        logFirestoreFailure("getAllQuestionsForTestAdmin", "tests/$testId/questions", e)
+    }
+
+    /**
+     * Creates a brand-new manual test from scratch inside an Exam or Subject folder (without AI)
+     * with an initial editable Bilingual MCQ so the Admin can customize questions manually.
+     */
+    suspend fun createManualTestAdmin(testMeta: TestSeriesItem): Result<String> = runCatching {
+        val uid = currentUid() ?: error("Admin authentication required")
+        val testId = testMeta.id.ifBlank { "test_manual_${System.currentTimeMillis()}" }
+        val testRef = db.collection("tests").document(testId)
+
+        val starterQuestion = BilingualQuestion(
+            id = "${testId}_q_1",
+            testId = testId,
+            orderIndex = 0L,
+            questionHi = "यहाँ अपना हिंदी (देवनागरी) प्रश्न लिखें...",
+            questionEn = "Enter your English question text here...",
+            optionsHi = listOf("विकल्प A", "विकल्प B", "विकल्प C", "विकल्प D"),
+            optionsEn = listOf("Option A", "Option B", "Option C", "Option D"),
+            correctOptionIndex = 0L,
+            explanationHi = "सही उत्तर की हिंदी व्याख्या...",
+            explanationEn = "Detailed explanation in English...",
+            subjectTag = testMeta.topic.ifBlank { "CGPSC & CGSSB" }.take(100),
+            visibility = testMeta.status.takeIf { it in listOf("draft", "published") } ?: "draft",
+            createdBy = uid
+        )
+
+        val testPayload = mapOf(
+            "folderType" to testMeta.folderType.takeIf { it in listOf("exam", "subject") }.orEmpty().ifBlank { "exam" },
+            "folderId" to testMeta.folderId.trim().take(100),
+            "titleHi" to testMeta.titleHi.trim().take(200),
+            "titleEn" to testMeta.titleEn.trim().take(200),
+            "topic" to testMeta.topic.trim().ifBlank { testMeta.titleEn }.take(300),
+            "difficulty" to testMeta.difficulty.takeIf { it in listOf("Easy", "Moderate", "Hard", "CGPSC_Level") }.orEmpty().ifBlank { "CGPSC_Level" },
+            "durationMinutes" to testMeta.durationMinutes.coerceIn(1L, 240L),
+            "questionLimit" to testMeta.questionLimit.coerceIn(1L, 100L),
+            "questionCount" to 1L,
+            "marksPerQuestion" to testMeta.marksPerQuestion.coerceIn(0.5, 10.0),
+            "negativeMarking" to testMeta.negativeMarking.coerceIn(0.0, 5.0),
+            "isPaid" to testMeta.isPaid,
+            "priceInr" to (if (testMeta.isPaid) testMeta.priceInr.coerceIn(1L, 50000L) else 0L),
+            "validityDays" to testMeta.validityDays.coerceIn(1L, 3650L),
+            "status" to (testMeta.status.takeIf { it in listOf("draft", "published", "archived") } ?: "draft"),
+            "createdBy" to uid,
+            "createdAt" to FieldValue.serverTimestamp(),
+            "updatedAt" to FieldValue.serverTimestamp()
+        )
+        testRef.set(testPayload).await()
+        saveQuestionAdmin(testId, starterQuestion).getOrThrow()
+        testId
+    }.onFailure { e ->
+        logFirestoreFailure("createManualTestAdmin", "tests/${testMeta.id}", e)
+    }
+
+    suspend fun createDraftTestWithQuestionsAdmin(
+        testMeta: TestSeriesItem,
+        questions: List<BilingualQuestion>
+    ): Result<String> = runCatching {
+        val uid = currentUid() ?: error("Admin authentication required")
+        val testId = testMeta.id.ifBlank { "test_${System.currentTimeMillis()}" }
+        val testRef = db.collection("tests").document(testId)
+
+        val testPayload = mapOf(
+            "folderType" to testMeta.folderType.takeIf { it in listOf("exam", "subject") }.orEmpty().ifBlank { "exam" },
+            "folderId" to testMeta.folderId.trim().take(100),
+            "titleHi" to testMeta.titleHi.trim().take(200),
+            "titleEn" to testMeta.titleEn.trim().take(200),
+            "topic" to testMeta.topic.trim().take(300),
+            "difficulty" to testMeta.difficulty.takeIf { it in listOf("Easy", "Moderate", "Hard", "CGPSC_Level") }.orEmpty().ifBlank { "CGPSC_Level" },
+            "durationMinutes" to testMeta.durationMinutes.coerceIn(1L, 240L),
+            "questionLimit" to testMeta.questionLimit.coerceIn(1L, 100L),
+            "questionCount" to questions.size.coerceIn(0, 100).toLong(),
+            "marksPerQuestion" to testMeta.marksPerQuestion.coerceIn(0.5, 10.0),
+            "negativeMarking" to testMeta.negativeMarking.coerceIn(0.0, 5.0),
+            "isPaid" to testMeta.isPaid,
+            "priceInr" to (if (testMeta.isPaid) testMeta.priceInr.coerceIn(1L, 50000L) else 0L),
+            "validityDays" to testMeta.validityDays.coerceIn(1L, 3650L),
+            "status" to "draft",
+            "createdBy" to uid,
+            "createdAt" to FieldValue.serverTimestamp(),
+            "updatedAt" to FieldValue.serverTimestamp()
+        )
+        testRef.set(testPayload).await()
+
+        questions.take(100).forEachIndexed { idx, q ->
+            val qId = q.id.ifBlank { "${testId}_q_${idx + 1}" }
+            val qRef = testRef.collection("questions").document(qId)
+            val qPayload = mapOf(
+                "testId" to testId,
+                "orderIndex" to idx.toLong(),
+                "questionHi" to q.questionHi.trim().take(2500),
+                "questionEn" to q.questionEn.trim().take(2500),
+                "optionsHi" to q.optionsHi.take(4).let { if (it.size == 4) it else it + List(4 - it.size) { "विकल्प" } },
+                "optionsEn" to q.optionsEn.take(4).let { if (it.size == 4) it else it + List(4 - it.size) { "Option" } },
+                "correctOptionIndex" to q.correctOptionIndex.coerceIn(0L, 3L),
+                "explanationHi" to q.explanationHi.trim().take(4000),
+                "explanationEn" to q.explanationEn.trim().take(4000),
+                "subjectTag" to q.subjectTag.trim().ifBlank { testMeta.topic }.take(100),
+                "visibility" to "draft",
+                "createdBy" to uid,
+                "createdAt" to FieldValue.serverTimestamp(),
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+            qRef.set(qPayload).await()
+        }
+        testId
+    }.onFailure { e ->
+        logFirestoreFailure("createDraftTestWithQuestionsAdmin", "tests/${testMeta.id}", e)
+    }
+
+    suspend fun saveQuestionAdmin(testId: String, question: BilingualQuestion): Result<Unit> = runCatching {
+        val uid = currentUid() ?: error("Admin authentication required")
+        val qId = question.id.ifBlank { "${testId}_q_${System.currentTimeMillis()}" }
+        val qRef = db.collection("tests").document(testId).collection("questions").document(qId)
+        val snap = qRef.get().await()
+        val createdAtVal = snap.getTimestamp("createdAt") ?: Timestamp.now()
+
+        val payload = mapOf(
+            "testId" to testId,
+            "orderIndex" to question.orderIndex.coerceIn(0L, 99L),
+            "questionHi" to question.questionHi.trim().ifBlank { "प्रश्न" }.take(2500),
+            "questionEn" to question.questionEn.trim().ifBlank { "Question" }.take(2500),
+            "optionsHi" to question.optionsHi.take(4).let { if (it.size == 4) it else it + List(4 - it.size) { "विकल्प" } },
+            "optionsEn" to question.optionsEn.take(4).let { if (it.size == 4) it else it + List(4 - it.size) { "Option" } },
+            "correctOptionIndex" to question.correctOptionIndex.coerceIn(0L, 3L),
+            "explanationHi" to question.explanationHi.trim().take(4000),
+            "explanationEn" to question.explanationEn.trim().take(4000),
+            "subjectTag" to question.subjectTag.trim().ifBlank { "General Studies" }.take(100),
+            "visibility" to question.visibility.takeIf { it in listOf("draft", "published") }.orEmpty().ifBlank { "draft" },
+            "createdBy" to uid,
+            "createdAt" to createdAtVal,
+            "updatedAt" to FieldValue.serverTimestamp()
+        )
+        qRef.set(payload).await()
+        recountTestQuestionsAdmin(testId)
+    }.onFailure { e ->
+        logFirestoreFailure("saveQuestionAdmin", "tests/$testId/questions/${question.id}", e)
+    }
+
+    suspend fun deleteQuestionAdmin(testId: String, questionId: String): Result<Unit> = runCatching {
+        db.collection("tests").document(testId).collection("questions").document(questionId).delete().await()
+        recountTestQuestionsAdmin(testId)
+    }.onFailure { e ->
+        logFirestoreFailure("deleteQuestionAdmin", "tests/$testId/questions/$questionId", e)
+    }
+
+    private suspend fun recountTestQuestionsAdmin(testId: String) {
+        val testRef = db.collection("tests").document(testId)
+        val qSnap = testRef.collection("questions").get().await()
+        val count = qSnap.size().toLong().coerceIn(0L, 100L)
+        testRef.update(
+            mapOf(
+                "questionCount" to count,
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+        ).await()
+    }
+
+    suspend fun updateTestMetadataAdmin(test: TestSeriesItem): Result<Unit> = runCatching {
+        val testRef = db.collection("tests").document(test.id)
+        testRef.update(
+            mapOf(
+                "titleHi" to test.titleHi.trim().take(200),
+                "titleEn" to test.titleEn.trim().take(200),
+                "topic" to test.topic.trim().ifBlank { test.titleEn }.take(300),
+                "durationMinutes" to test.durationMinutes.coerceIn(1L, 240L),
+                "questionLimit" to test.questionLimit.coerceIn(1L, 100L),
+                "marksPerQuestion" to test.marksPerQuestion.coerceIn(0.5, 10.0),
+                "negativeMarking" to test.negativeMarking.coerceIn(0.0, 5.0),
+                "isPaid" to test.isPaid,
+                "priceInr" to (if (test.isPaid) test.priceInr.coerceIn(1L, 50000L) else 0L),
+                "validityDays" to test.validityDays.coerceIn(1L, 3650L),
+                "status" to test.status.takeIf { it in listOf("draft", "published", "archived") }.orEmpty().ifBlank { "draft" },
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+        ).await()
+        Unit
+    }.onFailure { e ->
+        logFirestoreFailure("updateTestMetadataAdmin", "tests/${test.id}", e)
+    }
+
+    suspend fun publishTestAndQuestionsAdmin(testId: String): Result<Unit> = runCatching {
+        val testRef = db.collection("tests").document(testId)
+        val qSnap = testRef.collection("questions").get().await()
+        val batch = db.batch()
+        qSnap.documents.forEach { doc ->
+            batch.update(
+                doc.reference,
+                mapOf(
+                    "visibility" to "published",
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            )
+        }
+        batch.update(
+            testRef,
+            mapOf(
+                "status" to "published",
+                "questionCount" to qSnap.size().toLong().coerceIn(0L, 100L),
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+        )
+        batch.commit().await()
+        Unit
+    }.onFailure { e ->
+        logFirestoreFailure("publishTestAndQuestionsAdmin", "tests/$testId", e)
+    }
+
+    suspend fun deleteTestAdmin(testId: String): Result<Unit> = runCatching {
+        val testRef = db.collection("tests").document(testId)
+        val qSnap = testRef.collection("questions").get().await()
+        qSnap.documents.forEach { it.reference.delete().await() }
+        testRef.delete().await()
+        Unit
+    }.onFailure { e ->
+        logFirestoreFailure("deleteTestAdmin", "tests/$testId", e)
+    }
+
+    // =========================================================================
+    // 5. Bilingual Current Affairs (Chhattisgarh, National, International)
+    // =========================================================================
+    fun observeCurrentAffairs(): Flow<UiState<List<CurrentAffairItem>>> = callbackFlow {
+        trySend(UiState.Loading)
+        val reg = db.collection("current_affairs")
+            .whereEqualTo("visibility", "published")
+            .addSnapshotListener { snap, err ->
+                if (err != null) {
+                    logFirestoreFailure("observeCurrentAffairs", "current_affairs?visibility=published", err)
+                    trySend(UiState.Success(CgpediaStarterCatalog.defaultCurrentAffairs()))
+                    return@addSnapshotListener
+                }
+                val items = snap?.documents?.mapNotNull { d ->
+                    d.toObject(CurrentAffairItem::class.java)?.copy(id = d.id)
+                }?.sortedByDescending { it.dateLabel + "_" + (it.createdAt?.seconds ?: 0L) }.orEmpty()
+
+                trySend(
+                    UiState.Success(
+                        if (items.isNotEmpty()) items else CgpediaStarterCatalog.defaultCurrentAffairs()
+                    )
+                )
+            }
+        awaitClose { reg.remove() }
+    }
+
+    suspend fun saveCurrentAffairsBatch(items: List<CurrentAffairItem>): Result<Int> = runCatching {
+        val uid = currentUid() ?: error("Sign in required to sync Current Affairs")
+        val isAdminUser = isVerifiedOwnerAdmin()
+        var saved = 0
+        for (item in items) {
+            val docId = item.id.ifBlank { "ca_${System.currentTimeMillis()}_${saved}_${uid.take(6)}" }
+            val docRef = db.collection("current_affairs").document(docId)
+            val createdAtVal: Any = if (isAdminUser) {
+                val snap = runCatching { docRef.get().await() }.getOrNull()
+                if (snap != null && snap.exists()) (snap.getTimestamp("createdAt") ?: Timestamp.now()) else FieldValue.serverTimestamp()
+            } else {
+                FieldValue.serverTimestamp()
+            }
+            val payload = mapOf(
+                "category" to item.category.takeIf { it in listOf("chhattisgarh", "national", "international") }.orEmpty().ifBlank { "chhattisgarh" },
+                "headlineHi" to item.headlineHi.trim().ifBlank { "समसामयिकी अपडेट" }.take(350),
+                "headlineEn" to item.headlineEn.trim().ifBlank { "Current Affairs Update" }.take(350),
+                "summaryHi" to item.summaryHi.trim().ifBlank { item.headlineHi }.take(4500),
+                "summaryEn" to item.summaryEn.trim().ifBlank { item.headlineEn }.take(4500),
+                "examKeyPointsHi" to item.examKeyPointsHi.take(10).ifEmpty { listOf("महत्वपूर्ण तथ्य") },
+                "examKeyPointsEn" to item.examKeyPointsEn.take(10).ifEmpty { listOf("Key exam takeaway") },
+                "sourceName" to item.sourceName.trim().ifBlank { "PIB / DPR Chhattisgarh" }.take(160),
+                "sourceUrl" to item.sourceUrl.trim().take(1200),
+                "dateLabel" to item.dateLabel.trim().ifBlank { "2026-03-01" }.take(40),
+                "visibility" to "published",
+                "sourceModule" to (if (isAdminUser && item.sourceModule == "admin_curated") "admin_curated" else "ai_grounded"),
+                "authorUid" to uid,
+                "createdAt" to createdAtVal,
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+            runCatching {
+                docRef.set(payload).await()
+                saved++
+            }.onFailure { err ->
+                if (isAdminUser || items.size == 1) throw err
+            }
+        }
+        saved
+    }.onFailure { e ->
+        logFirestoreFailure("saveCurrentAffairsBatch", "current_affairs", e)
+    }
+
+    suspend fun deleteCurrentAffairAdmin(articleId: String): Result<Unit> = runCatching {
+        db.collection("current_affairs").document(articleId).delete().await()
+        Unit
+    }.onFailure { e ->
+        logFirestoreFailure("deleteCurrentAffairAdmin", "current_affairs/$articleId", e)
+    }
+
+    // =========================================================================
+    // 6. Admin Broadcast Notifications (Rich Media + Pin) & Upcoming Tests
+    // =========================================================================
+    fun observePublishedNotifications(): Flow<List<BroadcastNotification>> = callbackFlow {
+        val reg = db.collection("broadcast_notifications")
+            .whereEqualTo("visibility", "published")
+            .addSnapshotListener { snap, err ->
+                if (err != null) {
+                    logFirestoreFailure("observePublishedNotifications", "broadcast_notifications", err)
+                    trySend(CgpediaStarterCatalog.defaultBroadcastNotifications())
+                    return@addSnapshotListener
+                }
+                val list = snap?.documents?.mapNotNull { d ->
+                    d.toObject(BroadcastNotification::class.java)?.copy(id = d.id)
+                }?.sortedWith(
+                    compareByDescending<BroadcastNotification> { it.isPinned }
+                        .thenByDescending { it.createdAt?.seconds ?: 0L }
+                ).orEmpty()
+                trySend(
+                    if (list.isNotEmpty()) list else CgpediaStarterCatalog.defaultBroadcastNotifications()
+                )
+            }
+        awaitClose { reg.remove() }
+    }
+
+    suspend fun saveBroadcastNotificationAdmin(notification: BroadcastNotification): Result<Unit> = runCatching {
+        val uid = currentUid() ?: error("Admin authentication required")
+        val docId = notification.id.ifBlank { "notif_${System.currentTimeMillis()}" }
+        val docRef = db.collection("broadcast_notifications").document(docId)
+        val snap = docRef.get().await()
+        val createdAtVal = snap.getTimestamp("createdAt") ?: Timestamp.now()
+
+        val payload = mapOf(
+            "titleHi" to notification.titleHi.trim().ifBlank { "महत्वपूर्ण सूचना" }.take(250),
+            "titleEn" to notification.titleEn.trim().ifBlank { "Important Notification" }.take(250),
+            "messageHi" to notification.messageHi.trim().ifBlank { notification.titleHi }.take(5000),
+            "messageEn" to notification.messageEn.trim().ifBlank { notification.titleEn }.take(5000),
+            "mediaType" to notification.mediaType.takeIf { it in listOf("none", "image", "pdf", "audio", "video") }.orEmpty().ifBlank { "none" },
+            "mediaUrl" to notification.mediaUrl.trim().take(2000),
+            "mediaTitle" to notification.mediaTitle.trim().take(250),
+            "isPinned" to notification.isPinned,
+            "visibility" to notification.visibility.takeIf { it in listOf("published", "archived") }.orEmpty().ifBlank { "published" },
+            "createdBy" to uid,
+            "createdAt" to createdAtVal,
+            "updatedAt" to FieldValue.serverTimestamp()
+        )
+        docRef.set(payload).await()
+        Unit
+    }.onFailure { e ->
+        logFirestoreFailure("saveBroadcastNotificationAdmin", "broadcast_notifications/${notification.id}", e)
+    }
+
+    suspend fun togglePinNotificationAdmin(notification: BroadcastNotification): Result<Unit> = runCatching {
+        saveBroadcastNotificationAdmin(notification.copy(isPinned = !notification.isPinned)).getOrThrow()
+    }
+
+    suspend fun deleteBroadcastNotificationAdmin(notificationId: String): Result<Unit> = runCatching {
+        db.collection("broadcast_notifications").document(notificationId).delete().await()
+        Unit
+    }.onFailure { e ->
+        logFirestoreFailure("deleteBroadcastNotificationAdmin", "broadcast_notifications/$notificationId", e)
+    }
+
+    fun observeUpcomingTests(): Flow<List<UpcomingTestItem>> = callbackFlow {
+        val reg = db.collection("upcoming_tests")
+            .whereEqualTo("visibility", "published")
+            .addSnapshotListener { snap, err ->
+                if (err != null) {
+                    logFirestoreFailure("observeUpcomingTests", "upcoming_tests", err)
+                    trySend(CgpediaStarterCatalog.defaultUpcomingTests())
+                    return@addSnapshotListener
+                }
+                val list = snap?.documents?.mapNotNull { d ->
+                    d.toObject(UpcomingTestItem::class.java)?.copy(id = d.id)
+                }?.sortedByDescending { it.createdAt?.seconds ?: 0L }.orEmpty()
+                trySend(
+                    if (list.isNotEmpty()) list else CgpediaStarterCatalog.defaultUpcomingTests()
+                )
+            }
+        awaitClose { reg.remove() }
+    }
+
+    suspend fun saveUpcomingTestAdmin(item: UpcomingTestItem): Result<Unit> = runCatching {
+        val uid = currentUid() ?: error("Admin authentication required")
+        val docId = item.id.ifBlank { "upcoming_${System.currentTimeMillis()}" }
+        val docRef = db.collection("upcoming_tests").document(docId)
+        val snap = docRef.get().await()
+        val createdAtVal = snap.getTimestamp("createdAt") ?: Timestamp.now()
+
+        val payload = mapOf(
+            "titleHi" to item.titleHi.trim().ifBlank { "आगामी टेस्ट सीरीज" }.take(250),
+            "titleEn" to item.titleEn.trim().ifBlank { "Upcoming Test Series" }.take(250),
+            "examCategory" to item.examCategory.trim().ifBlank { "CGPSC & CGSSB" }.take(120),
+            "scheduledDateLabel" to item.scheduledDateLabel.trim().ifBlank { "Coming Soon" }.take(100),
+            "syllabusSummaryHi" to item.syllabusSummaryHi.trim().ifBlank { item.titleHi }.take(3000),
+            "syllabusSummaryEn" to item.syllabusSummaryEn.trim().ifBlank { item.titleEn }.take(3000),
+            "isPaid" to item.isPaid,
+            "priceInr" to (if (item.isPaid) item.priceInr.coerceIn(1L, 50000L) else 0L),
+            "validityDays" to item.validityDays.coerceIn(1L, 3650L),
+            "visibility" to item.visibility.takeIf { it in listOf("published", "archived") }.orEmpty().ifBlank { "published" },
+            "createdBy" to uid,
+            "createdAt" to createdAtVal,
+            "updatedAt" to FieldValue.serverTimestamp()
+        )
+        docRef.set(payload).await()
+        Unit
+    }.onFailure { e ->
+        logFirestoreFailure("saveUpcomingTestAdmin", "upcoming_tests/${item.id}", e)
+    }
+
+    suspend fun deleteUpcomingTestAdmin(upcomingId: String): Result<Unit> = runCatching {
+        db.collection("upcoming_tests").document(upcomingId).delete().await()
+        Unit
+    }.onFailure { e ->
+        logFirestoreFailure("deleteUpcomingTestAdmin", "upcoming_tests/$upcomingId", e)
+    }
+
+    // =========================================================================
+    // 7. Private Student Query / Support Section (Strictly Isolated to Student & Admin)
+    // =========================================================================
+    fun observeMyQueries(uid: String): Flow<List<StudentQuery>> = callbackFlow {
+        val reg = db.collection("student_queries")
+            .whereEqualTo("userId", uid)
+            .addSnapshotListener { snap, err ->
+                if (err != null) {
+                    logFirestoreFailure("observeMyQueries", "student_queries?userId=$uid", err)
+                    trySend(emptyList())
+                    return@addSnapshotListener
+                }
+                val list = snap?.documents?.mapNotNull { d ->
+                    d.toObject(StudentQuery::class.java)?.copy(id = d.id)
+                }?.sortedByDescending { it.createdAt?.seconds ?: 0L }.orEmpty()
+                trySend(list)
+            }
+        awaitClose { reg.remove() }
+    }
+
+    fun observeAllQueriesForAdmin(): Flow<List<StudentQuery>> = callbackFlow {
+        val reg = db.collection("student_queries")
+            .addSnapshotListener { snap, err ->
+                if (err != null) {
+                    logFirestoreFailure("observeAllQueriesForAdmin", "student_queries", err)
+                    trySend(emptyList())
+                    return@addSnapshotListener
+                }
+                val list = snap?.documents?.mapNotNull { d ->
+                    d.toObject(StudentQuery::class.java)?.copy(id = d.id)
+                }?.sortedWith(
+                    compareBy<StudentQuery> { it.status == "resolved" }
+                        .thenByDescending { it.createdAt?.seconds ?: 0L }
+                ).orEmpty()
+                trySend(list)
+            }
+        awaitClose { reg.remove() }
+    }
+
+    suspend fun submitStudentQuery(
+        studentName: String,
+        studentEmail: String,
+        category: String,
+        subject: String,
+        message: String
+    ): Result<Unit> = runCatching {
+        val uid = currentUid() ?: error("Not signed in")
+        val docId = "query_${uid.take(8)}_${System.currentTimeMillis()}"
+        val payload = mapOf(
+            "userId" to uid,
+            "studentName" to studentName.trim().ifBlank { "CGpedia Student" }.take(120),
+            "studentEmail" to studentEmail.trim().take(160),
+            "category" to category.takeIf { it in listOf("doubt", "payment", "technical") }.orEmpty().ifBlank { "doubt" },
+            "subject" to subject.trim().ifBlank { "Student Support Query" }.take(250),
+            "message" to message.trim().take(4000),
+            "adminReply" to "",
+            "status" to "open",
+            "createdAt" to FieldValue.serverTimestamp(),
+            "updatedAt" to FieldValue.serverTimestamp()
+        )
+        db.collection("student_queries").document(docId).set(payload).await()
+        Unit
+    }.onFailure { e ->
+        logFirestoreFailure("submitStudentQuery", "student_queries", e)
+    }
+
+    suspend fun replyToStudentQueryAdmin(
+        query: StudentQuery,
+        adminReplyText: String,
+        markResolved: Boolean = true
+    ): Result<Unit> = runCatching {
+        val docRef = db.collection("student_queries").document(query.id)
+        val snap = docRef.get().await()
+        val createdAtVal = snap.getTimestamp("createdAt") ?: query.createdAt ?: Timestamp.now()
+        val payload = mapOf(
+            "userId" to query.userId,
+            "studentName" to query.studentName.take(120),
+            "studentEmail" to query.studentEmail.take(160),
+            "category" to query.category.takeIf { it in listOf("doubt", "payment", "technical") }.orEmpty().ifBlank { "doubt" },
+            "subject" to query.subject.take(250),
+            "message" to query.message.take(4000),
+            "adminReply" to adminReplyText.trim().take(4000),
+            "status" to (if (markResolved) "resolved" else "open"),
+            "createdAt" to createdAtVal,
+            "updatedAt" to FieldValue.serverTimestamp()
+        )
+        docRef.set(payload).await()
+        Unit
+    }.onFailure { e ->
+        logFirestoreFailure("replyToStudentQueryAdmin", "student_queries/${query.id}", e)
+    }
+
+    // =========================================================================
+    // 8. Student Attempts, Paid Test Series Purchases (with Validity) & Bookmarks
+    // =========================================================================
+    fun observeUserPurchases(uid: String): Flow<List<PurchaseRecord>> = callbackFlow {
+        val reg = db.collection("users").document(uid).collection("purchases")
+            .addSnapshotListener { snap, err ->
+                if (err != null) {
+                    logFirestoreFailure("observeUserPurchases", "users/$uid/purchases", err)
+                    trySend(emptyList())
+                    return@addSnapshotListener
+                }
+                val list = snap?.documents?.mapNotNull { d ->
+                    d.toObject(PurchaseRecord::class.java)?.copy(id = d.id)
+                }?.sortedByDescending { it.createdAt?.seconds ?: 0L }.orEmpty()
+                trySend(list)
+            }
+        awaitClose { reg.remove() }
+    }
+
+    fun observeAllPurchasesForAdmin(): Flow<List<PurchaseRecord>> = callbackFlow {
+        val reg = db.collectionGroup("purchases")
+            .addSnapshotListener { snap, err ->
+                if (err != null) {
+                    logFirestoreFailure("observeAllPurchasesForAdmin", "collectionGroup(purchases)", err)
+                    trySend(emptyList())
+                    return@addSnapshotListener
+                }
+                val list = snap?.documents?.mapNotNull { d ->
+                    d.toObject(PurchaseRecord::class.java)?.copy(id = d.id)
+                }.orEmpty()
+                trySend(list)
+            }
+        awaitClose { reg.remove() }
+    }
+
+    suspend fun recordTestPurchase(
+        testOrFolderId: String,
+        titleHi: String,
+        titleEn: String,
+        amountInr: Long,
+        paymentMethod: String,
+        validityDays: Long = 180L
+    ): Result<PurchaseRecord> = runCatching {
+        val uid = currentUid() ?: error("Not signed in")
+        val txRef = "CGP-${System.currentTimeMillis()}"
+        val docId = "pur_${testOrFolderId}_${System.currentTimeMillis()}"
+        val validDays = validityDays.coerceIn(1L, 3650L)
+        val expiresAtMillis = System.currentTimeMillis() + (validDays * 86_400_000L)
+        val payload = mapOf(
+            "userId" to uid,
+            "testId" to testOrFolderId.take(100),
+            "testTitleHi" to titleHi.ifBlank { "प्रीमियम टेस्ट" }.take(200),
+            "testTitleEn" to titleEn.ifBlank { "Premium Test" }.take(200),
+            "amountInr" to amountInr.coerceIn(1L, 50000L),
+            "paymentMethod" to paymentMethod.ifBlank { "UPI" }.take(50),
+            "transactionRef" to txRef,
+            "status" to "completed",
+            "validityDays" to validDays,
+            "expiresAtMillis" to expiresAtMillis,
+            "createdAt" to FieldValue.serverTimestamp()
+        )
+        db.collection("users").document(uid).collection("purchases").document(docId).set(payload).await()
+        PurchaseRecord(
+            id = docId,
+            userId = uid,
+            testId = testOrFolderId,
+            testTitleHi = titleHi,
+            testTitleEn = titleEn,
+            amountInr = amountInr,
+            paymentMethod = paymentMethod,
+            transactionRef = txRef,
+            status = "completed",
+            validityDays = validDays,
+            expiresAtMillis = expiresAtMillis,
+            createdAt = Timestamp.now()
+        )
+    }.onFailure { e ->
+        logFirestoreFailure("recordTestPurchase", "users/${currentUid()}/purchases", e)
+    }
+
+    /**
+     * Allows Owner Admin to manually unlock/activate any Paid Test Series or Folder
+     * for a student by entering their User ID (UID) or Registered Email ID,
+     * with activation-based validity starting strictly at the moment of activation.
+     */
+    fun observeAllUsersForAdmin(): Flow<List<UserProfile>> = callbackFlow {
+        val reg = db.collection("users")
+            .addSnapshotListener { snap, err ->
+                if (err != null) {
+                    logFirestoreFailure("observeAllUsersForAdmin", "users", err)
+                    trySend(emptyList())
+                    return@addSnapshotListener
+                }
+                val list = snap?.documents?.mapNotNull { d ->
+                    d.toObject(UserProfile::class.java)?.copy(id = d.id)
+                }?.sortedByDescending { it.updatedAt?.seconds ?: 0L }.orEmpty()
+                trySend(list)
+            }
+        awaitClose { reg.remove() }
+    }
+
+    suspend fun grantPaidAccessByAdmin(
+        studentIdentifier: String,
+        targetTestOrFolderId: String,
+        titleHi: String,
+        titleEn: String,
+        amountInr: Long,
+        validityDays: Long = 180L
+    ): Result<String> = runCatching {
+        val cleanInput = studentIdentifier.trim()
+        if (cleanInput.isBlank()) error("Please enter Student Email ID or User ID (UID)")
+
+        val resolvedUid = if (cleanInput.contains("@")) {
+            val emailSnap = db.collection("users").get().await()
+            val matched = emailSnap.documents.firstOrNull { doc ->
+                doc.getString("email")?.trim()?.equals(cleanInput, ignoreCase = true) == true
+            } ?: error("No registered student found with email: $cleanInput")
+            matched.id
+        } else {
+            val directSnap = db.collection("users").document(cleanInput).get().await()
+            if (directSnap.exists()) {
+                directSnap.id
+            } else {
+                val allSnap = db.collection("users").get().await()
+                val byPhoneOrUid = allSnap.documents.firstOrNull { doc ->
+                    doc.id.equals(cleanInput, ignoreCase = true) ||
+                        doc.getString("userId")?.equals(cleanInput, ignoreCase = true) == true ||
+                        doc.getString("phoneNumber")?.contains(cleanInput) == true
+                } ?: error("No registered student found with ID/Mobile: $cleanInput")
+                byPhoneOrUid.id
+            }
+        }
+
+        val validDays = validityDays.coerceIn(1L, 3650L)
+        val activatedNowMillis = System.currentTimeMillis()
+        val expiresAtMillis = activatedNowMillis + (validDays * 86_400_000L)
+        val docId = "admin_grant_${targetTestOrFolderId.take(50)}"
+        val txRef = "ADMIN-WHATSAPP-${CgpediaStarterCatalog.SUPPORT_WHATSAPP_NUMBER}-${activatedNowMillis % 100000}"
+        val payload = mapOf(
+            "userId" to resolvedUid,
+            "testId" to targetTestOrFolderId.take(100),
+            "testTitleHi" to titleHi.ifBlank { "प्रीमियम टेस्ट सीरीज" }.take(200),
+            "testTitleEn" to titleEn.ifBlank { "Premium Test Series" }.take(200),
+            "amountInr" to amountInr.coerceIn(1L, 50000L),
+            "paymentMethod" to "AdminGrant",
+            "transactionRef" to txRef.take(120),
+            "status" to "completed",
+            "validityDays" to validDays,
+            "expiresAtMillis" to expiresAtMillis,
+            "createdAt" to FieldValue.serverTimestamp()
+        )
+        db.collection("users")
+            .document(resolvedUid)
+            .collection("purchases")
+            .document(docId)
+            .set(payload)
+            .await()
+
+        resolvedUid
+    }.onFailure { e ->
+        logFirestoreFailure("grantPaidAccessByAdmin", "users/$studentIdentifier/purchases", e)
+    }
+
+    fun observeUserAttempts(uid: String): Flow<List<TestAttempt>> = callbackFlow {
+        val reg = db.collection("users").document(uid).collection("attempts")
+            .addSnapshotListener { snap, err ->
+                if (err != null) {
+                    logFirestoreFailure("observeUserAttempts", "users/$uid/attempts", err)
+                    trySend(emptyList())
+                    return@addSnapshotListener
+                }
+                val list = snap?.documents?.mapNotNull { d ->
+                    d.toObject(TestAttempt::class.java)?.copy(id = d.id)
+                }?.sortedByDescending { it.createdAt?.seconds ?: 0L }.orEmpty()
+                trySend(list)
+            }
+        awaitClose { reg.remove() }
+    }
+
+    suspend fun submitTestAttempt(attempt: TestAttempt): Result<String> = runCatching {
+        val uid = currentUid() ?: error("Not signed in")
+        val docId = attempt.id.ifBlank { "att_${attempt.testId}_${System.currentTimeMillis()}" }
+        val payload = mapOf(
+            "userId" to uid,
+            "testId" to attempt.testId.take(100),
+            "testTitleHi" to attempt.testTitleHi.ifBlank { "टेस्ट" }.take(200),
+            "testTitleEn" to attempt.testTitleEn.ifBlank { "Test" }.take(200),
+            "totalQuestions" to attempt.totalQuestions.coerceIn(1L, 100L),
+            "attemptedCount" to attempt.attemptedCount.coerceIn(0L, attempt.totalQuestions.coerceAtLeast(1L)),
+            "correctCount" to attempt.correctCount.coerceIn(0L, attempt.attemptedCount),
+            "incorrectCount" to attempt.incorrectCount.coerceIn(0L, attempt.attemptedCount),
+            "score" to attempt.score,
+            "maxScore" to attempt.maxScore.coerceAtLeast(1.0),
+            "accuracyPercent" to attempt.accuracyPercent.coerceIn(0L, 100L),
+            "timeTakenSeconds" to attempt.timeTakenSeconds.coerceIn(0L, 86400L),
+            "selectedAnswers" to attempt.selectedAnswers,
+            "status" to "submitted",
+            "createdAt" to FieldValue.serverTimestamp()
+        )
+        db.collection("users").document(uid).collection("attempts").document(docId).set(payload).await()
+        docId
+    }.onFailure { e ->
+        logFirestoreFailure("submitTestAttempt", "users/${currentUid()}/attempts", e)
+    }
+
+    fun observeBookmarks(uid: String): Flow<List<BookmarkedQuestion>> = callbackFlow {
+        val reg = db.collection("users").document(uid).collection("bookmarks")
+            .addSnapshotListener { snap, err ->
+                if (err != null) {
+                    logFirestoreFailure("observeBookmarks", "users/$uid/bookmarks", err)
+                    trySend(readOfflineBookmarksCache())
+                    return@addSnapshotListener
+                }
+                val list = snap?.documents?.mapNotNull { d ->
+                    d.toObject(BookmarkedQuestion::class.java)?.copy(id = d.id)
+                }?.sortedByDescending { it.createdAt?.seconds ?: 0L }.orEmpty()
+                writeOfflineBookmarksCache(list)
+                trySend(list)
+            }
+        awaitClose { reg.remove() }
+    }
+
+    suspend fun toggleBookmark(question: BilingualQuestion, currentlyBookmarked: Boolean): Result<Boolean> = runCatching {
+        val uid = currentUid() ?: error("Not signed in")
+        val docId = "bm_${question.id}"
+        val ref = db.collection("users").document(uid).collection("bookmarks").document(docId)
+        if (currentlyBookmarked) {
+            ref.delete().await()
             false
+        } else {
+            val payload = mapOf(
+                "userId" to uid,
+                "questionId" to question.id.take(100),
+                "testId" to question.testId.ifBlank { "general" }.take(100),
+                "questionHi" to question.questionHi.take(2500),
+                "questionEn" to question.questionEn.take(2500),
+                "optionsHi" to question.optionsHi.take(4).let { if (it.size == 4) it else it + List(4 - it.size) { "विकल्प" } },
+                "optionsEn" to question.optionsEn.take(4).let { if (it.size == 4) it else it + List(4 - it.size) { "Option" } },
+                "correctOptionIndex" to question.correctOptionIndex.coerceIn(0L, 3L),
+                "explanationHi" to question.explanationHi.take(4000),
+                "explanationEn" to question.explanationEn.take(4000),
+                "subjectTag" to question.subjectTag.ifBlank { "General Studies" }.take(100),
+                "createdAt" to FieldValue.serverTimestamp()
+            )
+            ref.set(payload, SetOptions.merge()).await()
+            true
+        }
+    }.onFailure { e ->
+        logFirestoreFailure("toggleBookmark", "users/${currentUid()}/bookmarks/bm_${question.id}", e)
+    }
+
+    private fun writeOfflineBookmarksCache(list: List<BookmarkedQuestion>) {
+        runCatching {
+            val arr = JSONArray()
+            list.forEach { b ->
+                val obj = JSONObject()
+                obj.put("id", b.id)
+                obj.put("userId", b.userId)
+                obj.put("questionId", b.questionId)
+                obj.put("testId", b.testId)
+                obj.put("questionHi", b.questionHi)
+                obj.put("questionEn", b.questionEn)
+                obj.put("optionsHi", JSONArray(b.optionsHi))
+                obj.put("optionsEn", JSONArray(b.optionsEn))
+                obj.put("correctOptionIndex", b.correctOptionIndex)
+                obj.put("explanationHi", b.explanationHi)
+                obj.put("explanationEn", b.explanationEn)
+                obj.put("subjectTag", b.subjectTag)
+                arr.put(obj)
+            }
+            prefs?.edit()?.putString("bookmarks_json", arr.toString())?.apply()
+        }.onFailure { Log.w("CgpediaRepo", "Offline cache write failed", it) }
+    }
+
+    fun readOfflineBookmarksCache(): List<BookmarkedQuestion> = runCatching {
+        val raw = prefs?.getString("bookmarks_json", null) ?: return emptyList()
+        val arr = JSONArray(raw)
+        val out = mutableListOf<BookmarkedQuestion>()
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            val optsHi = mutableListOf<String>()
+            val hiArr = o.optJSONArray("optionsHi")
+            if (hiArr != null) for (j in 0 until hiArr.length()) optsHi.add(hiArr.getString(j))
+            val optsEn = mutableListOf<String>()
+            val enArr = o.optJSONArray("optionsEn")
+            if (enArr != null) for (j in 0 until enArr.length()) optsEn.add(enArr.getString(j))
+            out.add(
+                BookmarkedQuestion(
+                    id = o.optString("id"),
+                    userId = o.optString("userId"),
+                    questionId = o.optString("questionId"),
+                    testId = o.optString("testId"),
+                    questionHi = o.optString("questionHi"),
+                    questionEn = o.optString("questionEn"),
+                    optionsHi = if (optsHi.size == 4) optsHi else listOf("", "", "", ""),
+                    optionsEn = if (optsEn.size == 4) optsEn else listOf("", "", "", ""),
+                    correctOptionIndex = o.optLong("correctOptionIndex", 0L),
+                    explanationHi = o.optString("explanationHi"),
+                    explanationEn = o.optString("explanationEn"),
+                    subjectTag = o.optString("subjectTag", "General Studies")
+                )
+            )
+        }
+        out
+    }.getOrDefault(emptyList())
+
+    // =========================================================================
+    // 9. Owner Admin Starter Cloud Seed (Only callable when signed in as Admin)
+    // =========================================================================
+    suspend fun seedStarterCatalogAsAdmin(adminUid: String) {
+        if (!isVerifiedOwnerAdmin()) return
+        runCatching {
+            val examSnap = db.collection("exam_folders").limit(1).get().await()
+            if (examSnap.isEmpty) {
+                CgpediaStarterCatalog.defaultExamFolders(adminUid).forEach { saveExamFolderAdmin(it) }
+            }
+            val subjSnap = db.collection("subject_folders").limit(1).get().await()
+            if (subjSnap.isEmpty) {
+                CgpediaStarterCatalog.defaultSubjectFolders(adminUid).forEach { saveSubjectFolderAdmin(it) }
+            }
+            val testsSnap = db.collection("tests").limit(1).get().await()
+            if (testsSnap.isEmpty) {
+                val allQuestions = CgpediaStarterCatalog.defaultQuestions(adminUid)
+                CgpediaStarterCatalog.defaultTests(adminUid).forEach { test ->
+                    val qs = allQuestions.filter { it.testId == test.id }
+                    createDraftTestWithQuestionsAdmin(test, qs)
+                    publishTestAndQuestionsAdmin(test.id)
+                }
+            }
+            val caSnap = db.collection("current_affairs").limit(1).get().await()
+            if (caSnap.isEmpty) {
+                saveCurrentAffairsBatch(CgpediaStarterCatalog.defaultCurrentAffairs(adminUid))
+            }
+            val notifSnap = db.collection("broadcast_notifications").limit(1).get().await()
+            if (notifSnap.isEmpty) {
+                CgpediaStarterCatalog.defaultBroadcastNotifications(adminUid).forEach {
+                    saveBroadcastNotificationAdmin(it)
+                }
+            }
+            val upcomingSnap = db.collection("upcoming_tests").limit(1).get().await()
+            if (upcomingSnap.isEmpty) {
+                CgpediaStarterCatalog.defaultUpcomingTests(adminUid).forEach {
+                    saveUpcomingTestAdmin(it)
+                }
+            }
+        }.onFailure { e ->
+            Log.w("CgpediaRepo", "Starter catalog seed skipped: ${e.message}")
         }
     }
 
-    // --- 2. User Profile & Settings ---
-    fun observeUserProfile(userId: String): Flow<UserProfile?> {
-        val path = "users/$userId"
-        return db.collection("users").document(userId)
-            .snapshots()
-            .map { snap ->
-                if (snap.exists()) {
-                    snap.toObject(UserProfile::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
-                } else null
-            }
-            .catch { e ->
-                if (e is Exception) handleFirestoreError(e, OperationType.GET, path)
-                throw e
-            }
-    }
-
+    // =========================================================================
+    // 10. Overloaded Helpers for Emulator & Unit Testing
+    // =========================================================================
     suspend fun ensureUserProfile(
         displayName: String,
         email: String,
         photoUrl: String,
-        isVerifiedAdmin: Boolean,
-        phoneNumber: String = ""
-    ): Result<UserProfile> {
-        val uid = requireUserId()
+        isVerifiedAdmin: Boolean
+    ): Result<UserProfile> = runCatching {
+        val uid = currentUid() ?: error("Must be signed in")
+        val role = if (isVerifiedAdmin) "admin" else "student"
         val docRef = db.collection("users").document(uid)
-        return try {
-            val snap = docRef.get().await()
-            if (snap.exists()) {
-                val existingProfile = snap.toObject(
-                    UserProfile::class.java,
-                    DocumentSnapshot.ServerTimestampBehavior.ESTIMATE
-                ) ?: UserProfile(id = uid, userId = uid)
-                Result.success(existingProfile)
-            } else {
-                val fallbackName = if (phoneNumber.length >= 4) {
-                    "Aspirant (${phoneNumber.takeLast(4)})"
-                } else {
-                    "CGpedia Aspirant"
-                }
-                val newProfile = UserProfile(
-                    id = uid,
-                    userId = uid,
-                    displayName = displayName.ifBlank { fallbackName },
-                    email = email,
-                    phoneNumber = phoneNumber.take(20),
-                    photoUrl = photoUrl,
-                    targetExam = "CGPSC & CGSSB",
-                    preferredLanguage = "en",
-                    darkMode = false,
-                    notifyCurrentAffairs = true,
-                    notifyNewTests = true,
-                    role = if (isVerifiedAdmin) "admin" else "student"
-                )
-                docRef.set(newProfile.toCreateMap()).await()
-                Result.success(newProfile)
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.CREATE, docRef.path)
-            Result.failure(e)
-        }
-    }
-
-    suspend fun updateUserProfileSettings(
-        displayName: String,
-        phoneNumber: String,
-        photoUrl: String,
-        targetExam: String,
-        preferredLanguage: String,
-        darkMode: Boolean,
-        notifyCurrentAffairs: Boolean,
-        notifyNewTests: Boolean
-    ): Result<Unit> {
-        val uid = requireUserId()
-        val docRef = db.collection("users").document(uid)
-        return try {
-            val updates = mapOf(
-                "displayName" to displayName.ifBlank { "CGpedia Aspirant" }.take(80),
-                "phoneNumber" to phoneNumber.take(20),
-                "photoUrl" to photoUrl.take(500),
-                "targetExam" to targetExam,
-                "preferredLanguage" to preferredLanguage,
-                "darkMode" to darkMode,
-                "notifyCurrentAffairs" to notifyCurrentAffairs,
-                "notifyNewTests" to notifyNewTests,
-                "updatedAt" to FieldValue.serverTimestamp()
-            )
-            docRef.update(updates).await()
-            Result.success(Unit)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.UPDATE, docRef.path)
-            Result.failure(e)
-        }
-    }
-
-    suspend fun getUserProfileById(targetUserId: String): Result<UserProfile?> {
-        val docRef = db.collection("users").document(targetUserId)
-        return try {
-            val snap = docRef.get().await()
-            Result.success(snap.toObject(UserProfile::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE))
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.GET, docRef.path)
-            Result.failure(e)
-        }
-    }
-
-    // --- 3. Student Purchases, Attempts & Bookmarks ---
-    fun observeUserPurchases(userId: String): Flow<List<PurchaseRecord>> = flow {
-        val path = "users/$userId/purchases"
-        emitAll(
-            db.collection("users").document(userId).collection("purchases")
-                .whereEqualTo("userId", userId)
-                .snapshots()
-                .map { snap ->
-                    snap.toObjects(PurchaseRecord::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
-                        .sortedByDescending { it.createdAt ?: Timestamp(0, 0) }
-                }
-                .catch { e ->
-                    if (e is Exception) handleFirestoreError(e, OperationType.LIST, path)
-                    throw e
-                }
+        val payload = mapOf(
+            "userId" to uid,
+            "displayName" to displayName.ifBlank { "CGPSC Aspirant" }.take(100),
+            "email" to email.take(160),
+            "phoneNumber" to "",
+            "photoUrl" to photoUrl.take(1200),
+            "targetExam" to "CGPSC & CGSSB",
+            "preferredLanguage" to "en",
+            "darkMode" to false,
+            "notifyCurrentAffairs" to true,
+            "notifyNewTests" to true,
+            "role" to role,
+            "createdAt" to FieldValue.serverTimestamp(),
+            "updatedAt" to FieldValue.serverTimestamp()
         )
+        docRef.set(payload).await()
+        UserProfile(
+            id = uid,
+            userId = uid,
+            displayName = displayName,
+            email = email,
+            photoUrl = photoUrl,
+            role = role
+        )
+    }.onFailure { e ->
+        logFirestoreFailure("ensureUserProfile", "users/${currentUid()}", e)
+    }
+
+    suspend fun getUserProfileById(uid: String): Result<UserProfile> = runCatching {
+        val snap = db.collection("users").document(uid).get().await()
+        snap.toObject(UserProfile::class.java)?.copy(id = snap.id)
+            ?: throw IllegalStateException("Profile not found for $uid")
+    }.onFailure { e ->
+        logFirestoreFailure("getUserProfileById", "users/$uid", e)
     }
 
     suspend fun recordTestPurchase(
@@ -200,821 +1383,71 @@ class CgpediaRepository(private val db: FirebaseFirestore) {
         testTitleEn: String,
         amountInr: Long,
         paymentMethod: String
-    ): Result<String> {
-        val uid = requireUserId()
-        val purchaseId = "pay_${UUID.randomUUID().toString().replace("-", "").take(16)}"
-        val docRef = db.collection("users").document(uid).collection("purchases").document(purchaseId)
-        val record = PurchaseRecord(
-            id = purchaseId,
-            userId = uid,
-            testId = testId,
-            testTitleHi = testTitleHi,
-            testTitleEn = testTitleEn,
-            amountInr = amountInr,
-            paymentMethod = paymentMethod,
-            transactionRef = "CGP-${System.currentTimeMillis()}-${purchaseId.takeLast(4).uppercase()}"
+    ): Result<PurchaseRecord> = recordTestPurchase(
+        testOrFolderId = testId,
+        titleHi = testTitleHi,
+        titleEn = testTitleEn,
+        amountInr = amountInr,
+        paymentMethod = paymentMethod,
+        validityDays = 180L
+    )
+
+    suspend fun toggleBookmarkQuestion(
+        question: BilingualQuestion,
+        currentlyBookmarkedId: String?
+    ): Result<Boolean> = toggleBookmark(
+        question = question,
+        currentlyBookmarked = !currentlyBookmarkedId.isNullOrBlank()
+    )
+
+    suspend fun saveGroundedCurrentAffairsBatch(
+        items: List<CurrentAffairItem>
+    ): Result<Int> = saveCurrentAffairsBatch(items)
+
+    suspend fun submitStudentQuery(
+        userName: String,
+        userEmail: String,
+        category: String,
+        subject: String,
+        messageText: String,
+        attachmentUrl: String = ""
+    ): Result<String> = runCatching {
+        val uid = currentUid() ?: error("Not signed in")
+        val docId = "query_${uid.take(8)}_${System.currentTimeMillis()}"
+        val payload = mapOf(
+            "userId" to uid,
+            "studentName" to userName.trim().ifBlank { "CGpedia Student" }.take(120),
+            "studentEmail" to userEmail.trim().take(160),
+            "category" to category.takeIf { it in listOf("doubt", "payment", "technical") }.orEmpty().ifBlank { "doubt" },
+            "subject" to (if (attachmentUrl.isNotBlank()) "$subject [Ref]" else subject).trim().ifBlank { "Student Support Query" }.take(250),
+            "message" to messageText.trim().take(4000),
+            "adminReply" to "",
+            "status" to "open",
+            "createdAt" to FieldValue.serverTimestamp(),
+            "updatedAt" to FieldValue.serverTimestamp()
         )
-        return try {
-            docRef.set(record.toCreateMap()).await()
-            Result.success(purchaseId)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.CREATE, docRef.path)
-            Result.failure(e)
-        }
+        db.collection("student_queries").document(docId).set(payload).await()
+        docId
+    }.onFailure { e ->
+        logFirestoreFailure("submitStudentQuery", "student_queries", e)
     }
 
-    /**
-     * Observes all registered users for the Owner Admin to easily view User IDs / Emails
-     * and grant manual access to Paid Test Series packages.
-     */
-    fun observeAllUsersForAdmin(): Flow<List<UserProfile>> =
-        db.collection("users")
-            .whereIn("role", listOf("student", "admin"))
-            .snapshots()
-            .map { snap ->
-                snap.toObjects(UserProfile::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
-                    .sortedByDescending { it.updatedAt ?: Timestamp(0, 0) }
-            }
-            .catch { e ->
-                if (e is Exception) handleFirestoreError(e, OperationType.LIST, "users")
-                throw e
-            }
+    fun observeMyStudentQueries(uid: String): Flow<List<StudentQuery>> = observeMyQueries(uid)
 
-    /**
-     * Observes unlocked purchases for a specific student UID in the Admin Panel.
-     */
-    fun observeStudentPurchasesForAdmin(targetUserId: String): Flow<List<PurchaseRecord>> =
-        db.collection("users").document(targetUserId).collection("purchases")
-            .snapshots()
-            .map { snap ->
-                snap.toObjects(PurchaseRecord::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
-                    .sortedByDescending { it.createdAt ?: Timestamp(0, 0) }
-            }
-            .catch { e ->
-                if (e is Exception) handleFirestoreError(e, OperationType.LIST, "users/$targetUserId/purchases")
-                throw e
-            }
-
-    /**
-     * Manual Access Control: Allows the Admin to unlock or grant paid test series / folder access
-     * to a specific student by entering their registered User ID or Email ID after payment confirmation.
-     */
-    suspend fun grantPaidAccessByAdmin(
-        studentIdentifier: String,
-        itemId: String,
-        titleHi: String,
-        titleEn: String,
-        amountInr: Long
-    ): Result<String> {
-        requireUserId()
-        val trimmedInput = studentIdentifier.trim()
-        if (trimmedInput.isBlank()) {
-            return Result.failure(IllegalArgumentException("Please enter a valid Student User ID or Email ID."))
-        }
-        return try {
-            val matchedUids = linkedSetOf<String>()
-            var matchedDisplayLabel = trimmedInput
-
-            // 1. Check direct userId document if input is a valid Firestore document ID
-            val validIdRegex = Regex("^[a-zA-Z0-9_\\-]+$")
-            if (validIdRegex.matches(trimmedInput)) {
-                val directSnap = db.collection("users").document(trimmedInput).get().await()
-                if (directSnap.exists()) {
-                    matchedUids.add(trimmedInput)
-                    val p = directSnap.toObject(UserProfile::class.java)
-                    if (p != null) {
-                        matchedDisplayLabel = "${p.displayName} (${p.email.ifBlank { p.userId }})"
-                    }
-                }
-            }
-
-            // 2. Search registered users by Email ID, User ID, or Phone number (case-insensitive)
-            val allUsersSnap = db.collection("users")
-                .whereIn("role", listOf("student", "admin"))
-                .get()
-                .await()
-            val allProfiles = allUsersSnap.toObjects(UserProfile::class.java)
-            val inputDigits = trimmedInput.filter(Char::isDigit).takeLast(10)
-            for (profile in allProfiles) {
-                val uidMatch = profile.userId.equals(trimmedInput, ignoreCase = true) ||
-                    profile.id.equals(trimmedInput, ignoreCase = true)
-                val emailMatch = profile.email.isNotBlank() &&
-                    profile.email.equals(trimmedInput, ignoreCase = true)
-                val phoneMatch = inputDigits.length == 10 &&
-                    profile.phoneNumber.filter(Char::isDigit).takeLast(10) == inputDigits
-                if (uidMatch || emailMatch || phoneMatch) {
-                    val targetUid = profile.userId.ifBlank { profile.id }
-                    if (targetUid.isNotBlank() && validIdRegex.matches(targetUid)) {
-                        matchedUids.add(targetUid)
-                        matchedDisplayLabel = "${profile.displayName} (${profile.email.ifBlank { targetUid }})"
-                    }
-                }
-            }
-
-            // 3. If no existing user profile matched yet, allow direct UID unlock if valid ID
-            if (matchedUids.isEmpty()) {
-                if (validIdRegex.matches(trimmedInput)) {
-                    matchedUids.add(trimmedInput)
-                } else {
-                    return Result.failure(
-                        IllegalArgumentException(
-                            "No registered student found with Email '$trimmedInput'. Please ask the student to sign in once or enter their User ID."
-                        )
-                    )
-                }
-            }
-
-            val sanitizedItemId = itemId.replace(Regex("[^a-zA-Z0-9_\\-]"), "_").take(60)
-            val purchaseId = "admin_grant_${sanitizedItemId.ifBlank { "pkg" }}"
-            for (targetUid in matchedUids) {
-                val docRef = db.collection("users")
-                    .document(targetUid)
-                    .collection("purchases")
-                    .document(purchaseId)
-                val record = PurchaseRecord(
-                    id = purchaseId,
-                    userId = targetUid,
-                    testId = itemId,
-                    testTitleHi = titleHi.ifBlank { "सीजीपीएससी प्री 2026 टेस्ट सीरीज" },
-                    testTitleEn = titleEn.ifBlank { "CGPSC Pre 2026 Test Series" },
-                    amountInr = amountInr.coerceIn(0L, 50000L),
-                    paymentMethod = "AdminGrant",
-                    transactionRef = "ADMIN-UNLOCK-${System.currentTimeMillis().toString().takeLast(6)}",
-                    status = "completed"
-                )
-                docRef.set(record.toCreateMap()).await()
-            }
-
-            Result.success("Unlocked '$titleEn' for $matchedDisplayLabel")
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.CREATE, "users/$trimmedInput/purchases")
-            Result.failure(e)
-        }
-    }
-
-    suspend fun revokePaidAccessByAdmin(targetUserId: String, purchaseId: String): Result<Unit> {
-        val docRef = db.collection("users").document(targetUserId).collection("purchases").document(purchaseId)
-        return try {
-            docRef.delete().await()
-            Result.success(Unit)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.DELETE, docRef.path)
-            Result.failure(e)
-        }
-    }
-
-    fun observeUserAttempts(userId: String): Flow<List<TestAttempt>> = flow {
-        val path = "users/$userId/attempts"
-        emitAll(
-            db.collection("users").document(userId).collection("attempts")
-                .whereEqualTo("userId", userId)
-                .snapshots()
-                .map { snap ->
-                    snap.toObjects(TestAttempt::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
-                        .sortedByDescending { it.createdAt ?: Timestamp(0, 0) }
-                }
-                .catch { e ->
-                    if (e is Exception) handleFirestoreError(e, OperationType.LIST, path)
-                    throw e
-                }
-        )
-    }
-
-    suspend fun submitTestAttempt(attempt: TestAttempt): Result<String> {
-        val uid = requireUserId()
-        val attemptId = "att_${UUID.randomUUID().toString().replace("-", "").take(16)}"
-        val docRef = db.collection("users").document(uid).collection("attempts").document(attemptId)
-        val scoped = attempt.copy(id = attemptId, userId = uid)
-        return try {
-            docRef.set(scoped.toCreateMap()).await()
-            Result.success(attemptId)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.CREATE, docRef.path)
-            Result.failure(e)
-        }
-    }
-
-    fun observeUserBookmarks(userId: String): Flow<List<BookmarkedQuestion>> = flow {
-        val path = "users/$userId/bookmarks"
-        emitAll(
-            db.collection("users").document(userId).collection("bookmarks")
-                .whereEqualTo("userId", userId)
-                .snapshots()
-                .map { snap ->
-                    snap.toObjects(BookmarkedQuestion::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
-                        .sortedByDescending { it.createdAt ?: Timestamp(0, 0) }
-                }
-                .catch { e ->
-                    if (e is Exception) handleFirestoreError(e, OperationType.LIST, path)
-                    throw e
-                }
-        )
-    }
-
-    suspend fun toggleBookmarkQuestion(question: BilingualQuestion, currentlyBookmarkedId: String?): Result<Boolean> {
-        val uid = requireUserId()
-        return try {
-            if (!currentlyBookmarkedId.isNullOrBlank()) {
-                val docRef = db.collection("users").document(uid).collection("bookmarks").document(currentlyBookmarkedId)
-                docRef.delete().await()
-                Result.success(false)
-            } else {
-                val safeId = "bm_${question.id.replace(Regex("[^a-zA-Z0-9_\\-]"), "").take(60).ifBlank { UUID.randomUUID().toString().take(12) }}"
-                val docRef = db.collection("users").document(uid).collection("bookmarks").document(safeId)
-                val bm = BookmarkedQuestion(
-                    id = safeId,
-                    userId = uid,
-                    questionId = question.id.ifBlank { safeId },
-                    testId = question.testId.ifBlank { "general" },
-                    questionHi = question.questionHi,
-                    questionEn = question.questionEn,
-                    optionsHi = question.optionsHi,
-                    optionsEn = question.optionsEn,
-                    correctOptionIndex = question.correctOptionIndex,
-                    explanationHi = question.explanationHi,
-                    explanationEn = question.explanationEn,
-                    subjectTag = question.subjectTag,
-                    isOfflineCached = true
-                )
-                docRef.set(bm.toCreateMap()).await()
-                Result.success(true)
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.WRITE, "users/$uid/bookmarks")
-            Result.failure(e)
-        }
-    }
-
-    // --- 4. Current Affairs (Auto-Updated Background Pipeline) ---
-    fun observePublishedCurrentAffairs(): Flow<List<CurrentAffairItem>> =
-        db.collection("current_affairs")
+    fun observePublishedCurrentAffairs(): Flow<List<CurrentAffairItem>> = callbackFlow {
+        val reg = db.collection("current_affairs")
             .whereEqualTo("visibility", "published")
-            .snapshots()
-            .map { snap ->
-                val cloud = snap.toObjects(CurrentAffairItem::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
-                    .sortedByDescending { it.createdAt ?: Timestamp(0, 0) }
-                cloud.ifEmpty { CgpediaStarterCatalog.defaultCurrentAffairs() }
+            .addSnapshotListener { snap, err ->
+                if (err != null) {
+                    logFirestoreFailure("observePublishedCurrentAffairs", "current_affairs", err)
+                    close(err)
+                    return@addSnapshotListener
+                }
+                val list = snap?.documents?.mapNotNull { d ->
+                    d.toObject(CurrentAffairItem::class.java)?.copy(id = d.id)
+                }.orEmpty()
+                trySend(list)
             }
-            .catch { e ->
-                if (e is Exception) handleFirestoreError(e, OperationType.LIST, "current_affairs")
-                throw e
-            }
-
-    suspend fun saveGroundedCurrentAffairsBatch(items: List<CurrentAffairItem>): Result<Int> {
-        val uid = requireUserId()
-        return try {
-            var saved = 0
-            for (item in items) {
-                val docId = "ca_${item.category}_${UUID.randomUUID().toString().replace("-", "").take(12)}"
-                val docRef = db.collection("current_affairs").document(docId)
-                docRef.set(item.copy(authorUid = uid, visibility = "published", sourceModule = "ai_grounding_pipeline").toCreateMap()).await()
-                saved++
-            }
-            Result.success(saved)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.CREATE, "current_affairs")
-            Result.failure(e)
-        }
-    }
-
-    suspend fun deleteCurrentAffairAdmin(articleId: String): Result<Unit> {
-        val docRef = db.collection("current_affairs").document(articleId)
-        return try {
-            docRef.delete().await()
-            Result.success(Unit)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.DELETE, docRef.path)
-            Result.failure(e)
-        }
-    }
-
-    // --- 5. Exam & Subject Folders (Student Published Stream + Admin CRUD) ---
-    fun observeExamFolders(): Flow<List<ExamFolder>> =
-        db.collection("exam_folders")
-            .whereEqualTo("visibility", "published")
-            .snapshots()
-            .map { snap ->
-                val cloud = snap.toObjects(ExamFolder::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
-                    .sortedBy { it.sortOrder }
-                cloud.ifEmpty { CgpediaStarterCatalog.defaultExamFolders() }
-            }
-            .catch { e ->
-                if (e is Exception) handleFirestoreError(e, OperationType.LIST, "exam_folders")
-                throw e
-            }
-
-    fun observeSubjectFolders(): Flow<List<SubjectFolder>> =
-        db.collection("subject_folders")
-            .whereEqualTo("visibility", "published")
-            .snapshots()
-            .map { snap ->
-                val cloud = snap.toObjects(SubjectFolder::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
-                    .sortedBy { it.sortOrder }
-                cloud.ifEmpty { CgpediaStarterCatalog.defaultSubjectFolders() }
-            }
-            .catch { e ->
-                if (e is Exception) handleFirestoreError(e, OperationType.LIST, "subject_folders")
-                throw e
-            }
-
-    suspend fun seedDefaultCatalogIfEmptyAdmin(): Result<Boolean> {
-        val adminUid = requireUserId()
-        return try {
-            val batch = db.batch()
-            CgpediaStarterCatalog.defaultExamFolders(adminUid).forEach { folder ->
-                batch.set(db.collection("exam_folders").document(folder.id), folder.toCreateMap())
-            }
-            CgpediaStarterCatalog.defaultSubjectFolders(adminUid).forEach { folder ->
-                batch.set(db.collection("subject_folders").document(folder.id), folder.toCreateMap())
-            }
-            CgpediaStarterCatalog.defaultTests(adminUid).forEach { test ->
-                batch.set(db.collection("tests").document(test.id), test.toCreateMap())
-            }
-            CgpediaStarterCatalog.defaultQuestions(adminUid).forEach { q ->
-                batch.set(db.collection("questions").document(q.id), q.toCreateMap())
-            }
-            CgpediaStarterCatalog.defaultCurrentAffairs(adminUid).forEach { ca ->
-                batch.set(db.collection("current_affairs").document(ca.id), ca.toCreateMap())
-            }
-            val existingConfigSnap = db.collection("app_config").document("main").get().await()
-            if (!existingConfigSnap.exists()) {
-                val defaultConfig = AppConfig(updatedBy = adminUid)
-                batch.set(db.collection("app_config").document("main"), defaultConfig.toCreateMap())
-            }
-            batch.commit().await()
-            Result.success(true)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.WRITE, "catalog_seed")
-            Result.failure(e)
-        }
-    }
-
-    suspend fun saveExamFolderAdmin(folder: ExamFolder): Result<String> {
-        val adminUid = requireUserId()
-        val docId = folder.id.ifBlank { "ef_${UUID.randomUUID().toString().replace("-", "").take(12)}" }
-        val docRef = db.collection("exam_folders").document(docId)
-        return try {
-            val snap = docRef.get().await()
-            if (snap.exists()) {
-                docRef.update(
-                    mapOf(
-                        "titleHi" to folder.titleHi.take(120),
-                        "titleEn" to folder.titleEn.take(120),
-                        "descriptionHi" to folder.descriptionHi.take(400),
-                        "descriptionEn" to folder.descriptionEn.take(400),
-                        "examCode" to folder.examCode.take(40),
-                        "sortOrder" to folder.sortOrder.coerceIn(0L, 1000L),
-                        "isFreeFolder" to folder.isFreeFolder,
-                        "priceInr" to folder.priceInr.coerceIn(0L, 50000L),
-                        "testCount" to folder.testCount.coerceIn(0L, 500L),
-                        "visibility" to folder.visibility,
-                        "updatedAt" to FieldValue.serverTimestamp()
-                    )
-                ).await()
-            } else {
-                docRef.set(folder.copy(id = docId, createdBy = adminUid).toCreateMap()).await()
-            }
-            Result.success(docId)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.WRITE, docRef.path)
-            Result.failure(e)
-        }
-    }
-
-    suspend fun deleteExamFolderAdmin(folderId: String): Result<Unit> {
-        val docRef = db.collection("exam_folders").document(folderId)
-        return try {
-            docRef.delete().await()
-            Result.success(Unit)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.DELETE, docRef.path)
-            Result.failure(e)
-        }
-    }
-
-    suspend fun saveSubjectFolderAdmin(folder: SubjectFolder): Result<String> {
-        val adminUid = requireUserId()
-        val docId = folder.id.ifBlank { "sf_${UUID.randomUUID().toString().replace("-", "").take(12)}" }
-        val docRef = db.collection("subject_folders").document(docId)
-        return try {
-            val snap = docRef.get().await()
-            if (snap.exists()) {
-                docRef.update(
-                    mapOf(
-                        "titleHi" to folder.titleHi.take(120),
-                        "titleEn" to folder.titleEn.take(120),
-                        "descriptionHi" to folder.descriptionHi.take(400),
-                        "descriptionEn" to folder.descriptionEn.take(400),
-                        "subjectCode" to folder.subjectCode.take(40),
-                        "sortOrder" to folder.sortOrder.coerceIn(0L, 1000L),
-                        "isFreeFolder" to folder.isFreeFolder,
-                        "priceInr" to folder.priceInr.coerceIn(0L, 50000L),
-                        "testCount" to folder.testCount.coerceIn(0L, 500L),
-                        "visibility" to folder.visibility,
-                        "updatedAt" to FieldValue.serverTimestamp()
-                    )
-                ).await()
-            } else {
-                docRef.set(folder.copy(id = docId, createdBy = adminUid).toCreateMap()).await()
-            }
-            Result.success(docId)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.WRITE, docRef.path)
-            Result.failure(e)
-        }
-    }
-
-    suspend fun deleteSubjectFolderAdmin(folderId: String): Result<Unit> {
-        val docRef = db.collection("subject_folders").document(folderId)
-        return try {
-            docRef.delete().await()
-            Result.success(Unit)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.DELETE, docRef.path)
-            Result.failure(e)
-        }
-    }
-
-    // --- 6. Tests & Bilingual Questions (Student Published + Admin Draft & Publish) ---
-    fun observePublishedTests(): Flow<List<TestSeriesItem>> =
-        db.collection("tests")
-            .whereEqualTo("status", "published")
-            .snapshots()
-            .map { snap ->
-                val cloud = snap.toObjects(TestSeriesItem::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
-                    .sortedByDescending { it.createdAt ?: Timestamp(0, 0) }
-                cloud.ifEmpty { CgpediaStarterCatalog.defaultTests() }
-            }
-            .catch { e ->
-                if (e is Exception) handleFirestoreError(e, OperationType.LIST, "tests")
-                throw e
-            }
-
-    fun observeAllTestsForAdmin(): Flow<List<TestSeriesItem>> =
-        db.collection("tests")
-            .snapshots()
-            .map { snap ->
-                snap.toObjects(TestSeriesItem::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
-                    .sortedByDescending { it.createdAt ?: Timestamp(0, 0) }
-            }
-            .catch { e ->
-                if (e is Exception) handleFirestoreError(e, OperationType.LIST, "tests")
-                throw e
-            }
-
-    suspend fun getPublishedQuestionsForTest(testId: String): Result<List<BilingualQuestion>> {
-        val path = "questions"
-        return try {
-            val snap = db.collection("questions")
-                .whereEqualTo("testId", testId)
-                .whereEqualTo("visibility", "published")
-                .get()
-                .await()
-            val cloud = snap.toObjects(BilingualQuestion::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
-                .sortedBy { it.orderIndex }
-            val result = cloud.ifEmpty {
-                CgpediaStarterCatalog.defaultQuestions().filter { it.testId == testId }.sortedBy { it.orderIndex }
-            }
-            Result.success(result)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.LIST, path)
-            Result.failure(e)
-        }
-    }
-
-    fun observeQuestionsForAdmin(testId: String): Flow<List<BilingualQuestion>> =
-        db.collection("questions")
-            .whereEqualTo("testId", testId)
-            .snapshots()
-            .map { snap ->
-                snap.toObjects(BilingualQuestion::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
-                    .sortedBy { it.orderIndex }
-            }
-            .catch { e ->
-                if (e is Exception) handleFirestoreError(e, OperationType.LIST, "questions")
-                throw e
-            }
-
-    suspend fun createDraftTestWithQuestionsAdmin(
-        testMeta: TestSeriesItem,
-        questions: List<BilingualQuestion>
-    ): Result<String> {
-        val adminUid = requireUserId()
-        val testId = testMeta.id.ifBlank { "test_${UUID.randomUUID().toString().replace("-", "").take(14)}" }
-        return try {
-            val limitedQuestions = questions.take(testMeta.questionLimit.toInt().coerceIn(1, 100))
-            val testDocRef = db.collection("tests").document(testId)
-            val draftTest = testMeta.copy(
-                id = testId,
-                questionCount = limitedQuestions.size.toLong(),
-                status = "draft",
-                createdBy = adminUid
-            )
-            testDocRef.set(draftTest.toCreateMap()).await()
-
-            for ((idx, q) in limitedQuestions.withIndex()) {
-                val qId = "q_${testId.takeLast(8)}_${idx}_${UUID.randomUUID().toString().replace("-", "").take(6)}"
-                val qDoc = q.copy(
-                    id = qId,
-                    testId = testId,
-                    orderIndex = idx.toLong(),
-                    visibility = "draft",
-                    createdBy = adminUid
-                )
-                db.collection("questions").document(qId).set(qDoc.toCreateMap()).await()
-            }
-            Result.success(testId)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.CREATE, "tests/$testId")
-            Result.failure(e)
-        }
-    }
-
-    suspend fun updateTestSettingsAndStatusAdmin(
-        test: TestSeriesItem,
-        publishNow: Boolean
-    ): Result<Unit> {
-        val testRef = db.collection("tests").document(test.id)
-        val targetStatus = if (publishNow) "published" else test.status
-        return try {
-            val qSnap = db.collection("questions")
-                .whereEqualTo("testId", test.id)
-                .get()
-                .await()
-            val activeQuestionCount = qSnap.size().toLong().coerceAtMost(test.questionLimit)
-
-            val batch = db.batch()
-            batch.update(
-                testRef,
-                mapOf(
-                    "titleHi" to test.titleHi.take(200),
-                    "titleEn" to test.titleEn.take(200),
-                    "topic" to test.topic.take(200),
-                    "difficulty" to test.difficulty,
-                    "durationMinutes" to test.durationMinutes.coerceIn(1L, 240L),
-                    "questionLimit" to test.questionLimit.coerceIn(1L, 100L),
-                    "questionCount" to activeQuestionCount,
-                    "marksPerQuestion" to test.marksPerQuestion.coerceIn(0.5, 10.0),
-                    "negativeMarking" to test.negativeMarking.coerceIn(0.0, 5.0),
-                    "isPaid" to test.isPaid,
-                    "priceInr" to (if (test.isPaid) test.priceInr.coerceIn(1L, 50000L) else 0L),
-                    "status" to targetStatus,
-                    "updatedAt" to FieldValue.serverTimestamp()
-                )
-            )
-
-            qSnap.documents.forEach { doc ->
-                batch.update(
-                    doc.reference,
-                    mapOf(
-                        "visibility" to targetStatus,
-                        "updatedAt" to FieldValue.serverTimestamp()
-                    )
-                )
-            }
-            batch.commit().await()
-            Result.success(Unit)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.UPDATE, testRef.path)
-            Result.failure(e)
-        }
-    }
-
-    suspend fun saveSingleQuestionAdmin(question: BilingualQuestion, parentTestStatus: String): Result<String> {
-        val adminUid = requireUserId()
-        val qId = question.id.ifBlank { "q_${UUID.randomUUID().toString().replace("-", "").take(14)}" }
-        val docRef = db.collection("questions").document(qId)
-        val vis = if (parentTestStatus == "published") "published" else "draft"
-        return try {
-            val snap = docRef.get().await()
-            if (snap.exists()) {
-                docRef.update(
-                    mapOf(
-                        "orderIndex" to question.orderIndex.coerceIn(0L, 99L),
-                        "questionHi" to question.questionHi.take(2000),
-                        "questionEn" to question.questionEn.take(2000),
-                        "optionsHi" to BilingualQuestion.padFourOptions(question.optionsHi),
-                        "optionsEn" to BilingualQuestion.padFourOptions(question.optionsEn),
-                        "correctOptionIndex" to question.correctOptionIndex.coerceIn(0L, 3L),
-                        "explanationHi" to question.explanationHi.take(4000),
-                        "explanationEn" to question.explanationEn.take(4000),
-                        "subjectTag" to question.subjectTag.take(120),
-                        "visibility" to vis,
-                        "updatedAt" to FieldValue.serverTimestamp()
-                    )
-                ).await()
-            } else {
-                docRef.set(
-                    question.copy(id = qId, visibility = vis, createdBy = adminUid).toCreateMap()
-                ).await()
-            }
-            Result.success(qId)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.WRITE, docRef.path)
-            Result.failure(e)
-        }
-    }
-
-    suspend fun deleteQuestionAdmin(questionId: String, testId: String): Result<Unit> {
-        val docRef = db.collection("questions").document(questionId)
-        return try {
-            docRef.delete().await()
-            val remaining = db.collection("questions").whereEqualTo("testId", testId).get().await().size().toLong()
-            db.collection("tests").document(testId).update(
-                mapOf(
-                    "questionCount" to remaining.coerceIn(0L, 100L),
-                    "updatedAt" to FieldValue.serverTimestamp()
-                )
-            ).await()
-            Result.success(Unit)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.DELETE, docRef.path)
-            Result.failure(e)
-        }
-    }
-
-    suspend fun deleteTestAdmin(testId: String): Result<Unit> {
-        return try {
-            val qSnap = db.collection("questions").whereEqualTo("testId", testId).get().await()
-            val batch = db.batch()
-            qSnap.documents.forEach { batch.delete(it.reference) }
-            batch.delete(db.collection("tests").document(testId))
-            batch.commit().await()
-            Result.success(Unit)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.DELETE, "tests/$testId")
-            Result.failure(e)
-        }
-    }
-
-    // --- 7. Global App Config & Channel Anthem Song Manager ---
-    fun observeAppConfig(): Flow<AppConfig> =
-        db.collection("app_config")
-            .whereEqualTo("configKey", "global")
-            .snapshots()
-            .map { snap ->
-                snap.documents.firstOrNull()
-                    ?.toObject(AppConfig::class.java, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
-                    ?: AppConfig()
-            }
-            .catch { e ->
-                if (e is Exception) handleFirestoreError(e, OperationType.LIST, "app_config")
-                throw e
-            }
-
-    suspend fun uploadAnthemBytesAdmin(
-        rawBytes: ByteArray,
-        mimeType: String,
-        titleHi: String,
-        titleEn: String
-    ): Result<Unit> {
-        val adminUid = requireUserId()
-        return try {
-            // Maximum ~6 MB (18 chunks x 340 KB raw -> ~455 KB base64 per doc < 600KB limit)
-            val maxRawPerChunk = 340 * 1024
-            val chunks = rawBytes.asList().chunked(maxRawPerChunk).map { it.toByteArray() }
-            require(chunks.isNotEmpty() && chunks.size <= 20) {
-                "Anthem file must be under 6.5 MB for direct cloud sync."
-            }
-
-            // Clear old chunks first
-            val existingChunks = db.collection("anthem_chunks").whereEqualTo("configKey", "global").get().await()
-            for (oldDoc in existingChunks.documents) {
-                oldDoc.reference.delete().await()
-            }
-
-            // Write new chunks sequentially
-            for ((index, chunkBytes) in chunks.withIndex()) {
-                val b64 = Base64.encodeToString(chunkBytes, Base64.NO_WRAP)
-                val chunkDocRef = db.collection("anthem_chunks").document("chunk_$index")
-                chunkDocRef.set(
-                    mapOf(
-                        "chunkIndex" to index.toLong(),
-                        "base64Data" to b64,
-                        "configKey" to "global",
-                        "uploadedBy" to adminUid,
-                        "createdAt" to FieldValue.serverTimestamp()
-                    )
-                ).await()
-            }
-
-            val existingSnap = db.collection("app_config").document("main").get().await()
-            val existingConfig = existingSnap.toObject(AppConfig::class.java) ?: AppConfig()
-            saveAppConfigAdmin(
-                existingConfig.copy(
-                    id = "main",
-                    anthemTitleHi = titleHi.ifBlank { existingConfig.anthemTitleHi },
-                    anthemTitleEn = titleEn.ifBlank { existingConfig.anthemTitleEn },
-                    anthemSourceType = "cloud_chunks",
-                    anthemAudioUrl = "",
-                    anthemChunkCount = chunks.size.toLong(),
-                    anthemMimeType = mimeType.ifBlank { "audio/mpeg" },
-                    updatedBy = adminUid
-                )
-            )
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.WRITE, "anthem_chunks")
-            Result.failure(e)
-        }
-    }
-
-    suspend fun fetchCloudAnthemBytes(): Result<ByteArray> {
-        return try {
-            val snap = db.collection("anthem_chunks")
-                .whereEqualTo("configKey", "global")
-                .get()
-                .await()
-            val sorted = snap.toObjects(AnthemAudioChunk::class.java)
-                .sortedBy { it.chunkIndex }
-            val out = java.io.ByteArrayOutputStream()
-            for (chunk in sorted) {
-                val decoded = Base64.decode(chunk.base64Data, Base64.DEFAULT)
-                out.write(decoded)
-            }
-            Result.success(out.toByteArray())
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.LIST, "anthem_chunks")
-            Result.failure(e)
-        }
-    }
-
-    suspend fun saveAppConfigAdmin(config: AppConfig): Result<Unit> {
-        val adminUid = requireUserId()
-        val docRef = db.collection("app_config").document("main")
-        return try {
-            val snap = docRef.get().await()
-            if (snap.exists()) {
-                docRef.update(
-                    mapOf(
-                        "anthemTitleHi" to config.anthemTitleHi.ifBlank { "सीजीपीडिया आधिकारिक एंथम" }.take(150),
-                        "anthemTitleEn" to config.anthemTitleEn.ifBlank { "CGpedia Official Aspirant Anthem" }.take(150),
-                        "anthemSourceType" to config.anthemSourceType.ifBlank { "bundled" },
-                        "anthemAudioUrl" to config.anthemAudioUrl.take(1000),
-                        "anthemChunkCount" to config.anthemChunkCount.coerceIn(0L, 20L),
-                        "anthemMimeType" to config.anthemMimeType.ifBlank { "audio/wav" }.take(60),
-                        "telegramChannelUrl" to config.telegramChannelUrl.take(300),
-                        "supportEmail" to config.supportEmail.take(120),
-                        "whatsappSupportNumber" to config.whatsappSupportNumber.ifBlank { "9238810070" }.take(40),
-                        "supportPolicyHi" to config.supportPolicyHi.take(4000),
-                        "supportPolicyEn" to config.supportPolicyEn.take(4000),
-                        "latestVersionCode" to config.latestVersionCode.coerceIn(1L, 10000L),
-                        "latestVersionName" to config.latestVersionName.ifBlank { "2.0.0" }.take(40),
-                        "apkDownloadUrl" to config.apkDownloadUrl.ifBlank { "https://t.me/CGpediaOfficial" }.take(1000),
-                        "updateNotesHi" to config.updateNotesHi.take(2000),
-                        "updateNotesEn" to config.updateNotesEn.take(2000),
-                        "updatedBy" to adminUid,
-                        "updatedAt" to FieldValue.serverTimestamp()
-                    )
-                ).await()
-            } else {
-                docRef.set(config.copy(updatedBy = adminUid).toCreateMap()).await()
-            }
-            Result.success(Unit)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.WRITE, docRef.path)
-            Result.failure(e)
-        }
+        awaitClose { reg.remove() }
     }
 }

@@ -1,6 +1,6 @@
 {
-  "summary": "Implementation plan for adding an Admin-controlled In-App APK Update Alert popup with an optional 'Remind Later' flow and bilingual release notes to CGpedia.",
-  "updatedAt": "2026-11-03T01:49:24.369471521Z",
+  "summary": "Plan to restore CurrentAffairsNotificationHelper.kt, compile a fresh CGpedia APK, upload it to a verified public direct-download cloud link that works in any mobile or desktop browser without login, and wire the in-app download and share buttons to that working URL.",
+  "updatedAt": "2026-11-03T06:05:34.011931929Z",
   "requestFeedback": true,
   "userFacing": true
 }

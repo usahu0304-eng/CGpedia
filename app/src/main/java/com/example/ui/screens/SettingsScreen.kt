@@ -78,6 +78,8 @@ import com.example.data.model.AppConfig
 import com.example.data.model.BookmarkedQuestion
 import com.example.data.model.PurchaseRecord
 import com.example.data.model.UserProfile
+import com.example.data.model.isSubscriptionExpired
+import com.example.data.model.remainingValidityDays
 import com.example.ui.components.CgpediaInAppUpdateDialog
 import com.example.ui.components.getInstalledAppVersionInfo
 import com.example.ui.i18n.CgUiStrings
@@ -449,6 +451,21 @@ fun SettingsScreen(
                         tag = "settings_check_update_row",
                         onClick = { showAppUpdateDialog = true }
                     )
+                    HorizontalDivider()
+                    val directApkUrl = appConfig.apkDownloadUrl.ifBlank {
+                        "https://ais-dev-vv2z3zjsjlbt4utl2wktpm-618149121535.asia-northeast1.run.app/CGpedia.apk"
+                    }
+                    SettingsNavRow(
+                        icon = Icons.AutoMirrored.Filled.OpenInNew,
+                        title = if (strings.isHindi) "सीधे APK डाउनलोड करें (Direct APK Download)" else "Direct APK Download (CGpedia.apk)",
+                        subtitle = "One-tap browser download for mobile & desktop",
+                        tag = "settings_direct_apk_download_row",
+                        onClick = {
+                            runCatching {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(directApkUrl)))
+                            }
+                        }
+                    )
                 }
             }
         }
@@ -478,7 +495,7 @@ fun SettingsScreen(
         var editTarget by remember { mutableStateOf(curTarget) }
         val targets = listOf(
             "CGPSC & CGSSB",
-            "CGPSC Prelims",
+            "CGPSC & CGSSB Prelims",
             "CGPSC Mains",
             "CGSSB / Vyapam",
             "CGPSC + CGSSB Combined"
@@ -541,9 +558,15 @@ fun SettingsScreen(
                 } else {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         purchases.forEach { p ->
+                            val isExpired = p.isSubscriptionExpired()
+                            val remDays = p.remainingValidityDays()
                             Surface(
                                 shape = RoundedCornerShape(10.dp),
-                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                                color = if (isExpired) {
+                                    MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f)
+                                } else {
+                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                                },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Column(modifier = Modifier.padding(10.dp)) {
@@ -551,6 +574,16 @@ fun SettingsScreen(
                                     Text(
                                         "Paid ₹${p.amountInr} via ${p.paymentMethod} • Ref: ${p.transactionRef}",
                                         style = MaterialTheme.typography.labelSmall
+                                    )
+                                    Text(
+                                        text = when {
+                                            isExpired -> "Status: EXPIRED • वैधता समाप्त (Renew via WhatsApp $whatsappSupport)"
+                                            remDays > 0L -> "Status: ACTIVE • $remDays दिन शेष ($remDays days left)"
+                                            else -> "Status: ACTIVE • अनलॉक्ड"
+                                        },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (isExpired) MaterialTheme.colorScheme.error else ExamAnsweredGreen
                                     )
                                 }
                             }

@@ -19,12 +19,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
-import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Newspaper
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.Newspaper
+import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -71,6 +72,7 @@ import com.example.ui.screens.BilingualTestScreen
 import com.example.ui.screens.BookmarksScreen
 import com.example.ui.screens.CurrentAffairsScreen
 import com.example.ui.screens.HomeScreen
+import com.example.ui.screens.NotificationsAndQueriesScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.TestResultScreen
 import com.example.ui.screens.performFullSignOut
@@ -138,7 +140,7 @@ fun CgpediaRootApp() {
         return
     }
 
-    // Schedule 6-hour AI Grounded Current Affairs background job once authenticated
+    // Schedule 60-minute Current Affairs background sync job once authenticated
     LaunchedEffect(user.uid) {
         CurrentAffairsSyncJobService.schedulePeriodicSync(context.applicationContext)
     }
@@ -149,7 +151,7 @@ fun CgpediaRootApp() {
     val mainViewModel: CgpediaViewModel = viewModel(
         key = "cgpedia_main_${user.uid}",
         factory = viewModelFactory {
-            initializer { CgpediaViewModel.fromUser(repository, aiService, user) }
+            initializer { CgpediaViewModel.fromUser(context.applicationContext, repository, aiService, user) }
         }
     )
 
@@ -167,9 +169,13 @@ fun CgpediaRootApp() {
     val publishedTestsState by mainViewModel.publishedTestsState.collectAsStateWithLifecycle()
     val currentAffairsState by mainViewModel.currentAffairsState.collectAsStateWithLifecycle()
     val isCaSyncing by mainViewModel.currentAffairsSyncing.collectAsStateWithLifecycle()
+    val isGeneratingInstantQuiz by mainViewModel.isGeneratingInstantQuiz.collectAsStateWithLifecycle()
     val purchases by mainViewModel.purchasesState.collectAsStateWithLifecycle()
     val attempts by mainViewModel.attemptsState.collectAsStateWithLifecycle()
     val bookmarks by mainViewModel.bookmarksState.collectAsStateWithLifecycle()
+    val notifications by mainViewModel.notificationsState.collectAsStateWithLifecycle()
+    val upcomingTests by mainViewModel.upcomingTestsState.collectAsStateWithLifecycle()
+    val myQueries by mainViewModel.myQueriesState.collectAsStateWithLifecycle()
     val isOwnerAdmin by mainViewModel.isOwnerAdmin.collectAsStateWithLifecycle()
     val bannerMessage by mainViewModel.statusBannerMessage.collectAsStateWithLifecycle()
     val activeTestSession by testEngineViewModel.session.collectAsStateWithLifecycle()
@@ -246,14 +252,13 @@ fun CgpediaRootApp() {
             return@CGpediaTheme
         }
 
+        val hubLabel = if (strings.isHindi) "सूचना व सहायता" else "Hub & Help"
         val destinations = buildList {
             add(NavDestination(0, strings.tabHome, Icons.AutoMirrored.Filled.MenuBook, Icons.AutoMirrored.Outlined.MenuBook, "nav_tab_home"))
             add(NavDestination(1, strings.tabCurrentAffairs, Icons.Filled.Newspaper, Icons.Outlined.Newspaper, "nav_tab_ca"))
-            add(NavDestination(2, strings.tabSaved, Icons.Filled.Bookmark, Icons.Outlined.BookmarkBorder, "nav_tab_saved"))
-            add(NavDestination(3, strings.tabSettings, Icons.Filled.Settings, Icons.Outlined.Settings, "nav_tab_settings"))
-            if (isOwnerAdmin) {
-                add(NavDestination(4, strings.tabAdmin, Icons.Filled.AdminPanelSettings, Icons.Filled.AdminPanelSettings, "nav_tab_admin"))
-            }
+            add(NavDestination(2, hubLabel, Icons.Filled.NotificationsActive, Icons.Outlined.Notifications, "nav_tab_hub"))
+            add(NavDestination(3, strings.tabSaved, Icons.Filled.Bookmark, Icons.Outlined.BookmarkBorder, "nav_tab_saved"))
+            add(NavDestination(4, strings.tabSettings, Icons.Filled.Settings, Icons.Outlined.Settings, "nav_tab_settings"))
         }
 
         // Optional In-App APK Update Popup controlled from Admin Panel (with Remind Me Later button)
@@ -277,13 +282,7 @@ fun CgpediaRootApp() {
                                 val selected = selectedTab == dest.index
                                 NavigationBarItem(
                                     selected = selected,
-                                    onClick = {
-                                        if (dest.index == 4 && isOwnerAdmin) {
-                                            showAdminConsole = true
-                                        } else {
-                                            selectedTab = dest.index
-                                        }
-                                    },
+                                    onClick = { selectedTab = dest.index },
                                     icon = {
                                         Icon(
                                             imageVector = if (selected) dest.selectedIcon else dest.unselectedIcon,
@@ -309,13 +308,7 @@ fun CgpediaRootApp() {
                                 val selected = selectedTab == dest.index
                                 NavigationRailItem(
                                     selected = selected,
-                                    onClick = {
-                                        if (dest.index == 4 && isOwnerAdmin) {
-                                            showAdminConsole = true
-                                        } else {
-                                            selectedTab = dest.index
-                                        }
-                                    },
+                                    onClick = { selectedTab = dest.index },
                                     icon = {
                                         Icon(
                                             imageVector = if (selected) dest.selectedIcon else dest.unselectedIcon,
@@ -330,7 +323,7 @@ fun CgpediaRootApp() {
                     }
 
                     Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                        // Top App Bar prominently displaying processed CGpedia Logo + "CGpedia"
+                        // Top App Bar prominently displaying processed CGpedia Logo + "CGpedia" + "CGPSC & CGSSB"
                         CgpediaTopHeader(
                             strings = strings,
                             targetExam = userProfile?.targetExam.orEmpty(),
@@ -344,6 +337,9 @@ fun CgpediaRootApp() {
                             },
                             onOpenAdminConsole = {
                                 if (isOwnerAdmin) showAdminConsole = true
+                            },
+                            onOpenNotificationsHub = {
+                                selectedTab = 2
                             }
                         )
 
@@ -391,17 +387,28 @@ fun CgpediaRootApp() {
                                         anthemController.stopAndReset()
                                         testEngineViewModel.startTest(test)
                                     },
-                                    onPurchaseItem = { id, hi, en, amount, method, onDone ->
-                                        mainViewModel.purchasePremiumItem(id, hi, en, amount, method, onDone)
+                                    onPurchaseItem = { id, hi, en, amount, method, validityDays, onDone ->
+                                        mainViewModel.purchasePremiumItem(
+                                            itemId = id,
+                                            titleHi = hi,
+                                            titleEn = en,
+                                            amountInr = amount,
+                                            paymentMethod = method,
+                                            validityDays = validityDays,
+                                            onUnlocked = onDone
+                                        )
                                     }
                                 )
                                 1 -> CurrentAffairsScreen(
                                     strings = strings,
                                     currentAffairsState = currentAffairsState,
-                                    isSyncing = isCaSyncing,
+                                    isGeneratingQuiz = isGeneratingInstantQuiz,
                                     isOwnerAdmin = isOwnerAdmin,
-                                    onRefreshGroundedNews = {
-                                        mainViewModel.syncGroundedCurrentAffairs(isManualAdminTrigger = true)
+                                    onStartInstantQuiz = { articles ->
+                                        mainViewModel.startInstantCurrentAffairsQuiz(articles) { quizMeta, questions ->
+                                            anthemController.stopAndReset()
+                                            testEngineViewModel.startPreloadedQuiz(quizMeta, questions)
+                                        }
                                     },
                                     onDeleteItemAdmin = { articleId ->
                                         if (isOwnerAdmin) {
@@ -411,14 +418,27 @@ fun CgpediaRootApp() {
                                         }
                                     }
                                 )
-                                2 -> BookmarksScreen(
+                                2 -> NotificationsAndQueriesScreen(
+                                    notifications = notifications,
+                                    upcomingTests = upcomingTests,
+                                    myQueries = myQueries,
+                                    whatsappSupportNumber = appConfig.whatsappSupportNumber.ifBlank { "9238810070" },
+                                    onSubmitQuery = { cat, subj, msg ->
+                                        mainViewModel.submitStudentQuery(
+                                            category = cat,
+                                            subject = subj,
+                                            message = msg
+                                        )
+                                    }
+                                )
+                                3 -> BookmarksScreen(
                                     strings = strings,
                                     bookmarks = bookmarks,
                                     onRemoveBookmark = { bm ->
                                         mainViewModel.toggleBookmark(bm.toBilingualQuestion(), bookmarks)
                                     }
                                 )
-                                3 -> SettingsScreen(
+                                4 -> SettingsScreen(
                                     strings = strings,
                                     userProfile = userProfile,
                                     purchases = purchases,
@@ -437,7 +457,7 @@ fun CgpediaRootApp() {
                                             notifyNewTests = nTest
                                         )
                                     },
-                                    onNavigateToBookmarks = { selectedTab = 2 },
+                                    onNavigateToBookmarks = { selectedTab = 3 },
                                     onSignOut = {
                                         anthemController.stopAndReset()
                                         performFullSignOut(

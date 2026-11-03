@@ -67,7 +67,7 @@ fun CgpediaInAppUpdateDialog(
     val context = LocalContext.current
     val isUpdateAvailable = appConfig.latestVersionCode > installedVersion.versionCode
     val downloadUrl = appConfig.apkDownloadUrl.ifBlank {
-        appConfig.telegramChannelUrl.ifBlank { "https://t.me/CGpediaOfficial" }
+        "https://ais-dev-vv2z3zjsjlbt4utl2wktpm-618149121535.asia-northeast1.run.app/CGpedia.apk"
     }
     val notesHi = appConfig.updateNotesHi.ifBlank {
         "नया अपडेट उपलब्ध: सीजीपीएससी प्री 2026 टेस्ट सीरीज (₹99), इंस्टाग्राम स्टोरीज समसामयिकी बार, सुरक्षित सबमिट बटन और स्क्रीनशॉट सुरक्षा।"

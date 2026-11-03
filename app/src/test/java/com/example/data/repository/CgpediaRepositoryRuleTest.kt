@@ -173,6 +173,59 @@ class CgpediaRepositoryRuleTest : FirestoreEmulatorTestBase() {
             repo.observePublishedCurrentAffairs().first { it.isNotEmpty() }
         }
         assertTrue(emittedCa.any { it.category == "chhattisgarh" })
+
+        // 5. Submit private student query & observe own queries
+        val queryRes = withTimeout(DEFAULT_TIMEOUT_MS) {
+            repo.submitStudentQuery(
+                userName = "Aspirant Sahu",
+                userEmail = email,
+                category = "payment",
+                subject = "Unlock CGPSC Pre 2026 Test Series",
+                messageText = "Paid ₹99 via UPI, please activate.",
+                attachmentUrl = ""
+            )
+        }
+        assertTrue("Student query submission failed: ${queryRes.exceptionOrNull()}", queryRes.isSuccess)
+
+        val myQueries = withTimeout(FLOW_TIMEOUT_MS) {
+            repo.observeMyStudentQueries(uid).first { it.isNotEmpty() }
+        }
+        assertEquals("Unlock CGPSC Pre 2026 Test Series", myQueries.first().subject)
+    }
+
+    @Test
+    fun studentQuery_submittedByAlice_cannotBeReadByBob() = runBlocking {
+        val aliceEmail = "alice_q_${UUID.randomUUID().toString().take(8)}@test.com"
+        signInTestUser(aliceEmail)
+        val repo = CgpediaRepository(firestore)
+
+        val queryId = withTimeout(DEFAULT_TIMEOUT_MS) {
+            repo.submitStudentQuery(
+                userName = "Alice",
+                userEmail = aliceEmail,
+                category = "doubt",
+                subject = "Private Doubt",
+                messageText = "Confidential question",
+                attachmentUrl = ""
+            ).getOrThrow()
+        }
+
+        // Switch to Bob and verify Bob cannot read Alice's query document
+        val bobEmail = "bob_q_${UUID.randomUUID().toString().take(8)}@test.com"
+        signInTestUser(bobEmail)
+        try {
+            withTimeout(DEFAULT_TIMEOUT_MS) {
+                firestore.collection("student_queries").document(queryId).get().let { task ->
+                    com.google.android.gms.tasks.Tasks.await(task)
+                }
+            }
+            fail("Expected cross-student query read to fail with PERMISSION_DENIED")
+        } catch (e: Exception) {
+            val fsEx = checkNotNull(e.unwrapFirestoreException()) {
+                "Expected nested FirebaseFirestoreException, got $e"
+            }
+            assertEquals(FirebaseFirestoreException.Code.PERMISSION_DENIED, fsEx.code)
+        }
     }
 
     @Test

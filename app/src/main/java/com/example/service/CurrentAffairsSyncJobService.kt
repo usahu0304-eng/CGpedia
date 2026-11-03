@@ -18,13 +18,13 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 /**
- * Automated Background Cron JobService (scheduled every 6 hours via Android JobScheduler)
- * EXCLUSIVELY for Current Affairs using Gemini AI with Google Search Grounding.
- * Test Series generation is strictly manual and restricted to the Owner Admin.
+ * Scheduled Background Service (`JobService`) that automatically refreshes
+ * Bilingual Current Affairs across Chhattisgarh, India, and World every 60 minutes
+ * and triggers a push notification to users when new updates arrive.
  */
 class CurrentAffairsSyncJobService : JobService() {
 
-    private val jobScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onStartJob(params: JobParameters?): Boolean {
         val currentUser = Firebase.auth.currentUser
@@ -33,53 +33,64 @@ class CurrentAffairsSyncJobService : JobService() {
             return false
         }
 
-        jobScope.launch {
-            try {
-                Log.d(TAG, "Starting scheduled AI Grounded Current Affairs sync...")
+        serviceScope.launch {
+            runCatching {
                 val aiService = CgpediaAiService()
                 val repository = CgpediaRepository(applicationContext)
-                val result = aiService.fetchGroundedCurrentAffairs(currentUser.uid)
-                result.onSuccess { articles ->
-                    repository.saveGroundedCurrentAffairsBatch(articles)
-                    Log.d(TAG, "Saved ${articles.size} grounded Current Affairs articles.")
-                }.onFailure { err ->
-                    Log.w(TAG, "Scheduled Current Affairs sync failed: ${err.message}")
+                val grounded = aiService.fetchGroundedCurrentAffairs(currentUser.uid).getOrNull()
+                if (!grounded.isNullOrEmpty()) {
+                    val savedCount = repository.saveCurrentAffairsBatch(grounded).getOrDefault(0)
+                    if (savedCount > 0) {
+                        val first = grounded.first()
+                        CgpediaNotificationHelper.notifyNewCurrentAffairs(
+                            context = applicationContext,
+                            savedCount = savedCount,
+                            topHeadlineHi = first.headlineHi,
+                            topHeadlineEn = first.headlineEn
+                        )
+                    }
+                    applicationContext.getSharedPreferences("cgpedia_sync_prefs", Context.MODE_PRIVATE)
+                        .edit()
+                        .putLong("last_ca_sync_epoch_ms", System.currentTimeMillis())
+                        .apply()
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Unexpected error in CurrentAffairsSyncJobService", e)
-            } finally {
-                jobFinished(params, false)
+            }.onFailure { err ->
+                Log.w("CurrentAffairsSyncJob", "Background Current Affairs sync skipped: ${err.message}")
             }
+            jobFinished(params, false)
         }
         return true
     }
 
     override fun onStopJob(params: JobParameters?): Boolean {
-        jobScope.cancel()
+        serviceScope.cancel()
         return true
     }
 
     override fun onDestroy() {
-        jobScope.cancel()
+        serviceScope.cancel()
         super.onDestroy()
     }
 
     companion object {
-        private const val TAG = "CurrentAffairsCron"
-        private const val JOB_ID = 4201
-        private const val SIX_HOURS_MS = 6L * 60L * 60L * 1000L
+        private const val JOB_ID_CURRENT_AFFAIRS_SYNC = 4401
+        private const val SIXTY_MINUTES_MS = 60L * 60L * 1000L // 60 minutes auto-sync interval
 
         fun schedulePeriodicSync(context: Context) {
-            val scheduler = context.getSystemService(Context.JOB_SCHEDULER_SERVICE) as? JobScheduler ?: return
-            val alreadyScheduled = scheduler.allPendingJobs.any { it.id == JOB_ID }
-            if (alreadyScheduled) return
+            runCatching {
+                val scheduler = context.getSystemService(Context.JOB_SCHEDULER_SERVICE) as? JobScheduler ?: return
+                val existing = scheduler.allPendingJobs.any { it.id == JOB_ID_CURRENT_AFFAIRS_SYNC }
+                if (existing) return
 
-            val component = ComponentName(context, CurrentAffairsSyncJobService::class.java)
-            val jobInfo = JobInfo.Builder(JOB_ID, component)
-                .setPeriodic(SIX_HOURS_MS)
-                .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
-                .build()
-            scheduler.schedule(jobInfo)
+                val component = ComponentName(context, CurrentAffairsSyncJobService::class.java)
+                val jobInfo = JobInfo.Builder(JOB_ID_CURRENT_AFFAIRS_SYNC, component)
+                    .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
+                    .setPeriodic(SIXTY_MINUTES_MS)
+                    .build()
+                scheduler.schedule(jobInfo)
+            }.onFailure { e ->
+                Log.w("CurrentAffairsSyncJob", "Unable to schedule periodic job: ${e.message}")
+            }
         }
     }
 }

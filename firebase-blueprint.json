@@ -1,46 +1,23 @@
 {
   "entities": {
-    "AdminRecord": {
-      "title": "AdminRecord",
-      "description": "Trusted registry of explicitly provisioned Admin UIDs.",
-      "type": "object",
-      "properties": {
-        "uid": { "type": "string", "description": "Firebase Auth UID of the admin." },
-        "email": { "type": "string", "description": "Verified email address of the admin." },
-        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()." }
-      },
-      "required": ["uid", "email", "createdAt"]
-    },
     "UserProfile": {
       "title": "UserProfile",
-      "description": "Student or owner profile isolated per authenticated UID.",
+      "description": "Authenticated student or owner admin profile with exam preferences, language, dark mode, and notification settings.",
       "type": "object",
       "properties": {
-        "userId": { "type": "string", "description": "Owner Firebase Auth UID." },
-        "displayName": { "type": "string", "description": "Full name of the student." },
-        "email": { "type": "string", "description": "Verified Google email address." },
-        "phoneNumber": { "type": "string", "description": "Student mobile number." },
-        "photoUrl": { "type": "string", "description": "Avatar photo URL." },
-        "targetExam": {
-          "type": "string",
-          "enum": ["CGPSC & CGSSB", "CGPSC Prelims", "CGPSC Mains", "CGSSB / Vyapam", "CGPSC + CGSSB Combined"],
-          "description": "Primary competitive exam target in Chhattisgarh."
-        },
-        "preferredLanguage": {
-          "type": "string",
-          "enum": ["en", "hi"],
-          "description": "UI language preference (default 'en')."
-        },
-        "darkMode": { "type": "boolean", "description": "Whether dark mode is enabled." },
-        "notifyCurrentAffairs": { "type": "boolean", "description": "Push alert preference for Current Affairs." },
-        "notifyNewTests": { "type": "boolean", "description": "Push alert preference for new Test Series." },
-        "role": {
-          "type": "string",
-          "enum": ["student", "admin"],
-          "description": "RBAC role; students can only create/retain 'student'."
-        },
-        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()." },
-        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()." }
+        "userId": { "type": "string", "description": "Firebase Auth UID of the user." },
+        "displayName": { "type": "string", "description": "Student full name." },
+        "email": { "type": "string", "description": "Authenticated Google email address." },
+        "phoneNumber": { "type": "string", "description": "Student mobile number for exam alerts." },
+        "photoUrl": { "type": "string", "description": "Profile avatar URL or local URI." },
+        "targetExam": { "type": "string", "description": "Target exam (e.g., CGPSC & CGSSB, CGPSC Prelims, CGSSB Vyapam)." },
+        "preferredLanguage": { "type": "string", "enum": ["en", "hi"], "description": "Default UI language preference (en or hi)." },
+        "darkMode": { "type": "boolean", "description": "Whether Dark Mode theme is enabled." },
+        "notifyCurrentAffairs": { "type": "boolean", "description": "Receive push/local notifications for Current Affairs." },
+        "notifyNewTests": { "type": "boolean", "description": "Receive push/local notifications for new Test Series." },
+        "role": { "type": "string", "enum": ["student", "admin"], "description": "RBAC role: student or admin (usahu0304@gmail.com only)." },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": [
         "userId",
@@ -58,178 +35,79 @@
         "updatedAt"
       ]
     },
-    "PurchaseRecord": {
-      "title": "PurchaseRecord",
-      "description": "Completed online payment or Admin manual grant unlocking a premium test or folder.",
+    "AppConfig": {
+      "title": "AppConfig",
+      "description": "Global application configuration including CGpedia Anthem audio metadata, Support & Help policy, WhatsApp support, and In-App Update control.",
       "type": "object",
       "properties": {
-        "userId": { "type": "string", "description": "Purchasing or unlocked student UID." },
-        "testId": { "type": "string", "description": "Unlocked test or folder ID." },
-        "testTitleHi": { "type": "string", "description": "Hindi title of purchased test." },
-        "testTitleEn": { "type": "string", "description": "English title of purchased test." },
-        "amountInr": { "type": "integer", "description": "Amount paid in INR." },
-        "paymentMethod": {
-          "type": "string",
-          "enum": ["UPI", "Card", "NetBanking", "AdminGrant", "WhatsApp"],
-          "description": "Payment method or Admin manual access grant."
-        },
-        "transactionRef": { "type": "string", "description": "Unique gateway transaction reference." },
-        "status": {
-          "type": "string",
-          "enum": ["completed"],
-          "description": "Terminal payment state."
-        },
-        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()." }
+        "configKey": { "type": "string", "enum": ["global"] },
+        "anthemTitleHi": { "type": "string" },
+        "anthemTitleEn": { "type": "string" },
+        "anthemSourceType": { "type": "string", "enum": ["bundled", "url", "cloud_chunks"] },
+        "anthemAudioUrl": { "type": "string" },
+        "anthemChunkCount": { "type": "integer" },
+        "anthemMimeType": { "type": "string" },
+        "telegramChannelUrl": { "type": "string" },
+        "supportEmail": { "type": "string" },
+        "whatsappSupportNumber": { "type": "string" },
+        "supportPolicyHi": { "type": "string" },
+        "supportPolicyEn": { "type": "string" },
+        "latestVersionCode": { "type": "integer" },
+        "latestVersionName": { "type": "string" },
+        "apkDownloadUrl": { "type": "string" },
+        "updateNotesHi": { "type": "string" },
+        "updateNotesEn": { "type": "string" },
+        "updatedBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": [
-        "userId",
-        "testId",
-        "testTitleHi",
-        "testTitleEn",
-        "amountInr",
-        "paymentMethod",
-        "transactionRef",
-        "status",
-        "createdAt"
-      ]
-    },
-    "TestAttempt": {
-      "title": "TestAttempt",
-      "description": "Submitted bilingual test scorecard and response analytics for a student.",
-      "type": "object",
-      "properties": {
-        "userId": { "type": "string", "description": "Student UID." },
-        "testId": { "type": "string", "description": "Evaluated test ID." },
-        "testTitleHi": { "type": "string", "description": "Hindi test title." },
-        "testTitleEn": { "type": "string", "description": "English test title." },
-        "totalQuestions": { "type": "integer", "description": "Total questions in test." },
-        "attemptedCount": { "type": "integer", "description": "Questions attempted." },
-        "correctCount": { "type": "integer", "description": "Correct responses." },
-        "incorrectCount": { "type": "integer", "description": "Incorrect responses." },
-        "score": { "type": "number", "description": "Final score after negative marking." },
-        "maxScore": { "type": "number", "description": "Maximum possible score." },
-        "accuracyPercent": { "type": "integer", "description": "Accuracy percentage (0-100)." },
-        "timeTakenSeconds": { "type": "integer", "description": "Elapsed exam time in seconds." },
-        "selectedAnswers": { "type": "object", "description": "Map of questionId to selected option index (0-3)." },
-        "status": { "type": "string", "enum": ["submitted"], "description": "Terminal submission status." },
-        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()." }
-      },
-      "required": [
-        "userId",
-        "testId",
-        "testTitleHi",
-        "testTitleEn",
-        "totalQuestions",
-        "attemptedCount",
-        "correctCount",
-        "incorrectCount",
-        "score",
-        "maxScore",
-        "accuracyPercent",
-        "timeTakenSeconds",
-        "selectedAnswers",
-        "status",
-        "createdAt"
-      ]
-    },
-    "BookmarkedQuestion": {
-      "title": "BookmarkedQuestion",
-      "description": "Saved/bookmarked bilingual question with offline explanation cache.",
-      "type": "object",
-      "properties": {
-        "userId": { "type": "string", "description": "Student UID." },
-        "questionId": { "type": "string", "description": "Source question ID." },
-        "testId": { "type": "string", "description": "Source test ID." },
-        "questionHi": { "type": "string", "description": "1st language: Hindi Devanagari question." },
-        "questionEn": { "type": "string", "description": "2nd language: English question." },
-        "optionsHi": { "type": "array", "description": "4 Hindi options." },
-        "optionsEn": { "type": "array", "description": "4 English options." },
-        "correctOptionIndex": { "type": "integer", "description": "Correct option index 0..3." },
-        "explanationHi": { "type": "string", "description": "Hindi detailed explanation." },
-        "explanationEn": { "type": "string", "description": "English detailed explanation." },
-        "subjectTag": { "type": "string", "description": "Subject/exam tag." },
-        "isOfflineCached": { "type": "boolean", "description": "Whether marked for offline revision." },
-        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()." },
-        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()." }
-      },
-      "required": [
-        "userId",
-        "questionId",
-        "testId",
-        "questionHi",
-        "questionEn",
-        "optionsHi",
-        "optionsEn",
-        "correctOptionIndex",
-        "explanationHi",
-        "explanationEn",
-        "subjectTag",
-        "isOfflineCached",
+        "configKey",
+        "anthemTitleHi",
+        "anthemTitleEn",
+        "anthemSourceType",
+        "anthemAudioUrl",
+        "anthemChunkCount",
+        "anthemMimeType",
+        "telegramChannelUrl",
+        "supportEmail",
+        "updatedBy",
         "createdAt",
         "updatedAt"
       ]
     },
-    "CurrentAffairItem": {
-      "title": "CurrentAffairItem",
-      "description": "AI-grounded and verified Current Affairs summary for Chhattisgarh, National, or International tabs.",
+    "AnthemChunk": {
+      "title": "AnthemChunk",
+      "description": "Base64 encoded audio chunk uploaded from Admin Dashboard for custom CGpedia Anthem playback.",
       "type": "object",
       "properties": {
-        "category": {
-          "type": "string",
-          "enum": ["chhattisgarh", "national", "international"],
-          "description": "Current affairs category tab."
-        },
-        "headlineHi": { "type": "string", "description": "Hindi headline." },
-        "headlineEn": { "type": "string", "description": "English headline." },
-        "summaryHi": { "type": "string", "description": "Hindi verified summary." },
-        "summaryEn": { "type": "string", "description": "English verified summary." },
-        "examKeyPointsHi": { "type": "array", "description": "Bounded list of Hindi exam bullet points." },
-        "examKeyPointsEn": { "type": "array", "description": "Bounded list of English exam bullet points." },
-        "sourceName": { "type": "string", "description": "Verified government/trusted source name (e.g., PIB, DPR Chhattisgarh)." },
-        "sourceUrl": { "type": "string", "description": "Source reference URL." },
-        "dateLabel": { "type": "string", "description": "Formatted date string (YYYY-MM-DD)." },
-        "visibility": { "type": "string", "enum": ["published", "archived"], "description": "Publication visibility." },
-        "sourceModule": { "type": "string", "enum": ["ai_grounding_pipeline", "admin_curated"], "description": "Pipeline origin." },
-        "authorUid": { "type": "string", "description": "UID of sync worker or admin." },
-        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()." },
-        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()." }
+        "chunkIndex": { "type": "integer" },
+        "totalChunks": { "type": "integer" },
+        "base64Data": { "type": "string" },
+        "updatedBy": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": [
-        "category",
-        "headlineHi",
-        "headlineEn",
-        "summaryHi",
-        "summaryEn",
-        "examKeyPointsHi",
-        "examKeyPointsEn",
-        "sourceName",
-        "sourceUrl",
-        "dateLabel",
-        "visibility",
-        "sourceModule",
-        "authorUid",
-        "createdAt",
-        "updatedAt"
-      ]
+      "required": ["chunkIndex", "totalChunks", "base64Data", "updatedBy", "updatedAt"]
     },
     "ExamFolder": {
       "title": "ExamFolder",
-      "description": "Exam-wise test series folder (CGPSC Prelims, CGPSC Mains, CGSSB / Vyapam, etc.).",
+      "description": "Top-level Exam-Wise folder (e.g., CGPSC Pre 2026 Test Series, CGPSC Prelims, CGSSB/Vyapam).",
       "type": "object",
       "properties": {
-        "titleHi": { "type": "string", "description": "Hindi folder title." },
-        "titleEn": { "type": "string", "description": "English folder title." },
-        "descriptionHi": { "type": "string", "description": "Hindi subtitle." },
-        "descriptionEn": { "type": "string", "description": "English subtitle." },
-        "examCode": { "type": "string", "description": "Short exam code." },
-        "sortOrder": { "type": "integer", "description": "Display sort index." },
-        "isFreeFolder": { "type": "boolean", "description": "True if all tests in folder are free." },
-        "priceInr": { "type": "integer", "description": "Bundle price in INR if paid." },
-        "testCount": { "type": "integer", "description": "Count of published tests." },
-        "visibility": { "type": "string", "enum": ["published", "archived"], "description": "Folder visibility." },
-        "createdBy": { "type": "string", "description": "Admin UID." },
-        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()." },
-        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()." }
+        "titleHi": { "type": "string" },
+        "titleEn": { "type": "string" },
+        "descriptionHi": { "type": "string" },
+        "descriptionEn": { "type": "string" },
+        "examCode": { "type": "string" },
+        "sortOrder": { "type": "integer" },
+        "isFreeFolder": { "type": "boolean" },
+        "priceInr": { "type": "integer" },
+        "validityDays": { "type": "integer" },
+        "testCount": { "type": "integer" },
+        "visibility": { "type": "string", "enum": ["published", "archived"] },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": [
         "titleHi",
@@ -249,22 +127,23 @@
     },
     "SubjectFolder": {
       "title": "SubjectFolder",
-      "description": "Subject-wise test series folder (Chhattisgarh GS, Polity, History, Economy, Geography, Aptitude).",
+      "description": "Subject-Wise folder (e.g., Chhattisgarh GS, Indian Polity, History, Economy, Geography, Science, CSAT).",
       "type": "object",
       "properties": {
-        "titleHi": { "type": "string", "description": "Hindi folder title." },
-        "titleEn": { "type": "string", "description": "English folder title." },
-        "descriptionHi": { "type": "string", "description": "Hindi subtitle." },
-        "descriptionEn": { "type": "string", "description": "English subtitle." },
-        "subjectCode": { "type": "string", "description": "Short subject code." },
-        "sortOrder": { "type": "integer", "description": "Display sort index." },
-        "isFreeFolder": { "type": "boolean", "description": "True if free." },
-        "priceInr": { "type": "integer", "description": "Bundle price in INR if paid." },
-        "testCount": { "type": "integer", "description": "Count of published tests." },
-        "visibility": { "type": "string", "enum": ["published", "archived"], "description": "Folder visibility." },
-        "createdBy": { "type": "string", "description": "Admin UID." },
-        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()." },
-        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()." }
+        "titleHi": { "type": "string" },
+        "titleEn": { "type": "string" },
+        "descriptionHi": { "type": "string" },
+        "descriptionEn": { "type": "string" },
+        "subjectCode": { "type": "string" },
+        "sortOrder": { "type": "integer" },
+        "isFreeFolder": { "type": "boolean" },
+        "priceInr": { "type": "integer" },
+        "validityDays": { "type": "integer" },
+        "testCount": { "type": "integer" },
+        "visibility": { "type": "string", "enum": ["published", "archived"] },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": [
         "titleHi",
@@ -284,26 +163,27 @@
     },
     "TestSeriesItem": {
       "title": "TestSeriesItem",
-      "description": "Exam or subject test metadata supporting Admin Draft & Publish workflow.",
+      "description": "Individual Bilingual Test inside an ExamFolder or SubjectFolder, supporting Draft -> Published workflow, Free/Paid monetization, and validity days.",
       "type": "object",
       "properties": {
-        "folderType": { "type": "string", "enum": ["exam", "subject"], "description": "Parent folder category." },
-        "folderId": { "type": "string", "description": "Parent folder ID." },
-        "titleHi": { "type": "string", "description": "Hindi test title." },
-        "titleEn": { "type": "string", "description": "English test title." },
-        "topic": { "type": "string", "description": "Focused syllabus topic." },
-        "difficulty": { "type": "string", "enum": ["Easy", "Moderate", "Hard", "CGPSC_Level"], "description": "Test difficulty." },
-        "durationMinutes": { "type": "integer", "description": "Countdown timer in minutes." },
-        "questionLimit": { "type": "integer", "description": "Maximum questions allowed (1..100)." },
-        "questionCount": { "type": "integer", "description": "Current question count (0..100)." },
-        "marksPerQuestion": { "type": "number", "description": "Positive marks per right answer." },
-        "negativeMarking": { "type": "number", "description": "Negative marks deducted per wrong answer." },
-        "isPaid": { "type": "boolean", "description": "Whether locked behind payment." },
-        "priceInr": { "type": "integer", "description": "Test unlock price in INR." },
-        "status": { "type": "string", "enum": ["draft", "published"], "description": "Draft or live status." },
-        "createdBy": { "type": "string", "description": "Admin UID." },
-        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()." },
-        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()." }
+        "folderType": { "type": "string", "enum": ["exam", "subject"] },
+        "folderId": { "type": "string" },
+        "titleHi": { "type": "string" },
+        "titleEn": { "type": "string" },
+        "topic": { "type": "string" },
+        "difficulty": { "type": "string", "enum": ["Easy", "Moderate", "Hard", "CGPSC_Level"] },
+        "durationMinutes": { "type": "integer" },
+        "questionLimit": { "type": "integer" },
+        "questionCount": { "type": "integer" },
+        "marksPerQuestion": { "type": "number" },
+        "negativeMarking": { "type": "number" },
+        "isPaid": { "type": "boolean" },
+        "priceInr": { "type": "integer" },
+        "validityDays": { "type": "integer" },
+        "status": { "type": "string", "enum": ["draft", "published", "archived"] },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": [
         "folderType",
@@ -327,23 +207,23 @@
     },
     "BilingualQuestion": {
       "title": "BilingualQuestion",
-      "description": "Strict Bilingual Question (1st Hindi Devanagari, 2nd English) with 4 options and verified explanation.",
+      "description": "Bilingual MCQ with 1st language Hindi (Devanagari) and 2nd language English.",
       "type": "object",
       "properties": {
-        "testId": { "type": "string", "description": "Parent test ID." },
-        "orderIndex": { "type": "integer", "description": "Question display order (0..99)." },
-        "questionHi": { "type": "string", "description": "1st language: Hindi Devanagari question stem." },
-        "questionEn": { "type": "string", "description": "2nd language: English question stem." },
-        "optionsHi": { "type": "array", "description": "4 Hindi options." },
-        "optionsEn": { "type": "array", "description": "4 English options." },
-        "correctOptionIndex": { "type": "integer", "description": "0-based correct option index (0..3)." },
-        "explanationHi": { "type": "string", "description": "Detailed verified Hindi explanation." },
-        "explanationEn": { "type": "string", "description": "Detailed verified English explanation." },
-        "subjectTag": { "type": "string", "description": "Subject tag." },
-        "visibility": { "type": "string", "enum": ["draft", "published"], "description": "Matches test status." },
-        "createdBy": { "type": "string", "description": "Admin UID." },
-        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()." },
-        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()." }
+        "testId": { "type": "string" },
+        "orderIndex": { "type": "integer" },
+        "questionHi": { "type": "string" },
+        "questionEn": { "type": "string" },
+        "optionsHi": { "type": "array", "items": { "type": "string" } },
+        "optionsEn": { "type": "array", "items": { "type": "string" } },
+        "correctOptionIndex": { "type": "integer" },
+        "explanationHi": { "type": "string" },
+        "explanationEn": { "type": "string" },
+        "subjectTag": { "type": "string" },
+        "visibility": { "type": "string", "enum": ["draft", "published"] },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": [
         "testId",
@@ -362,113 +242,300 @@
         "updatedAt"
       ]
     },
-    "AppConfig": {
-      "title": "AppConfig",
-      "description": "Global CGpedia configuration including Channel Anthem metadata and support links.",
+    "CurrentAffairItem": {
+      "title": "CurrentAffairItem",
+      "description": "Bilingual Current Affairs article categorized into chhattisgarh, national, or international.",
       "type": "object",
       "properties": {
-        "configKey": { "type": "string", "enum": ["global"], "description": "Global config discriminator." },
-        "anthemTitleHi": { "type": "string", "description": "Hindi anthem title." },
-        "anthemTitleEn": { "type": "string", "description": "English anthem title." },
-        "anthemSourceType": {
-          "type": "string",
-          "enum": ["bundled", "url", "cloud_chunks", "none"],
-          "description": "Audio playback source type."
-        },
-        "anthemAudioUrl": { "type": "string", "description": "HTTPS audio stream URL when sourceType == 'url'." },
-        "anthemChunkCount": { "type": "integer", "description": "Chunk count when sourceType == 'cloud_chunks'." },
-        "anthemMimeType": { "type": "string", "description": "MIME type of uploaded anthem (audio/mpeg, audio/aac)." },
-        "telegramChannelUrl": { "type": "string", "description": "Official CGpedia community channel URL." },
-        "supportEmail": { "type": "string", "description": "Support email address." },
-        "whatsappSupportNumber": { "type": "string", "description": "WhatsApp number for payment and student assistance (e.g. 9238810070)." },
-        "supportPolicyHi": { "type": "string", "description": "Hindi support, help, and policy guidelines." },
-        "supportPolicyEn": { "type": "string", "description": "English support, help, and policy guidelines." },
-        "latestVersionCode": { "type": "integer", "description": "Latest published APK versionCode for In-App Update alerts." },
-        "latestVersionName": { "type": "string", "description": "Latest published APK versionName (e.g. 2.0.0)." },
-        "apkDownloadUrl": { "type": "string", "description": "Direct APK download link or official channel URL." },
-        "updateNotesHi": { "type": "string", "description": "Hindi release notes for the In-App Update popup." },
-        "updateNotesEn": { "type": "string", "description": "English release notes for the In-App Update popup." },
-        "updatedBy": { "type": "string", "description": "Admin UID." },
-        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()." },
-        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()." }
+        "category": { "type": "string", "enum": ["chhattisgarh", "national", "international"] },
+        "headlineHi": { "type": "string" },
+        "headlineEn": { "type": "string" },
+        "summaryHi": { "type": "string" },
+        "summaryEn": { "type": "string" },
+        "examKeyPointsHi": { "type": "array", "items": { "type": "string" } },
+        "examKeyPointsEn": { "type": "array", "items": { "type": "string" } },
+        "sourceName": { "type": "string" },
+        "sourceUrl": { "type": "string" },
+        "dateLabel": { "type": "string" },
+        "visibility": { "type": "string", "enum": ["published", "archived"] },
+        "sourceModule": { "type": "string", "enum": ["ai_grounded", "admin_curated"] },
+        "authorUid": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": [
-        "configKey",
-        "anthemTitleHi",
-        "anthemTitleEn",
-        "anthemSourceType",
-        "anthemAudioUrl",
-        "anthemChunkCount",
-        "anthemMimeType",
-        "telegramChannelUrl",
-        "supportEmail",
-        "updatedBy",
+        "category",
+        "headlineHi",
+        "headlineEn",
+        "summaryHi",
+        "summaryEn",
+        "examKeyPointsHi",
+        "examKeyPointsEn",
+        "sourceName",
+        "sourceUrl",
+        "dateLabel",
+        "visibility",
+        "sourceModule",
+        "authorUid",
         "createdAt",
         "updatedAt"
       ]
     },
-    "AnthemAudioChunk": {
-      "title": "AnthemAudioChunk",
-      "description": "Base64-encoded binary audio chunk uploaded by Admin for CGpedia Anthem.",
+    "BroadcastNotification": {
+      "title": "BroadcastNotification",
+      "description": "Admin broadcast message to all students with rich media support (PDF/Docs, Image, Audio, Video) and Pin capability.",
       "type": "object",
       "properties": {
-        "chunkIndex": { "type": "integer", "description": "0-based sequential chunk index." },
-        "base64Data": { "type": "string", "description": "Base64 audio chunk <= 600KB." },
-        "configKey": { "type": "string", "enum": ["global"], "description": "Global discriminator." },
-        "uploadedBy": { "type": "string", "description": "Admin UID." },
-        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()." }
+        "titleHi": { "type": "string" },
+        "titleEn": { "type": "string" },
+        "messageHi": { "type": "string" },
+        "messageEn": { "type": "string" },
+        "mediaType": { "type": "string", "enum": ["none", "image", "pdf", "audio", "video"] },
+        "mediaUrl": { "type": "string" },
+        "mediaTitle": { "type": "string" },
+        "isPinned": { "type": "boolean" },
+        "visibility": { "type": "string", "enum": ["published", "archived"] },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["chunkIndex", "base64Data", "configKey", "uploadedBy", "createdAt"]
+      "required": [
+        "titleHi",
+        "titleEn",
+        "messageHi",
+        "messageEn",
+        "mediaType",
+        "mediaUrl",
+        "mediaTitle",
+        "isPinned",
+        "visibility",
+        "createdBy",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "UpcomingTestItem": {
+      "title": "UpcomingTestItem",
+      "description": "Scheduled upcoming test series announcement posted by Admin.",
+      "type": "object",
+      "properties": {
+        "titleHi": { "type": "string" },
+        "titleEn": { "type": "string" },
+        "examCategory": { "type": "string" },
+        "scheduledDateLabel": { "type": "string" },
+        "syllabusSummaryHi": { "type": "string" },
+        "syllabusSummaryEn": { "type": "string" },
+        "isPaid": { "type": "boolean" },
+        "priceInr": { "type": "integer" },
+        "validityDays": { "type": "integer" },
+        "visibility": { "type": "string", "enum": ["published", "archived"] },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "titleHi",
+        "titleEn",
+        "examCategory",
+        "scheduledDateLabel",
+        "syllabusSummaryHi",
+        "syllabusSummaryEn",
+        "isPaid",
+        "priceInr",
+        "validityDays",
+        "visibility",
+        "createdBy",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "StudentQuery": {
+      "title": "StudentQuery",
+      "description": "Strictly private student doubt, payment, or technical support query visible only to the submitting student and Admin.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "studentEmail": { "type": "string" },
+        "category": { "type": "string", "enum": ["doubt", "payment", "technical"] },
+        "subject": { "type": "string" },
+        "message": { "type": "string" },
+        "adminReply": { "type": "string" },
+        "status": { "type": "string", "enum": ["open", "resolved"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "userId",
+        "studentName",
+        "studentEmail",
+        "category",
+        "subject",
+        "message",
+        "adminReply",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "TestAttempt": {
+      "title": "TestAttempt",
+      "description": "Student exam attempt record with score, accuracy, and per-question responses.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "testId": { "type": "string" },
+        "testTitleHi": { "type": "string" },
+        "testTitleEn": { "type": "string" },
+        "totalQuestions": { "type": "integer" },
+        "attemptedCount": { "type": "integer" },
+        "correctCount": { "type": "integer" },
+        "incorrectCount": { "type": "integer" },
+        "score": { "type": "number" },
+        "maxScore": { "type": "number" },
+        "accuracyPercent": { "type": "integer" },
+        "timeTakenSeconds": { "type": "integer" },
+        "selectedAnswers": { "type": "object" },
+        "status": { "type": "string", "enum": ["submitted"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "userId",
+        "testId",
+        "testTitleHi",
+        "testTitleEn",
+        "totalQuestions",
+        "attemptedCount",
+        "correctCount",
+        "incorrectCount",
+        "score",
+        "maxScore",
+        "accuracyPercent",
+        "timeTakenSeconds",
+        "selectedAnswers",
+        "status",
+        "createdAt"
+      ]
+    },
+    "PurchaseRecord": {
+      "title": "PurchaseRecord",
+      "description": "Student purchase/unlock receipt for a Paid Test Series with activation-based validity countdown.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "testId": { "type": "string" },
+        "testTitleHi": { "type": "string" },
+        "testTitleEn": { "type": "string" },
+        "amountInr": { "type": "integer" },
+        "paymentMethod": { "type": "string" },
+        "transactionRef": { "type": "string" },
+        "status": { "type": "string", "enum": ["completed"] },
+        "validityDays": { "type": "integer" },
+        "expiresAtMillis": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "userId",
+        "testId",
+        "testTitleHi",
+        "testTitleEn",
+        "amountInr",
+        "paymentMethod",
+        "transactionRef",
+        "status",
+        "createdAt"
+      ]
+    },
+    "BookmarkedQuestion": {
+      "title": "BookmarkedQuestion",
+      "description": "Saved/bookmarked Bilingual MCQ for offline & quick revision.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "questionId": { "type": "string" },
+        "testId": { "type": "string" },
+        "questionHi": { "type": "string" },
+        "questionEn": { "type": "string" },
+        "optionsHi": { "type": "array", "items": { "type": "string" } },
+        "optionsEn": { "type": "array", "items": { "type": "string" } },
+        "correctOptionIndex": { "type": "integer" },
+        "explanationHi": { "type": "string" },
+        "explanationEn": { "type": "string" },
+        "subjectTag": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "userId",
+        "questionId",
+        "testId",
+        "questionHi",
+        "questionEn",
+        "optionsHi",
+        "optionsEn",
+        "correctOptionIndex",
+        "explanationHi",
+        "explanationEn",
+        "subjectTag",
+        "createdAt"
+      ]
     }
   },
   "firestore": {
-    "/admins/{adminId}": {
-      "schema": "AdminRecord",
-      "description": "Read-only trusted Admin UID registry."
-    },
     "/users/{userId}": {
-      "schema": "UserProfile",
-      "description": "Student and owner profiles isolated by UID."
-    },
-    "/users/{userId}/purchases/{purchaseId}": {
-      "schema": "PurchaseRecord",
-      "description": "Per-student payment and unlocked premium test ledger."
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Private student/admin profile documents."
     },
     "/users/{userId}/attempts/{attemptId}": {
-      "schema": "TestAttempt",
-      "description": "Per-student submitted test scorecards and accuracy analytics."
+      "schema": { "$ref": "#/entities/TestAttempt" },
+      "description": "Student exam attempts."
+    },
+    "/users/{userId}/purchases/{purchaseId}": {
+      "schema": { "$ref": "#/entities/PurchaseRecord" },
+      "description": "Unlocked paid test series receipts."
     },
     "/users/{userId}/bookmarks/{bookmarkId}": {
-      "schema": "BookmarkedQuestion",
-      "description": "Per-student bookmarked bilingual questions and offline downloads."
-    },
-    "/current_affairs/{articleId}": {
-      "schema": "CurrentAffairItem",
-      "description": "AI-grounded Chhattisgarh, National, and International current affairs."
-    },
-    "/exam_folders/{folderId}": {
-      "schema": "ExamFolder",
-      "description": "Exam-wise test series folders (CGPSC Prelims, Mains, CGSSB)."
-    },
-    "/subject_folders/{folderId}": {
-      "schema": "SubjectFolder",
-      "description": "Subject-wise test series folders (CG GS, Polity, History, etc.)."
-    },
-    "/tests/{testId}": {
-      "schema": "TestSeriesItem",
-      "description": "Draft and published test series metadata."
-    },
-    "/questions/{questionId}": {
-      "schema": "BilingualQuestion",
-      "description": "Bilingual Hindi-first, English-second questions with explanations."
+      "schema": { "$ref": "#/entities/BookmarkedQuestion" },
+      "description": "Saved bilingual questions for revision."
     },
     "/app_config/{configId}": {
-      "schema": "AppConfig",
-      "description": "Global CGpedia Anthem Song and support configuration."
+      "schema": { "$ref": "#/entities/AppConfig" },
+      "description": "Global application settings and anthem metadata."
     },
     "/anthem_chunks/{chunkId}": {
-      "schema": "AnthemAudioChunk",
-      "description": "Cloud-stored MP3/AAC audio chunks for the CGpedia Anthem."
+      "schema": { "$ref": "#/entities/AnthemChunk" },
+      "description": "Chunked audio data for custom uploaded CGpedia Anthem."
+    },
+    "/exam_folders/{folderId}": {
+      "schema": { "$ref": "#/entities/ExamFolder" },
+      "description": "Exam-Wise test series folders."
+    },
+    "/subject_folders/{folderId}": {
+      "schema": { "$ref": "#/entities/SubjectFolder" },
+      "description": "Subject-Wise test series folders."
+    },
+    "/tests/{testId}": {
+      "schema": { "$ref": "#/entities/TestSeriesItem" },
+      "description": "Individual tests (Draft/Published, Free/Paid)."
+    },
+    "/tests/{testId}/questions/{questionId}": {
+      "schema": { "$ref": "#/entities/BilingualQuestion" },
+      "description": "Bilingual Hindi-English MCQs inside a test."
+    },
+    "/current_affairs/{articleId}": {
+      "schema": { "$ref": "#/entities/CurrentAffairItem" },
+      "description": "Bilingual Current Affairs articles (Chhattisgarh, National, International)."
+    },
+    "/broadcast_notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/BroadcastNotification" },
+      "description": "Admin broadcast notifications with Rich Media and Pin support."
+    },
+    "/upcoming_tests/{upcomingId}": {
+      "schema": { "$ref": "#/entities/UpcomingTestItem" },
+      "description": "Scheduled upcoming exam test series announcements."
+    },
+    "/student_queries/{queryId}": {
+      "schema": { "$ref": "#/entities/StudentQuery" },
+      "description": "Private student queries and Admin support replies."
     }
   }
 }

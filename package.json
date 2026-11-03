@@ -1,0 +1,20 @@
+{
+  "name": "cgpedia-web",
+  "version": "2.0.0",
+  "private": true,
+  "description": "CGpedia - CGPSC & CGSSB Bilingual Test Series, 24-Hour Current Affairs Stories & Exam Preparation Portal",
+  "scripts": {
+    "start": "node serve-apk.js",
+    "dev": "node serve-apk.js",
+    "build": "echo 'CGpedia Root Web Application ready for Vercel deployment'"
+  },
+  "keywords": [
+    "CGPSC",
+    "CGSSB",
+    "CG Vyapam",
+    "Chhattisgarh GK",
+    "Bilingual Test Series",
+    "CGpedia"
+  ],
+  "author": "CGpedia Official (usahu0304@gmail.com)"
+}

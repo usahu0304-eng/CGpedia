@@ -14,20 +14,25 @@ import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.ai.CgpediaAiService
 import com.example.data.model.AppConfig
+import com.example.data.model.CurrentAffairItem
+import com.example.data.model.PurchaseRecord
 import com.example.data.model.UiState
+import com.example.data.model.isSubscriptionExpired
+import com.example.data.model.isWithin24Hours
+import com.example.data.model.remainingValidityDays
 import com.example.data.seed.CgpediaStarterCatalog
 import com.example.ui.components.CgpediaTopHeader
 import com.example.ui.i18n.AppStrings
-import com.example.ui.screens.AiTestGenerationProgressBanner
 import com.example.ui.screens.BilingualTestScreen
 import com.example.ui.screens.CurrentAffairsScreen
+import com.example.ui.screens.NotificationsAndQueriesScreen
 import com.example.ui.screens.PhoneAuthenticationContent
 import com.example.ui.theme.CGpediaTheme
 import com.example.ui.viewmodel.ActiveTestSession
-import com.example.ui.viewmodel.AdminAiGenerationProgress
 import com.example.ui.viewmodel.PhoneAuthStep
 import com.example.ui.viewmodel.PhoneAuthUiState
 import com.example.ui.viewmodel.PhoneAuthViewModel
+import com.google.firebase.Timestamp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -80,9 +85,9 @@ class ExampleRobolectricTest {
                     CurrentAffairsScreen(
                         strings = AppStrings.English,
                         currentAffairsState = UiState.Success(articles),
-                        isSyncing = false,
+                        isGeneratingQuiz = false,
                         isOwnerAdmin = false,
-                        onRefreshGroundedNews = {},
+                        onStartInstantQuiz = {},
                         onDeleteItemAdmin = {}
                     )
                 }
@@ -95,6 +100,8 @@ class ExampleRobolectricTest {
             .assertTextContains("CGPSC & CGSSB", substring = true)
 
         composeTestRule.onNodeWithTag("ca_instagram_stories_bar").assertIsDisplayed()
+        // Regular students see the top-right Quiz button in Current Affairs
+        composeTestRule.onNodeWithTag("ca_instant_quiz_button").assertIsDisplayed()
         // Regular students must NOT see the manual admin AI sync button
         composeTestRule.onNodeWithTag("ca_sync_grounded_button").assertDoesNotExist()
     }
@@ -244,38 +251,61 @@ class ExampleRobolectricTest {
     }
 
     @Test
-    fun `AI test generation timeout is at least 5 minutes and progress banner displays spinner and message`() {
+    fun `AI test generation timeout is at least 5 minutes and 24h story plus subscription validity rules work`() {
         assertTrue(
             "AI generation timeout must be at least 300,000 ms (5 minutes)",
             CgpediaAiService.AI_GENERATION_TIMEOUT_MS >= 300_000L
         )
 
-        val progress = AdminAiGenerationProgress(
-            isGenerating = true,
-            generatedCount = 30,
-            targetCount = 100,
-            currentBatch = 2,
-            totalBatches = 7,
-            statusMessage = "Generating questions, please wait..."
+        val nowMs = System.currentTimeMillis()
+        val recentStory = CurrentAffairItem(
+            id = "s1",
+            headlineHi = "ताज़ा खबर",
+            headlineEn = "Fresh Story",
+            createdAt = Timestamp((nowMs - 3_600_000L) / 1000L, 0)
         )
-        assertEquals(0.30f, progress.progressFraction, 0.001f)
+        val expiredStory = CurrentAffairItem(
+            id = "s2",
+            headlineHi = "पुरानी खबर",
+            headlineEn = "Expired Story",
+            createdAt = Timestamp((nowMs - 26L * 3_600_000L) / 1000L, 0)
+        )
+        assertTrue("Story posted 1 hour ago must be within 24 hours", recentStory.isWithin24Hours(nowMs))
+        assertFalse("Story posted 26 hours ago must expire after 24 hours", expiredStory.isWithin24Hours(nowMs))
+
+        val activePurchase = PurchaseRecord(
+            id = "p1",
+            testId = "cgpsc_pre_2026_series",
+            validityDays = 180L,
+            expiresAtMillis = nowMs + (30L * 86_400_000L)
+        )
+        val expiredPurchase = PurchaseRecord(
+            id = "p2",
+            testId = "cgpsc_pre_2026_series",
+            validityDays = 30L,
+            expiresAtMillis = nowMs - 86_400_000L
+        )
+        assertFalse(activePurchase.isSubscriptionExpired(nowMs))
+        assertEquals(30L, activePurchase.remainingValidityDays(nowMs))
+        assertTrue(expiredPurchase.isSubscriptionExpired(nowMs))
+        assertEquals(0L, expiredPurchase.remainingValidityDays(nowMs))
 
         composeTestRule.setContent {
             CGpediaTheme(darkTheme = false) {
-                AiTestGenerationProgressBanner(genProgress = progress)
+                NotificationsAndQueriesScreen(
+                    notifications = CgpediaStarterCatalog.defaultBroadcastNotifications("admin"),
+                    upcomingTests = CgpediaStarterCatalog.defaultUpcomingTests("admin"),
+                    myQueries = emptyList(),
+                    whatsappSupportNumber = "9238810070",
+                    onSubmitQuery = { _, _, _ -> }
+                )
             }
         }
 
         composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithTag("ai_generation_loading_card").assertIsDisplayed()
-        composeTestRule.onNodeWithTag("ai_generation_spinner").assertIsDisplayed()
-        composeTestRule.onNodeWithTag("ai_generation_progress_bar").assertIsDisplayed()
-        composeTestRule.onNodeWithTag("ai_generation_status_text")
-            .assertIsDisplayed()
-            .assertTextContains("Generating questions, please wait...", substring = true)
-        composeTestRule.onNodeWithTag("ai_generation_counter_text")
-            .assertIsDisplayed()
-            .assertTextContains("30 / 100", substring = true)
+        composeTestRule.onNodeWithTag("hub_subtab_0").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("hub_subtab_1").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("hub_subtab_2").assertIsDisplayed()
     }
 
     @Test

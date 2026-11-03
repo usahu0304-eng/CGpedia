@@ -294,4 +294,124 @@ test("7. Admin can manually grant paid test series access to student and save Su
   );
 });
 
+test("8. Admin Broadcast Notifications (with Rich Media & Pin) and Upcoming Tests work with RBAC", async () => {
+  const adminDb = testEnv.authenticatedContext(ADMIN_UID, {
+    email: ADMIN_EMAIL,
+    email_verified: true,
+  }).firestore();
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+  const now = new Date();
+
+  // Admin creates a pinned Broadcast Notification with PDF attachment
+  await assertSucceeds(
+    adminDb.collection("broadcast_notifications").doc("notif_1").set({
+      titleHi: "सीजीपीएससी प्री 2026 परीक्षा तिथि एवं सिलेबस पीडीएफ",
+      titleEn: "CGPSC Pre 2026 Exam Schedule & Syllabus PDF",
+      messageHi: "सभी अभ्यर्थी संलग्न आधिकारिक सिलेबस पीडीएफ डाउनलोड करें।",
+      messageEn: "All aspirants please download the attached official syllabus PDF.",
+      mediaType: "pdf",
+      mediaUrl: "https://psc.cg.gov.in/pdf/syllabus_2026.pdf",
+      mediaTitle: "CGPSC_Pre_2026_Syllabus.pdf",
+      isPinned: true,
+      visibility: "published",
+      createdBy: ADMIN_UID,
+      createdAt: now,
+      updatedAt: now,
+    })
+  );
+
+  // Student CANNOT create a broadcast notification
+  await assertFails(
+    aliceDb.collection("broadcast_notifications").doc("notif_spoof").set({
+      titleHi: "फर्जी सूचना",
+      titleEn: "Fake Notice",
+      messageHi: "फर्जी संदेश",
+      messageEn: "Fake message",
+      mediaType: "none",
+      mediaUrl: "",
+      mediaTitle: "",
+      isPinned: false,
+      visibility: "published",
+      createdBy: ALICE_UID,
+      createdAt: now,
+      updatedAt: now,
+    })
+  );
+
+  // Student CAN read published broadcast notifications
+  await assertSucceeds(
+    aliceDb.collection("broadcast_notifications").where("visibility", "==", "published").get()
+  );
+
+  // Admin creates an Upcoming Test Series schedule
+  await assertSucceeds(
+    adminDb.collection("upcoming_tests").doc("upcoming_1").set({
+      titleHi: "सीजीएसएसबी हॉस्टल वार्डन मेगा टेस्ट सीरीज",
+      titleEn: "CGSSB Hostel Warden Mega Test Series",
+      examCategory: "CGPSC & CGSSB",
+      scheduledDateLabel: "15 March 2026 • 10:00 AM",
+      syllabusSummaryHi: "कंप्यूटर ज्ञान, छत्तीसगढ़ सामान्य ज्ञान, गणित एवं बाल मनोविज्ञान",
+      syllabusSummaryEn: "Computer Knowledge, Chhattisgarh GK, Mathematics & Child Pedagogy",
+      isPaid: true,
+      priceInr: 99,
+      validityDays: 180,
+      visibility: "published",
+      createdBy: ADMIN_UID,
+      createdAt: now,
+      updatedAt: now,
+    })
+  );
+
+  // Student CAN read published upcoming tests
+  await assertSucceeds(
+    aliceDb.collection("upcoming_tests").where("visibility", "==", "published").get()
+  );
+});
+
+test("9. Strict Student Query Privacy: Student query is visible ONLY to that Student and Admin, never to other students", async () => {
+  const adminDb = testEnv.authenticatedContext(ADMIN_UID, {
+    email: ADMIN_EMAIL,
+    email_verified: true,
+  }).firestore();
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+  const bobDb = testEnv.authenticatedContext(BOB_UID).firestore();
+  const now = new Date();
+
+  // Alice submits a private payment/doubt query
+  await assertSucceeds(
+    aliceDb.collection("student_queries").doc("query_alice_1").set({
+      userId: ALICE_UID,
+      studentName: "Alice Sahu",
+      studentEmail: "alice@example.com",
+      category: "payment",
+      subject: "UPI Payment completed for CGPSC Pre 2026 Series",
+      message: "Sir, I paid ₹99 via UPI on WhatsApp 9238810070. Please activate my test series.",
+      adminReply: "",
+      status: "open",
+      createdAt: now,
+      updatedAt: now,
+    })
+  );
+
+  // Bob CANNOT read Alice's query directly or list all queries
+  await assertFails(bobDb.collection("student_queries").doc("query_alice_1").get());
+  await assertFails(bobDb.collection("student_queries").get());
+
+  // Alice CAN list her own queries
+  await assertSucceeds(
+    aliceDb.collection("student_queries").where("userId", "==", ALICE_UID).get()
+  );
+
+  // Admin CAN list all queries and post a reply + mark resolved
+  await assertSucceeds(adminDb.collection("student_queries").get());
+  await assertSucceeds(
+    adminDb.collection("student_queries").doc("query_alice_1").update({
+      adminReply: "Activated! Your 180-day validity has started from today.",
+      status: "resolved",
+      updatedAt: new Date(),
+    })
+  );
+});
+
+
 

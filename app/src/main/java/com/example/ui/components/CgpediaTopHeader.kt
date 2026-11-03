@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AdminPanelSettings
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -48,6 +49,7 @@ fun CgpediaTopHeader(
     isOwnerAdmin: Boolean,
     onToggleLanguage: () -> Unit,
     onOpenAdminConsole: () -> Unit,
+    onOpenNotificationsHub: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -109,7 +111,7 @@ fun CgpediaTopHeader(
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     if (isOwnerAdmin) {
                         AssistChip(
@@ -134,6 +136,19 @@ fun CgpediaTopHeader(
                                 containerColor = MaterialTheme.colorScheme.tertiaryContainer
                             ),
                             modifier = Modifier.testTag("header_admin_button")
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onOpenNotificationsHub,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .testTag("header_notifications_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.NotificationsActive,
+                            contentDescription = "Notifications, Upcoming Tests & Support Queries",
+                            tint = MaterialTheme.colorScheme.onPrimary
                         )
                     }
 

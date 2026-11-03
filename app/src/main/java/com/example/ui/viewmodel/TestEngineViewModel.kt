@@ -79,6 +79,27 @@ class TestEngineViewModel(
         }
     }
 
+    /**
+     * Launches an instant quiz with preloaded Bilingual Questions (such as the Current Affairs Instant Quiz).
+     */
+    fun startPreloadedQuiz(test: TestSeriesItem, questions: List<BilingualQuestion>) {
+        if (questions.isEmpty()) return
+        timerJob?.cancel()
+        val totalSecs = (test.durationMinutes.coerceIn(1L, 240L) * 60L).toInt()
+        val firstId = questions.first().id
+        _session.value = ActiveTestSession(
+            test = test,
+            questions = questions,
+            currentQuestionIndex = 0,
+            visitedQuestionIds = setOf(firstId),
+            remainingSeconds = totalSecs,
+            totalSeconds = totalSecs,
+            isLoading = false,
+            errorMessage = null
+        )
+        startCountdown()
+    }
+
     private fun startCountdown() {
         timerJob?.cancel()
         timerJob = viewModelScope.launch {

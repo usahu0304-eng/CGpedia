@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="hi" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+  <title>CGpedia — CGPSC &amp; CGSSB Bilingual Test Series &amp; Current Affairs</title>
+  <meta name="description" content="CGpedia (CGPSC & CGSSB) Official Bilingual Web & Android Exam Portal. 24-Hour Current Affairs Stories, CGPSC Pre 2026 Test Series (₹99), Live CBT Mock Tests, and Instant Analytics." />
+  <meta name="theme-color" content="#0F2557" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <!-- Top Android APK Direct Download & WhatsApp Support Bar -->
+  <div class="apk-top-banner">
+    <div class="apk-top-banner-inner">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span class="badge badge-paid" style="background:#F59E0B;color:#071330;border:none;">OFFICIAL APP v2.0</span>
+        <span><strong>CGpedia Android App (29.5 MB):</strong> डायरेक्ट APK डाउनलोड करें या वेब पर लाइव टेस्ट दें</span>
+      </div>
+      <div class="apk-banner-badges">
+        <a href="/CGpedia.apk" download="CGpedia.apk" class="apk-dl-btn">⬇ Download APK (Direct)</a>
+        <a href="https://tmpfiles.org/dl/wnAJo4UomQhk/cgpedia.apk" target="_blank" rel="noopener noreferrer" class="apk-mirror-link">Mirror 1 (Fast Cloud)</a>
+        <a href="https://gofile.io/d/Ib06a1Mn" target="_blank" rel="noopener noreferrer" class="apk-mirror-link">Mirror 2 (Gofile)</a>
+        <a href="https://wa.me/919238810070?text=Hello%20CGpedia%20Support%2C%20I%20want%20to%20join%20CGPSC%20Pre%202026%20Test%20Series%20(%E2%82%B999)" target="_blank" rel="noopener noreferrer" class="apk-mirror-link" style="color:#4ADE80;">💬 WhatsApp: 9238810070</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Sticky Header -->
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="brand-identity" id="brandHomeTrigger">
+        <div class="brand-emblem">CG</div>
+        <div>
+          <div class="brand-title">
+            <span>CGpedia</span>
+            <span class="badge badge-free" style="font-size:0.66rem;">द्विभाषी • Bilingual</span>
+          </div>
+          <div class="brand-subtitle">CGPSC &amp; CGSSB</div>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button class="btn btn-outline btn-sm" id="anthemBtn" title="Play Official CGpedia Anthem">
+          🎵 <span id="anthemBtnLabel">Anthem</span>
+        </button>
+        <button class="btn btn-outline btn-sm" id="studentLoginBtn">
+          👤 <span id="activeUserBadge">Student ID</span>
+        </button>
+        <button class="btn btn-outline btn-sm" id="themeToggleBtn" title="Toggle Dark/Light Theme">
+          🌙 Theme
+        </button>
+        <a href="/CGpedia.apk" download="CGpedia.apk" class="btn btn-gold btn-sm">
+          📲 Install APK
+        </a>
+      </div>
+    </div>
+
+    <!-- Primary Navigation Bar -->
+    <nav class="nav-tabs" id="mainNavTabs">
+      <button class="nav-tab active" data-tab="dashboard">🏠 Exam Folders &amp; Tests</button>
+      <button class="nav-tab" data-tab="current-affairs">⚡ Current Affairs &amp; Quiz</button>
+      <button class="nav-tab" data-tab="notifications">📢 Notifications &amp; Upcoming <span id="notifCountBadge" class="badge badge-live">3</span></button>
+      <button class="nav-tab" data-tab="support">🛡️ Private Query &amp; Help</button>
+      <button class="nav-tab" data-tab="admin">⚙️ Admin Panel</button>
+    </nav>
+  </header>
+
+  <!-- Dynamic Application Root -->
+  <main class="main-container" id="appRoot"></main>
+
+  <!-- Fullscreen Story Modal Container -->
+  <div id="storyModalContainer"></div>
+
+  <!-- Generic Modal Container -->
+  <div id="genericModalContainer"></div>
+
+  <!-- Toast Notifications Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
