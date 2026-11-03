@@ -1,0 +1,6 @@
+{
+  "name": "CGpedia",
+  "description": "Cloud-backed CGPSC and CGSSB competitive exam preparation platform with bilingual Hindi-English test series, auto-updated current affairs, and admin AI test generator.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

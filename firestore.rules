@@ -1,0 +1,714 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 0. Global Default-Deny Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Global Hardened Primitives ---
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Strict RBAC: Bootstrapped verified owner email OR trusted /admins/{uid} lookup
+    function isAdmin() {
+      return isSignedIn() && (
+        (
+          'email' in request.auth.token &&
+          'email_verified' in request.auth.token &&
+          request.auth.token.email == 'usahu0304@gmail.com' &&
+          request.auth.token.email_verified == true
+        ) ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isValidTimestamp(ts) {
+      return ts is timestamp && ts <= request.time;
+    }
+
+    function isValidFourOptions(opts) {
+      return opts is list && opts.size() == 4 &&
+             opts[0] is string && opts[0].size() >= 1 && opts[0].size() <= 800 &&
+             opts[1] is string && opts[1].size() >= 1 && opts[1].size() <= 800 &&
+             opts[2] is string && opts[2].size() >= 1 && opts[2].size() <= 800 &&
+             opts[3] is string && opts[3].size() >= 1 && opts[3].size() <= 800;
+    }
+
+    function isValidBoundedPoints(pts) {
+      return pts is list && pts.size() <= 8 &&
+             (pts.size() == 0 || (pts[0] is string && pts[0].size() >= 1 && pts[0].size() <= 500));
+    }
+
+    // --- Validation Blueprints (Pillar 2: Anti-Update-Gap) ---
+
+    function isValidUserProfile(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80 &&
+             data.email is string && data.email.size() <= 120 &&
+             data.phoneNumber is string && data.phoneNumber.size() <= 20 &&
+             data.photoUrl is string && data.photoUrl.size() <= 500 &&
+             data.targetExam in ['CGPSC & CGSSB', 'CGPSC Prelims', 'CGPSC Mains', 'CGSSB / Vyapam', 'CGPSC + CGSSB Combined'] &&
+             data.preferredLanguage in ['en', 'hi'] &&
+             data.darkMode is bool &&
+             data.notifyCurrentAffairs is bool &&
+             data.notifyNewTests is bool &&
+             data.role in ['student', 'admin'];
+    }
+
+    function isValidPurchaseRecord(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.testId is string && data.testId.size() >= 1 && data.testId.size() <= 128 &&
+             data.testTitleHi is string && data.testTitleHi.size() >= 1 && data.testTitleHi.size() <= 200 &&
+             data.testTitleEn is string && data.testTitleEn.size() >= 1 && data.testTitleEn.size() <= 200 &&
+             data.amountInr is int && data.amountInr >= 0 && data.amountInr <= 50000 &&
+             data.paymentMethod in ['UPI', 'Card', 'NetBanking', 'AdminGrant', 'WhatsApp'] &&
+             data.transactionRef is string && data.transactionRef.size() >= 3 && data.transactionRef.size() <= 120 &&
+             data.status == 'completed';
+    }
+
+    function isValidTestAttempt(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.testId is string && data.testId.size() >= 1 && data.testId.size() <= 128 &&
+             data.testTitleHi is string && data.testTitleHi.size() >= 1 && data.testTitleHi.size() <= 200 &&
+             data.testTitleEn is string && data.testTitleEn.size() >= 1 && data.testTitleEn.size() <= 200 &&
+             data.totalQuestions is int && data.totalQuestions >= 1 && data.totalQuestions <= 100 &&
+             data.attemptedCount is int && data.attemptedCount >= 0 && data.attemptedCount <= 100 &&
+             data.correctCount is int && data.correctCount >= 0 && data.correctCount <= 100 &&
+             data.incorrectCount is int && data.incorrectCount >= 0 && data.incorrectCount <= 100 &&
+             (data.score is int || data.score is float) && data.score >= -200 && data.score <= 400 &&
+             (data.maxScore is int || data.maxScore is float) && data.maxScore >= 1 && data.maxScore <= 400 &&
+             data.accuracyPercent is int && data.accuracyPercent >= 0 && data.accuracyPercent <= 100 &&
+             data.timeTakenSeconds is int && data.timeTakenSeconds >= 0 && data.timeTakenSeconds <= 21600 &&
+             data.selectedAnswers is map && data.selectedAnswers.size() <= 100 &&
+             data.status == 'submitted';
+    }
+
+    function isValidBookmark(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.questionId is string && data.questionId.size() >= 1 && data.questionId.size() <= 128 &&
+             data.testId is string && data.testId.size() >= 1 && data.testId.size() <= 128 &&
+             data.questionHi is string && data.questionHi.size() >= 1 && data.questionHi.size() <= 2000 &&
+             data.questionEn is string && data.questionEn.size() >= 1 && data.questionEn.size() <= 2000 &&
+             isValidFourOptions(data.optionsHi) &&
+             isValidFourOptions(data.optionsEn) &&
+             data.correctOptionIndex is int && data.correctOptionIndex >= 0 && data.correctOptionIndex <= 3 &&
+             data.explanationHi is string && data.explanationHi.size() >= 1 && data.explanationHi.size() <= 4000 &&
+             data.explanationEn is string && data.explanationEn.size() >= 1 && data.explanationEn.size() <= 4000 &&
+             data.subjectTag is string && data.subjectTag.size() >= 1 && data.subjectTag.size() <= 120 &&
+             data.isOfflineCached is bool;
+    }
+
+    function isValidCurrentAffair(data) {
+      return data.category in ['chhattisgarh', 'national', 'international'] &&
+             data.headlineHi is string && data.headlineHi.size() >= 1 && data.headlineHi.size() <= 300 &&
+             data.headlineEn is string && data.headlineEn.size() >= 1 && data.headlineEn.size() <= 300 &&
+             data.summaryHi is string && data.summaryHi.size() >= 1 && data.summaryHi.size() <= 3000 &&
+             data.summaryEn is string && data.summaryEn.size() >= 1 && data.summaryEn.size() <= 3000 &&
+             isValidBoundedPoints(data.examKeyPointsHi) &&
+             isValidBoundedPoints(data.examKeyPointsEn) &&
+             data.sourceName is string && data.sourceName.size() >= 1 && data.sourceName.size() <= 120 &&
+             data.sourceUrl is string && data.sourceUrl.size() <= 500 &&
+             data.dateLabel is string && data.dateLabel.size() >= 4 && data.dateLabel.size() <= 40 &&
+             data.visibility in ['published', 'archived'] &&
+             data.sourceModule in ['ai_grounding_pipeline', 'admin_curated'] &&
+             data.authorUid is string && data.authorUid.size() >= 1 && data.authorUid.size() <= 128;
+    }
+
+    function isValidExamFolder(data) {
+      return data.titleHi is string && data.titleHi.size() >= 1 && data.titleHi.size() <= 120 &&
+             data.titleEn is string && data.titleEn.size() >= 1 && data.titleEn.size() <= 120 &&
+             data.descriptionHi is string && data.descriptionHi.size() <= 400 &&
+             data.descriptionEn is string && data.descriptionEn.size() <= 400 &&
+             data.examCode is string && data.examCode.size() >= 1 && data.examCode.size() <= 40 &&
+             data.sortOrder is int && data.sortOrder >= 0 && data.sortOrder <= 1000 &&
+             data.isFreeFolder is bool &&
+             data.priceInr is int && data.priceInr >= 0 && data.priceInr <= 50000 &&
+             data.testCount is int && data.testCount >= 0 && data.testCount <= 500 &&
+             data.visibility in ['published', 'archived'] &&
+             data.createdBy is string && data.createdBy.size() >= 1 && data.createdBy.size() <= 128;
+    }
+
+    function isValidSubjectFolder(data) {
+      return data.titleHi is string && data.titleHi.size() >= 1 && data.titleHi.size() <= 120 &&
+             data.titleEn is string && data.titleEn.size() >= 1 && data.titleEn.size() <= 120 &&
+             data.descriptionHi is string && data.descriptionHi.size() <= 400 &&
+             data.descriptionEn is string && data.descriptionEn.size() <= 400 &&
+             data.subjectCode is string && data.subjectCode.size() >= 1 && data.subjectCode.size() <= 40 &&
+             data.sortOrder is int && data.sortOrder >= 0 && data.sortOrder <= 1000 &&
+             data.isFreeFolder is bool &&
+             data.priceInr is int && data.priceInr >= 0 && data.priceInr <= 50000 &&
+             data.testCount is int && data.testCount >= 0 && data.testCount <= 500 &&
+             data.visibility in ['published', 'archived'] &&
+             data.createdBy is string && data.createdBy.size() >= 1 && data.createdBy.size() <= 128;
+    }
+
+    function isValidTestSeriesItem(data) {
+      return data.folderType in ['exam', 'subject'] &&
+             data.folderId is string && data.folderId.size() >= 1 && data.folderId.size() <= 128 &&
+             data.titleHi is string && data.titleHi.size() >= 1 && data.titleHi.size() <= 200 &&
+             data.titleEn is string && data.titleEn.size() >= 1 && data.titleEn.size() <= 200 &&
+             data.topic is string && data.topic.size() >= 1 && data.topic.size() <= 200 &&
+             data.difficulty in ['Easy', 'Moderate', 'Hard', 'CGPSC_Level'] &&
+             data.durationMinutes is int && data.durationMinutes >= 1 && data.durationMinutes <= 240 &&
+             data.questionLimit is int && data.questionLimit >= 1 && data.questionLimit <= 100 &&
+             data.questionCount is int && data.questionCount >= 0 && data.questionCount <= 100 &&
+             (data.marksPerQuestion is int || data.marksPerQuestion is float) && data.marksPerQuestion > 0 && data.marksPerQuestion <= 10 &&
+             (data.negativeMarking is int || data.negativeMarking is float) && data.negativeMarking >= 0 && data.negativeMarking <= 5 &&
+             data.isPaid is bool &&
+             data.priceInr is int && data.priceInr >= 0 && data.priceInr <= 50000 &&
+             data.status in ['draft', 'published'] &&
+             data.createdBy is string && data.createdBy.size() >= 1 && data.createdBy.size() <= 128;
+    }
+
+    function isValidBilingualQuestion(data) {
+      return data.testId is string && data.testId.size() >= 1 && data.testId.size() <= 128 &&
+             data.orderIndex is int && data.orderIndex >= 0 && data.orderIndex <= 99 &&
+             data.questionHi is string && data.questionHi.size() >= 1 && data.questionHi.size() <= 2000 &&
+             data.questionEn is string && data.questionEn.size() >= 1 && data.questionEn.size() <= 2000 &&
+             isValidFourOptions(data.optionsHi) &&
+             isValidFourOptions(data.optionsEn) &&
+             data.correctOptionIndex is int && data.correctOptionIndex >= 0 && data.correctOptionIndex <= 3 &&
+             data.explanationHi is string && data.explanationHi.size() >= 1 && data.explanationHi.size() <= 4000 &&
+             data.explanationEn is string && data.explanationEn.size() >= 1 && data.explanationEn.size() <= 4000 &&
+             data.subjectTag is string && data.subjectTag.size() >= 1 && data.subjectTag.size() <= 120 &&
+             data.visibility in ['draft', 'published'] &&
+             data.createdBy is string && data.createdBy.size() >= 1 && data.createdBy.size() <= 128;
+    }
+
+    function isValidAppConfig(data) {
+      return data.configKey == 'global' &&
+             data.anthemTitleHi is string && data.anthemTitleHi.size() <= 150 &&
+             data.anthemTitleEn is string && data.anthemTitleEn.size() <= 150 &&
+             data.anthemSourceType in ['bundled', 'url', 'cloud_chunks', 'none'] &&
+             data.anthemAudioUrl is string && data.anthemAudioUrl.size() <= 1000 &&
+             data.anthemChunkCount is int && data.anthemChunkCount >= 0 && data.anthemChunkCount <= 20 &&
+             data.anthemMimeType is string && data.anthemMimeType.size() <= 60 &&
+             data.telegramChannelUrl is string && data.telegramChannelUrl.size() <= 300 &&
+             data.supportEmail is string && data.supportEmail.size() <= 120 &&
+             (!('whatsappSupportNumber' in data) || (data.whatsappSupportNumber is string && data.whatsappSupportNumber.size() <= 40)) &&
+             (!('supportPolicyHi' in data) || (data.supportPolicyHi is string && data.supportPolicyHi.size() <= 4000)) &&
+             (!('supportPolicyEn' in data) || (data.supportPolicyEn is string && data.supportPolicyEn.size() <= 4000)) &&
+             (!('latestVersionCode' in data) || (data.latestVersionCode is int && data.latestVersionCode >= 1 && data.latestVersionCode <= 10000)) &&
+             (!('latestVersionName' in data) || (data.latestVersionName is string && data.latestVersionName.size() <= 40)) &&
+             (!('apkDownloadUrl' in data) || (data.apkDownloadUrl is string && data.apkDownloadUrl.size() <= 1000)) &&
+             (!('updateNotesHi' in data) || (data.updateNotesHi is string && data.updateNotesHi.size() <= 2000)) &&
+             (!('updateNotesEn' in data) || (data.updateNotesEn is string && data.updateNotesEn.size() <= 2000)) &&
+             data.updatedBy is string && data.updatedBy.size() >= 1 && data.updatedBy.size() <= 128;
+    }
+
+    function isValidAnthemChunk(data) {
+      return data.chunkIndex is int && data.chunkIndex >= 0 && data.chunkIndex <= 19 &&
+             data.base64Data is string && data.base64Data.size() >= 1 && data.base64Data.size() <= 600000 &&
+             data.configKey == 'global' &&
+             data.uploadedBy is string && data.uploadedBy.size() >= 1 && data.uploadedBy.size() <= 128;
+    }
+
+    // 1. Trusted Admin Registry (Read-only from client SDK; never self-writable)
+    match /admins/{adminId} {
+      allow get: if isSignedIn() && isValidId(adminId) && (request.auth.uid == adminId || isAdmin());
+      allow list: if isAdmin() && existing().uid is string;
+      allow create, update, delete: if false;
+    }
+
+    // 2. User Profiles (Strict PII Isolation + Anti-Privilege-Escalation)
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
+      allow list: if isAdmin() && existing().role in ['student', 'admin'];
+
+      allow create: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll([
+                         'userId', 'displayName', 'email', 'phoneNumber', 'photoUrl',
+                         'targetExam', 'preferredLanguage', 'darkMode',
+                         'notifyCurrentAffairs', 'notifyNewTests', 'role',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId', 'displayName', 'email', 'phoneNumber', 'photoUrl',
+                         'targetExam', 'preferredLanguage', 'darkMode',
+                         'notifyCurrentAffairs', 'notifyNewTests', 'role',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidUserProfile(incoming()) &&
+                       (incoming().role == 'student' || (incoming().role == 'admin' && isAdmin())) &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       isValidTimestamp(incoming().updatedAt);
+
+      allow update: if isSignedIn() &&
+                       isValidId(userId) &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidTimestamp(incoming().updatedAt) && (
+                         // Action 1: Student updates own profile/settings (cannot change role)
+                         (
+                           request.auth.uid == userId &&
+                           incoming().role == existing().role &&
+                           incoming().diff(existing()).affectedKeys().hasOnly([
+                             'displayName', 'email', 'phoneNumber', 'photoUrl',
+                             'targetExam', 'preferredLanguage', 'darkMode',
+                             'notifyCurrentAffairs', 'notifyNewTests', 'updatedAt'
+                           ])
+                         ) ||
+                         // Action 2: Admin escape hatch
+                         (
+                           isAdmin() &&
+                           incoming().diff(existing()).affectedKeys().hasOnly([
+                             'displayName', 'email', 'phoneNumber', 'photoUrl',
+                             'targetExam', 'preferredLanguage', 'darkMode',
+                             'notifyCurrentAffairs', 'notifyNewTests', 'role', 'updatedAt'
+                           ])
+                         )
+                       );
+
+      allow delete: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isAdmin());
+
+      // 2a. Student Purchases & Admin Manual Access Grants (Terminal State Locked)
+      match /purchases/{purchaseId} {
+        allow get: if isSignedIn() && isValidId(userId) && isValidId(purchaseId) &&
+                      (request.auth.uid == userId || isAdmin());
+        allow list: if isSignedIn() && (
+                        (request.auth.uid == userId && existing().userId == request.auth.uid) ||
+                        isAdmin()
+                      );
+
+        allow create: if isSignedIn() &&
+                         isValidId(userId) &&
+                         isValidId(purchaseId) &&
+                         (
+                           (request.auth.uid == userId && incoming().userId == request.auth.uid) ||
+                           (isAdmin() && incoming().userId == userId)
+                         ) &&
+                         incoming().keys().hasAll([
+                           'userId', 'testId', 'testTitleHi', 'testTitleEn',
+                           'amountInr', 'paymentMethod', 'transactionRef', 'status', 'createdAt'
+                         ]) &&
+                         incoming().keys().hasOnly([
+                           'userId', 'testId', 'testTitleHi', 'testTitleEn',
+                           'amountInr', 'paymentMethod', 'transactionRef', 'status', 'createdAt'
+                         ]) &&
+                         isValidPurchaseRecord(incoming()) &&
+                         isValidTimestamp(incoming().createdAt);
+
+        allow update: if isSignedIn() &&
+                         isValidId(userId) &&
+                         isValidId(purchaseId) &&
+                         isValidPurchaseRecord(incoming()) &&
+                         isAdmin() &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly([
+                           'transactionRef', 'paymentMethod', 'amountInr', 'testTitleHi', 'testTitleEn'
+                         ]);
+
+        allow delete: if isAdmin() && isValidId(userId) && isValidId(purchaseId);
+      }
+
+      // 2b. Student Test Attempts & Scorecards (Terminal State Locked)
+      match /attempts/{attemptId} {
+        allow get: if isSignedIn() && isValidId(userId) && isValidId(attemptId) &&
+                      (request.auth.uid == userId || isAdmin());
+        allow list: if isSignedIn() && (
+                        (request.auth.uid == userId && existing().userId == request.auth.uid) ||
+                        isAdmin()
+                      );
+
+        allow create: if isSignedIn() &&
+                         isValidId(userId) &&
+                         isValidId(attemptId) &&
+                         request.auth.uid == userId &&
+                         incoming().userId == request.auth.uid &&
+                         incoming().keys().hasAll([
+                           'userId', 'testId', 'testTitleHi', 'testTitleEn',
+                           'totalQuestions', 'attemptedCount', 'correctCount', 'incorrectCount',
+                           'score', 'maxScore', 'accuracyPercent', 'timeTakenSeconds',
+                           'selectedAnswers', 'status', 'createdAt'
+                         ]) &&
+                         incoming().keys().hasOnly([
+                           'userId', 'testId', 'testTitleHi', 'testTitleEn',
+                           'totalQuestions', 'attemptedCount', 'correctCount', 'incorrectCount',
+                           'score', 'maxScore', 'accuracyPercent', 'timeTakenSeconds',
+                           'selectedAnswers', 'status', 'createdAt'
+                         ]) &&
+                         isValidTestAttempt(incoming()) &&
+                         isValidTimestamp(incoming().createdAt);
+
+        allow update: if isSignedIn() &&
+                         isValidId(userId) &&
+                         isValidId(attemptId) &&
+                         isValidTestAttempt(incoming()) &&
+                         isAdmin() &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['score', 'accuracyPercent']);
+
+        allow delete: if isAdmin() && isValidId(userId) && isValidId(attemptId);
+      }
+
+      // 2c. Student Bookmarks & Offline Downloads
+      match /bookmarks/{bookmarkId} {
+        allow get: if isSignedIn() && isValidId(userId) && isValidId(bookmarkId) &&
+                      (request.auth.uid == userId || isAdmin());
+        allow list: if isSignedIn() && (
+                        (request.auth.uid == userId && existing().userId == request.auth.uid) ||
+                        isAdmin()
+                      );
+
+        allow create: if isSignedIn() &&
+                         isValidId(userId) &&
+                         isValidId(bookmarkId) &&
+                         request.auth.uid == userId &&
+                         incoming().userId == request.auth.uid &&
+                         incoming().keys().hasAll([
+                           'userId', 'questionId', 'testId', 'questionHi', 'questionEn',
+                           'optionsHi', 'optionsEn', 'correctOptionIndex',
+                           'explanationHi', 'explanationEn', 'subjectTag',
+                           'isOfflineCached', 'createdAt', 'updatedAt'
+                         ]) &&
+                         incoming().keys().hasOnly([
+                           'userId', 'questionId', 'testId', 'questionHi', 'questionEn',
+                           'optionsHi', 'optionsEn', 'correctOptionIndex',
+                           'explanationHi', 'explanationEn', 'subjectTag',
+                           'isOfflineCached', 'createdAt', 'updatedAt'
+                         ]) &&
+                         isValidBookmark(incoming()) &&
+                         isValidTimestamp(incoming().createdAt) &&
+                         isValidTimestamp(incoming().updatedAt);
+
+        allow update: if isSignedIn() &&
+                         isValidId(userId) &&
+                         isValidId(bookmarkId) &&
+                         isValidBookmark(incoming()) &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         isValidTimestamp(incoming().updatedAt) && (
+                           (
+                             request.auth.uid == userId &&
+                             incoming().diff(existing()).affectedKeys().hasOnly(['isOfflineCached', 'updatedAt'])
+                           ) ||
+                           (
+                             isAdmin() &&
+                             incoming().diff(existing()).affectedKeys().hasOnly(['isOfflineCached', 'subjectTag', 'updatedAt'])
+                           )
+                         );
+
+        allow delete: if isSignedIn() && isValidId(userId) && isValidId(bookmarkId) &&
+                         (request.auth.uid == userId || isAdmin());
+      }
+    }
+
+    // 3. Auto-Updated Current Affairs (AI Search Grounding Pipeline + Admin Curation)
+    match /current_affairs/{articleId} {
+      allow get: if isSignedIn() && isValidId(articleId) &&
+                    (existing().visibility == 'published' || isAdmin());
+      allow list: if isSignedIn() &&
+                     (existing().visibility == 'published' || isAdmin());
+
+      allow create: if isSignedIn() &&
+                       isValidId(articleId) &&
+                       incoming().authorUid == request.auth.uid &&
+                       incoming().keys().hasAll([
+                         'category', 'headlineHi', 'headlineEn', 'summaryHi', 'summaryEn',
+                         'examKeyPointsHi', 'examKeyPointsEn', 'sourceName', 'sourceUrl',
+                         'dateLabel', 'visibility', 'sourceModule', 'authorUid',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'category', 'headlineHi', 'headlineEn', 'summaryHi', 'summaryEn',
+                         'examKeyPointsHi', 'examKeyPointsEn', 'sourceName', 'sourceUrl',
+                         'dateLabel', 'visibility', 'sourceModule', 'authorUid',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidCurrentAffair(incoming()) &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       isValidTimestamp(incoming().updatedAt) &&
+                       (
+                         (incoming().sourceModule == 'ai_grounding_pipeline' && incoming().visibility == 'published') ||
+                         isAdmin()
+                       );
+
+      allow update: if isSignedIn() &&
+                       isValidId(articleId) &&
+                       isValidCurrentAffair(incoming()) &&
+                       isAdmin() &&
+                       incoming().authorUid == existing().authorUid &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidTimestamp(incoming().updatedAt) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'category', 'headlineHi', 'headlineEn', 'summaryHi', 'summaryEn',
+                         'examKeyPointsHi', 'examKeyPointsEn', 'sourceName', 'sourceUrl',
+                         'dateLabel', 'visibility', 'updatedAt'
+                       ]);
+
+      allow delete: if isAdmin() && isValidId(articleId);
+    }
+
+    // 4. Exam-Wise Test Series Folders (Admin Write Only; Students Read Published Only)
+    match /exam_folders/{folderId} {
+      allow get: if isSignedIn() && isValidId(folderId) &&
+                    (existing().visibility == 'published' || isAdmin());
+      allow list: if isSignedIn() &&
+                     (existing().visibility == 'published' || isAdmin());
+
+      allow create: if isSignedIn() &&
+                       isValidId(folderId) &&
+                       isAdmin() &&
+                       incoming().createdBy == request.auth.uid &&
+                       incoming().keys().hasAll([
+                         'titleHi', 'titleEn', 'descriptionHi', 'descriptionEn',
+                         'examCode', 'sortOrder', 'isFreeFolder', 'priceInr',
+                         'testCount', 'visibility', 'createdBy', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'titleHi', 'titleEn', 'descriptionHi', 'descriptionEn',
+                         'examCode', 'sortOrder', 'isFreeFolder', 'priceInr',
+                         'testCount', 'visibility', 'createdBy', 'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidExamFolder(incoming()) &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       isValidTimestamp(incoming().updatedAt);
+
+      allow update: if isSignedIn() &&
+                       isValidId(folderId) &&
+                       isValidExamFolder(incoming()) &&
+                       isAdmin() &&
+                       incoming().createdBy == existing().createdBy &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidTimestamp(incoming().updatedAt) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'titleHi', 'titleEn', 'descriptionHi', 'descriptionEn',
+                         'examCode', 'sortOrder', 'isFreeFolder', 'priceInr',
+                         'testCount', 'visibility', 'updatedAt'
+                       ]);
+
+      allow delete: if isAdmin() && isValidId(folderId);
+    }
+
+    // 5. Subject-Wise Test Series Folders (Admin Write Only; Students Read Published Only)
+    match /subject_folders/{folderId} {
+      allow get: if isSignedIn() && isValidId(folderId) &&
+                    (existing().visibility == 'published' || isAdmin());
+      allow list: if isSignedIn() &&
+                     (existing().visibility == 'published' || isAdmin());
+
+      allow create: if isSignedIn() &&
+                       isValidId(folderId) &&
+                       isAdmin() &&
+                       incoming().createdBy == request.auth.uid &&
+                       incoming().keys().hasAll([
+                         'titleHi', 'titleEn', 'descriptionHi', 'descriptionEn',
+                         'subjectCode', 'sortOrder', 'isFreeFolder', 'priceInr',
+                         'testCount', 'visibility', 'createdBy', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'titleHi', 'titleEn', 'descriptionHi', 'descriptionEn',
+                         'subjectCode', 'sortOrder', 'isFreeFolder', 'priceInr',
+                         'testCount', 'visibility', 'createdBy', 'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidSubjectFolder(incoming()) &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       isValidTimestamp(incoming().updatedAt);
+
+      allow update: if isSignedIn() &&
+                       isValidId(folderId) &&
+                       isValidSubjectFolder(incoming()) &&
+                       isAdmin() &&
+                       incoming().createdBy == existing().createdBy &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidTimestamp(incoming().updatedAt) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'titleHi', 'titleEn', 'descriptionHi', 'descriptionEn',
+                         'subjectCode', 'sortOrder', 'isFreeFolder', 'priceInr',
+                         'testCount', 'visibility', 'updatedAt'
+                       ]);
+
+      allow delete: if isAdmin() && isValidId(folderId);
+    }
+
+    // 6. Test Series Metadata (Admin Draft & Publish Workflow; Students Read Published Only)
+    match /tests/{testId} {
+      allow get: if isSignedIn() && isValidId(testId) &&
+                    (existing().status == 'published' || isAdmin());
+      allow list: if isSignedIn() &&
+                     (existing().status == 'published' || isAdmin());
+
+      allow create: if isSignedIn() &&
+                       isValidId(testId) &&
+                       isAdmin() &&
+                       incoming().createdBy == request.auth.uid &&
+                       incoming().keys().hasAll([
+                         'folderType', 'folderId', 'titleHi', 'titleEn', 'topic',
+                         'difficulty', 'durationMinutes', 'questionLimit', 'questionCount',
+                         'marksPerQuestion', 'negativeMarking', 'isPaid', 'priceInr',
+                         'status', 'createdBy', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'folderType', 'folderId', 'titleHi', 'titleEn', 'topic',
+                         'difficulty', 'durationMinutes', 'questionLimit', 'questionCount',
+                         'marksPerQuestion', 'negativeMarking', 'isPaid', 'priceInr',
+                         'status', 'createdBy', 'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidTestSeriesItem(incoming()) &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       isValidTimestamp(incoming().updatedAt);
+
+      allow update: if isSignedIn() &&
+                       isValidId(testId) &&
+                       isValidTestSeriesItem(incoming()) &&
+                       isAdmin() &&
+                       incoming().createdBy == existing().createdBy &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidTimestamp(incoming().updatedAt) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'folderType', 'folderId', 'titleHi', 'titleEn', 'topic',
+                         'difficulty', 'durationMinutes', 'questionLimit', 'questionCount',
+                         'marksPerQuestion', 'negativeMarking', 'isPaid', 'priceInr',
+                         'status', 'updatedAt'
+                       ]);
+
+      allow delete: if isAdmin() && isValidId(testId);
+    }
+
+    // 7. Bilingual Questions (1st Hindi, 2nd English; Admin Write Only)
+    match /questions/{questionId} {
+      allow get: if isSignedIn() && isValidId(questionId) &&
+                    (existing().visibility == 'published' || isAdmin());
+      allow list: if isSignedIn() &&
+                     (existing().visibility == 'published' || isAdmin());
+
+      allow create: if isSignedIn() &&
+                       isValidId(questionId) &&
+                       isAdmin() &&
+                       incoming().createdBy == request.auth.uid &&
+                       incoming().keys().hasAll([
+                         'testId', 'orderIndex', 'questionHi', 'questionEn',
+                         'optionsHi', 'optionsEn', 'correctOptionIndex',
+                         'explanationHi', 'explanationEn', 'subjectTag',
+                         'visibility', 'createdBy', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'testId', 'orderIndex', 'questionHi', 'questionEn',
+                         'optionsHi', 'optionsEn', 'correctOptionIndex',
+                         'explanationHi', 'explanationEn', 'subjectTag',
+                         'visibility', 'createdBy', 'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidBilingualQuestion(incoming()) &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       isValidTimestamp(incoming().updatedAt);
+
+      allow update: if isSignedIn() &&
+                       isValidId(questionId) &&
+                       isValidBilingualQuestion(incoming()) &&
+                       isAdmin() &&
+                       incoming().createdBy == existing().createdBy &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidTimestamp(incoming().updatedAt) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'orderIndex', 'questionHi', 'questionEn',
+                         'optionsHi', 'optionsEn', 'correctOptionIndex',
+                         'explanationHi', 'explanationEn', 'subjectTag',
+                         'visibility', 'updatedAt'
+                       ]);
+
+      allow delete: if isAdmin() && isValidId(questionId);
+    }
+
+    // 8. Global App Config & Channel Anthem Metadata (Admin Write Only)
+    match /app_config/{configId} {
+      allow get: if isSignedIn() && isValidId(configId) &&
+                    (existing().configKey == 'global' || isAdmin());
+      allow list: if isSignedIn() &&
+                     (existing().configKey == 'global' || isAdmin());
+
+      allow create: if isSignedIn() &&
+                       isValidId(configId) &&
+                       isAdmin() &&
+                       incoming().updatedBy == request.auth.uid &&
+                       incoming().keys().hasAll([
+                         'configKey', 'anthemTitleHi', 'anthemTitleEn',
+                         'anthemSourceType', 'anthemAudioUrl', 'anthemChunkCount',
+                         'anthemMimeType', 'telegramChannelUrl', 'supportEmail',
+                         'updatedBy', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'configKey', 'anthemTitleHi', 'anthemTitleEn',
+                         'anthemSourceType', 'anthemAudioUrl', 'anthemChunkCount',
+                         'anthemMimeType', 'telegramChannelUrl', 'supportEmail',
+                         'whatsappSupportNumber', 'supportPolicyHi', 'supportPolicyEn',
+                         'latestVersionCode', 'latestVersionName', 'apkDownloadUrl',
+                         'updateNotesHi', 'updateNotesEn',
+                         'updatedBy', 'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidAppConfig(incoming()) &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       isValidTimestamp(incoming().updatedAt);
+
+      allow update: if isSignedIn() &&
+                       isValidId(configId) &&
+                       isValidAppConfig(incoming()) &&
+                       isAdmin() &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedBy == request.auth.uid &&
+                       isValidTimestamp(incoming().updatedAt) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'anthemTitleHi', 'anthemTitleEn', 'anthemSourceType',
+                         'anthemAudioUrl', 'anthemChunkCount', 'anthemMimeType',
+                         'telegramChannelUrl', 'supportEmail',
+                         'whatsappSupportNumber', 'supportPolicyHi', 'supportPolicyEn',
+                         'latestVersionCode', 'latestVersionName', 'apkDownloadUrl',
+                         'updateNotesHi', 'updateNotesEn',
+                         'updatedBy', 'updatedAt'
+                       ]);
+
+      allow delete: if isAdmin() && isValidId(configId);
+    }
+
+    // 9. Cloud Anthem Binary Audio Chunks (Admin Upload/Delete Only)
+    match /anthem_chunks/{chunkId} {
+      allow get: if isSignedIn() && isValidId(chunkId) &&
+                    (existing().configKey == 'global' || isAdmin());
+      allow list: if isSignedIn() &&
+                     (existing().configKey == 'global' || isAdmin());
+
+      allow create: if isSignedIn() &&
+                       isValidId(chunkId) &&
+                       isAdmin() &&
+                       incoming().uploadedBy == request.auth.uid &&
+                       incoming().keys().hasAll([
+                         'chunkIndex', 'base64Data', 'configKey', 'uploadedBy', 'createdAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'chunkIndex', 'base64Data', 'configKey', 'uploadedBy', 'createdAt'
+                       ]) &&
+                       isValidAnthemChunk(incoming()) &&
+                       isValidTimestamp(incoming().createdAt);
+
+      allow update: if isSignedIn() &&
+                       isValidId(chunkId) &&
+                       isValidAnthemChunk(incoming()) &&
+                       isAdmin() &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().uploadedBy == request.auth.uid &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['base64Data', 'uploadedBy']);
+
+      allow delete: if isAdmin() && isValidId(chunkId);
+    }
+  }
+}

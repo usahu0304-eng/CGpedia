@@ -1,0 +1,28 @@
+<resources>
+    <string name="app_name">CGpedia</string>
+    <string name="logo_content_description">CGpedia Official Emblem Logo</string>
+    <string name="tagline_aspirants">CGPSC &amp; CGSSB</string>
+    <string name="btn_sign_in_google">Continue with Verified Google Account</string>
+    <string name="anthem_play_cd">Play CGpedia Anthem</string>
+    <string name="anthem_pause_cd">Pause CGpedia Anthem</string>
+    <string name="nav_home">Test Series</string>
+    <string name="nav_current_affairs">Current Affairs</string>
+    <string name="nav_bookmarks">Saved</string>
+    <string name="nav_settings">Settings</string>
+    <string name="nav_admin">Admin</string>
+    <string name="admin_console_badge">Owner Admin Console</string>
+    <string name="test_submit_button">Submit Test</string>
+    <string name="payment_unlock_button">Pay &amp; Unlock Now</string>
+    <string name="phone_auth_title">Mobile OTP Verification</string>
+    <string name="phone_auth_subtitle">Enter your mobile number to receive a 6-digit verification code via Firebase Auth</string>
+    <string name="phone_country_code_label">Code</string>
+    <string name="phone_number_label">Mobile Number</string>
+    <string name="phone_number_placeholder">9876543210</string>
+    <string name="request_otp_button">Request OTP</string>
+    <string name="requesting_otp_label">Requesting OTP…</string>
+    <string name="otp_code_label">6-Digit OTP Code</string>
+    <string name="verify_otp_button">Verify &amp; Continue</string>
+    <string name="verifying_otp_label">Verifying OTP…</string>
+    <string name="resend_otp_button">Resend OTP</string>
+    <string name="change_phone_button">Edit Number</string>
+</resources>
