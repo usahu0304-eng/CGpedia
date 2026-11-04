@@ -64,22 +64,44 @@
     return counts;
   }
 
+  function getActiveSessionStorageKey() {
+    try {
+      if (window.CGpediaApp && typeof window.CGpediaApp.getCurrentStudentUid === 'function') {
+        const uid = window.CGpediaApp.getCurrentStudentUid();
+        if (uid) return `${ACTIVE_SESSION_STORAGE_KEY}_${uid}`;
+      }
+    } catch (_) {}
+    return ACTIVE_SESSION_STORAGE_KEY;
+  }
+
   function persistActiveSession(session) {
     try {
+      const scopedKey = getActiveSessionStorageKey();
       if (!session) {
+        localStorage.removeItem(scopedKey);
         localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
       } else {
-        localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify(session));
+        if (window.CGpediaApp && typeof window.CGpediaApp.getCurrentStudentUid === 'function') {
+          session.userId = window.CGpediaApp.getCurrentStudentUid() || session.userId || '';
+        }
+        localStorage.setItem(scopedKey, JSON.stringify(session));
       }
     } catch (_) {}
   }
 
   function getSavedActiveSession() {
     try {
-      const raw = localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
+      const currentUid = (window.CGpediaApp && typeof window.CGpediaApp.getCurrentStudentUid === 'function')
+        ? window.CGpediaApp.getCurrentStudentUid()
+        : '';
+      const scopedKey = getActiveSessionStorageKey();
+      const raw = localStorage.getItem(scopedKey) || localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
       if (parsed && Array.isArray(parsed.questions) && parsed.questions.length > 0 && !parsed.submitted) {
+        if (parsed.userId && currentUid && parsed.userId !== currentUid) {
+          return null;
+        }
         return parsed;
       }
     } catch (_) {}

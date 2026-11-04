@@ -1,0 +1,36 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Helper function: Only authorized CGpedia Administrator can upload, replace, or delete Anthem audio
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email != null
+        && request.auth.token.email == 'usahu0304@gmail.com';
+    }
+
+    // Validate supported audio MIME types (MP3, WAV, M4A) and 15 MB maximum file size
+    function isValidAnthemAudio() {
+      return request.resource != null
+        && request.resource.size > 0
+        && request.resource.size <= 15 * 1024 * 1024
+        && request.resource.contentType.matches('audio/(mpeg|mp3|wav|x-wav|wave|mp4|x-m4a|m4a|aac)');
+    }
+
+    // Anthem Audio Storage Directory
+    match /anthem_audio/{fileName} {
+      // Students and authenticated clients can stream published Anthem audio
+      allow read: if true;
+
+      // Only authorized administrator can upload or replace valid audio files (<= 15 MB)
+      allow create, update: if isAdmin() && isValidAnthemAudio();
+
+      // Only authorized administrator can delete existing Anthem audio files
+      allow delete: if isAdmin();
+    }
+
+    // Default deny on all other paths
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -7,6 +7,8 @@
   'use strict';
 
   const STORAGE_KEY = 'cgpedia_platform_state_v4';
+  const ACCOUNT_REGISTRY_KEY = 'cgpedia_student_accounts_v4';
+  const USER_WORKSPACE_PREFIX = 'cgpedia_user_workspace_v4_';
   const OWNER_ADMIN_EMAIL = 'usahu0304@gmail.com';
 
   function esc(str) {
@@ -16,6 +18,102 @@
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  function computeCredentialDigest(email, password) {
+    const raw = `cgpedia_salt_v4::${String(email || '').trim().toLowerCase()}::${String(password || '')}`;
+    let h1 = 0xdeadbeef ^ raw.length;
+    let h2 = 0x41c6ce57 ^ raw.length;
+    for (let i = 0; i < raw.length; i++) {
+      const ch = raw.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761);
+      h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+  }
+
+  function loadAccountRegistry() {
+    try {
+      const raw = localStorage.getItem(ACCOUNT_REGISTRY_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function saveAccountRegistry(list) {
+    try {
+      localStorage.setItem(ACCOUNT_REGISTRY_KEY, JSON.stringify(Array.isArray(list) ? list : []));
+    } catch (_) {}
+  }
+
+  function upsertAccountInRegistry(studentObj, extraMeta) {
+    if (!studentObj || !studentObj.uid) return;
+    const email = String(studentObj.email || '').trim().toLowerCase();
+    const uid = String(studentObj.uid).trim();
+    const list = loadAccountRegistry();
+    const existingIdx = list.findIndex((a) => a.uid === uid || (email && String(a.email || '').toLowerCase() === email));
+    const prev = existingIdx >= 0 ? list[existingIdx] : {};
+    const record = Object.assign({}, prev, {
+      uid: prev.uid || uid,
+      name: studentObj.name || prev.name || 'Aspirant',
+      email: email || prev.email || '',
+      phone: studentObj.phone !== undefined ? studentObj.phone : (prev.phone || ''),
+      targetExams: Array.isArray(studentObj.targetExams) ? studentObj.targetExams : (prev.targetExams || ['CGPSC']),
+      preferredLang: studentObj.preferredLang || prev.preferredLang || 'bilingual',
+      leaderboardPublic: studentObj.leaderboardPublic !== undefined ? studentObj.leaderboardPublic : true,
+      lastLoginIso: new Date().toISOString()
+    }, extraMeta || {});
+    if (existingIdx >= 0) {
+      list[existingIdx] = record;
+    } else {
+      list.unshift(record);
+    }
+    saveAccountRegistry(list);
+    return record;
+  }
+
+  function saveStudentWorkspaceSnapshot(uid) {
+    const cleanUid = String(uid || (state && state.student && state.student.uid) || '').trim();
+    if (!cleanUid) return;
+    try {
+      const myAttempts = (state.attempts || [])
+        .filter((a) => !a.userId || a.userId === cleanUid)
+        .map((a) => Object.assign({}, a, { userId: cleanUid }));
+      const myBookmarks = (state.bookmarks || [])
+        .filter((b) => !b.userId || b.userId === cleanUid)
+        .map((b) => Object.assign({}, b, { userId: cleanUid }));
+      const myMistakes = (state.mistakes || [])
+        .filter((m) => !m.userId || m.userId === cleanUid)
+        .map((m) => Object.assign({}, m, { userId: cleanUid }));
+
+      const snapshot = {
+        uid: cleanUid,
+        student: Object.assign({}, state.student, { uid: cleanUid }),
+        attempts: myAttempts,
+        bookmarks: myBookmarks,
+        mistakes: myMistakes,
+        updatedAtIso: new Date().toISOString()
+      };
+      localStorage.setItem(USER_WORKSPACE_PREFIX + cleanUid, JSON.stringify(snapshot));
+    } catch (_) {}
+  }
+
+  function loadStudentWorkspaceSnapshot(uid) {
+    const cleanUid = String(uid || '').trim();
+    if (!cleanUid) return null;
+    try {
+      const raw = localStorage.getItem(USER_WORKSPACE_PREFIX + cleanUid);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   function createDefaultState() {
@@ -33,6 +131,12 @@
       theme: 'light',
       lang: 'bilingual',
       onboarded: false,
+      authSession: {
+        isAuthenticated: true,
+        intentionalLogout: false,
+        authMode: 'login',
+        prefillEmail: ''
+      },
       config: {
         appTitle: 'CGpedia',
         appSubtitle: 'Competitive Exam & CBT Test Portal',
@@ -41,6 +145,19 @@
         upiQrImage: '',
         whatsappNumber: '9238810070',
         anthemEnabled: false,
+        anthemData: {
+          title: '',
+          description: '',
+          downloadUrl: '',
+          storagePath: '',
+          fileName: '',
+          mimeType: '',
+          formatLabel: '',
+          sizeBytes: 0,
+          sizeMbText: '',
+          published: false,
+          updatedAtIso: ''
+        },
         screenshotRestriction: true
       },
       student: {
@@ -74,7 +191,10 @@
 
   let state = loadState();
   let deferredPwaPrompt = null;
-  let anthemAudioCtx = null;
+  let studentAnthemAudioEl = null;
+  let studentAnthemPlayerOpen = false;
+  let studentAnthemVolume = 0.85;
+  let studentAnthemMuted = false;
 
   function loadState() {
     const def = createDefaultState();
@@ -82,17 +202,47 @@
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return def;
       const parsed = JSON.parse(raw);
-      return Object.assign({}, def, parsed, {
+      const merged = Object.assign({}, def, parsed, {
+        authSession: Object.assign({}, def.authSession, parsed.authSession || {}),
         config: Object.assign({}, def.config, parsed.config || {}),
         student: Object.assign({}, def.student, parsed.student || {})
       });
+      // Ensure backward compatibility: tag existing student data with active student's UID
+      if (!merged.authSession.intentionalLogout && merged.student && merged.student.uid) {
+        const uid = merged.student.uid;
+        merged.attempts = (merged.attempts || [])
+          .filter((a) => !a.userId || a.userId === uid)
+          .map((a) => Object.assign({}, a, { userId: uid }));
+        merged.bookmarks = (merged.bookmarks || [])
+          .filter((b) => !b.userId || b.userId === uid)
+          .map((b) => Object.assign({}, b, { userId: uid }));
+        merged.mistakes = (merged.mistakes || [])
+          .filter((m) => !m.userId || m.userId === uid)
+          .map((m) => Object.assign({}, m, { userId: uid }));
+      }
+      return merged;
     } catch (_) {
       return def;
     }
   }
 
+  function isLoggedOut() {
+    return Boolean(state && state.authSession && state.authSession.intentionalLogout === true);
+  }
+
+  function getCurrentStudentUid() {
+    if (isLoggedOut()) return '';
+    return String((state && state.student && state.student.uid) || '').trim();
+  }
+
   function saveState() {
     try {
+      if (!isLoggedOut() && state.student && state.student.uid) {
+        saveStudentWorkspaceSnapshot(state.student.uid);
+        if (state.student.email) {
+          upsertAccountInRegistry(state.student);
+        }
+      }
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch (_) {}
   }
@@ -110,18 +260,24 @@
   }
 
   function isCurrentUserAdmin() {
+    if (isLoggedOut()) return false;
     const email = String(state.student.email || '').trim().toLowerCase();
+    if (!email) return false;
     if (email === OWNER_ADMIN_EMAIL) return true;
     return (state.adminStaff || []).some((s) => String(s.email || '').toLowerCase() === email);
   }
 
   function getActiveActivation(targetId) {
+    if (isLoggedOut()) return null;
     const email = String(state.student.email || '').trim().toLowerCase();
     const uid = String(state.student.uid || '').trim().toLowerCase();
+    if (!email && !uid) return null;
     const now = Date.now();
     return (state.activations || []).find((a) => {
-      const idMatch = String(a.studentIdentifier || '').toLowerCase();
-      return (idMatch === email || idMatch === uid) && a.targetId === targetId && Number(a.expiresAtMs || 0) > now;
+      const idMatch = String(a.studentIdentifier || '').trim().toLowerCase();
+      if (!idMatch) return false;
+      const matchesUser = (email && idMatch === email) || (uid && idMatch === uid) || (uid && String(a.userId || '').toLowerCase() === uid);
+      return matchesUser && a.targetId === targetId && Number(a.expiresAtMs || 0) > now;
     }) || null;
   }
 
@@ -142,9 +298,28 @@
 
     const userLabel = document.getElementById('activeUserLabel');
     if (userLabel) {
-      userLabel.textContent = state.student.email
-        ? `${state.student.name} ${isCurrentUserAdmin() ? '🛡️' : ''}`
-        : 'Sign In / Profile';
+      if (isLoggedOut()) {
+        userLabel.textContent = 'Sign In / Register';
+      } else if (state.student.email) {
+        userLabel.textContent = `${state.student.name} ${isCurrentUserAdmin() ? '🛡️' : '✓'}`;
+      } else {
+        userLabel.textContent = `${state.student.name} (Account)`;
+      }
+    }
+
+    const headerAuthBtn = document.getElementById('headerAuthToggleBtn');
+    const headerAuthLabel = document.getElementById('headerAuthToggleLabel');
+    if (headerAuthBtn && headerAuthLabel) {
+      if (isLoggedOut()) {
+        headerAuthBtn.innerHTML = '🔐 <span id="headerAuthToggleLabel">Login</span>';
+        headerAuthBtn.title = 'Sign In or Create Student Account';
+      } else if (state.student.email) {
+        headerAuthBtn.innerHTML = '🚪 <span id="headerAuthToggleLabel">Logout</span>';
+        headerAuthBtn.title = 'Logout from ' + state.student.email;
+      } else {
+        headerAuthBtn.innerHTML = '🔐 <span id="headerAuthToggleLabel">Login / Switch</span>';
+        headerAuthBtn.title = 'Sign In, Create Account or Switch Student Account';
+      }
     }
 
     const examHeaderLabel = document.getElementById('activeExamHeaderLabel');
@@ -158,8 +333,17 @@
     }
 
     const anthemBtn = document.getElementById('anthemToggleBtn');
+    const publishedAnthem = isAnthemPublishedForStudents();
     if (anthemBtn) {
-      anthemBtn.style.display = state.config.anthemEnabled ? 'inline-flex' : 'none';
+      anthemBtn.style.display = publishedAnthem ? 'inline-flex' : 'none';
+      if (publishedAnthem && state.config.anthemData && state.config.anthemData.title) {
+        anthemBtn.title = state.config.anthemData.title;
+      }
+    }
+    if (!publishedAnthem) {
+      closeAndStopStudentAnthemPlayer();
+    } else if (studentAnthemPlayerOpen) {
+      syncStudentAnthemPlayerMeta();
     }
 
     const notifBadge = document.getElementById('notifBadgeCount');
@@ -192,7 +376,7 @@
   }
 
   // =========================================================================
-  // Main View Router
+  // Main View Router (With Protected Student Session Gate After Logout)
   // =========================================================================
   function renderApp() {
     applyBrandingAndSecurity();
@@ -201,7 +385,14 @@
     const root = document.getElementById('appRoot');
     if (!root) return;
 
-    // Check if there is an unsubmitted CBT session to resume
+    // When a student has logged out, show the dedicated Student Login / Registration Screen
+    // and prevent unauthorized access to protected student pages until signed in.
+    if (isLoggedOut() && state.activeTab !== 'admin') {
+      renderStudentAuthPortal(root);
+      return;
+    }
+
+    // Check if there is an unsubmitted CBT session for the current student UID
     const savedSession = window.CGpediaCBT && window.CGpediaCBT.getSavedActiveSession();
 
     if (state.activeTab === 'dashboard') {
@@ -1286,31 +1477,802 @@
   }
 
   // =========================================================================
-  // 8. Student Profile, Purchases, Validity Countdown & Firebase Google Auth
+  // 8. Student Authentication, Multi-Account Switcher, Logout & Profile
   // =========================================================================
-  function renderProfileAndSettings(root) {
-    const email = String(state.student.email || '').trim().toLowerCase();
-    const uid = String(state.student.uid || '').trim().toLowerCase();
-    const myActivations = (state.activations || []).filter((a) => {
-      const idm = String(a.studentIdentifier || '').toLowerCase();
-      return idm === email || idm === uid;
+  async function activateStudentAccountSession(accountInput, extraMeta) {
+    const incomingEmail = String(accountInput.email || '').trim().toLowerCase();
+    const list = loadAccountRegistry();
+    const matchedReg = list.find((a) =>
+      (accountInput.uid && a.uid === accountInput.uid) ||
+      (incomingEmail && String(a.email || '').toLowerCase() === incomingEmail)
+    );
+
+    const targetUid = String(
+      accountInput.uid ||
+      (matchedReg && matchedReg.uid) ||
+      ('STU-' + Math.floor(100000 + Math.random() * 900000))
+    ).trim();
+
+    // Snapshot previous active student's workspace before switching accounts
+    if (!isLoggedOut() && state.student && state.student.uid && state.student.uid !== targetUid) {
+      saveStudentWorkspaceSnapshot(state.student.uid);
+    }
+
+    const savedWorkspace = loadStudentWorkspaceSnapshot(targetUid);
+    const isBrandNewAccount = Boolean(extraMeta && extraMeta.isNewRegistration);
+
+    const nextStudent = {
+      uid: targetUid,
+      name: String(
+        accountInput.name ||
+        (savedWorkspace && savedWorkspace.student && savedWorkspace.student.name) ||
+        (matchedReg && matchedReg.name) ||
+        'Aspirant'
+      ).trim(),
+      email: incomingEmail || (savedWorkspace && savedWorkspace.student && savedWorkspace.student.email) || (matchedReg && matchedReg.email) || '',
+      phone: String(
+        accountInput.phone !== undefined && accountInput.phone !== ''
+          ? accountInput.phone
+          : ((savedWorkspace && savedWorkspace.student && savedWorkspace.student.phone) || (matchedReg && matchedReg.phone) || '')
+      ).trim(),
+      targetExams: Array.isArray(accountInput.targetExams) && accountInput.targetExams.length > 0
+        ? accountInput.targetExams
+        : ((savedWorkspace && savedWorkspace.student && savedWorkspace.student.targetExams) || (matchedReg && matchedReg.targetExams) || ['CGPSC', 'UPSC', 'SSC']),
+      preferredLang: accountInput.preferredLang || (savedWorkspace && savedWorkspace.student && savedWorkspace.student.preferredLang) || 'bilingual',
+      leaderboardPublic: accountInput.leaderboardPublic !== undefined
+        ? accountInput.leaderboardPublic
+        : ((savedWorkspace && savedWorkspace.student && savedWorkspace.student.leaderboardPublic !== undefined) ? savedWorkspace.student.leaderboardPublic : true)
+    };
+
+    state.authSession = {
+      isAuthenticated: true,
+      intentionalLogout: false,
+      authMode: 'login',
+      prefillEmail: ''
+    };
+    state.student = nextStudent;
+    state.onboarded = true;
+
+    if (isBrandNewAccount || !savedWorkspace) {
+      state.attempts = [];
+      state.bookmarks = [];
+      state.mistakes = [];
+      state.activeResultId = null;
+    } else {
+      state.attempts = Array.isArray(savedWorkspace.attempts)
+        ? savedWorkspace.attempts.filter((a) => !a.userId || a.userId === targetUid)
+        : [];
+      state.bookmarks = Array.isArray(savedWorkspace.bookmarks)
+        ? savedWorkspace.bookmarks.filter((b) => !b.userId || b.userId === targetUid)
+        : [];
+      state.mistakes = Array.isArray(savedWorkspace.mistakes)
+        ? savedWorkspace.mistakes.filter((m) => !m.userId || m.mUserId === targetUid || m.userId === targetUid)
+        : [];
+      state.activeResultId = state.attempts[0] ? state.attempts[0].id : null;
+    }
+
+    upsertAccountInRegistry(nextStudent, extraMeta || {});
+    saveState();
+
+    // Fetch and merge cloud data specific to this student's UID
+    if (window.CGpediaCloud) {
+      try {
+        const cloudData = await window.CGpediaCloud.fetchStudentCloudData(targetUid);
+        if (cloudData) {
+          if (cloudData.profile) {
+            if (cloudData.profile.displayName && (!accountInput.name || accountInput.name === 'Aspirant')) {
+              state.student.name = cloudData.profile.displayName;
+            }
+            if (cloudData.profile.phoneNumber && !state.student.phone) {
+              state.student.phone = cloudData.profile.phoneNumber;
+            }
+            if (Array.isArray(cloudData.profile.targetExams) && cloudData.profile.targetExams.length > 0) {
+              state.student.targetExams = cloudData.profile.targetExams;
+            }
+            if (Array.isArray(cloudData.profile.bookmarks) && state.bookmarks.length === 0) {
+              state.bookmarks = cloudData.profile.bookmarks;
+            }
+            if (Array.isArray(cloudData.profile.mistakes) && state.mistakes.length === 0) {
+              state.mistakes = cloudData.profile.mistakes;
+            }
+          }
+          if (Array.isArray(cloudData.attempts) && cloudData.attempts.length > 0) {
+            const existingIds = new Set((state.attempts || []).map((a) => a.id));
+            cloudData.attempts.forEach((ca) => {
+              if (ca.userId === targetUid && !existingIds.has(ca.id)) {
+                state.attempts.push(ca);
+              }
+            });
+            state.attempts.sort((a, b) => String(b.submittedAtIso || '').localeCompare(String(a.submittedAtIso || '')));
+            if (!state.activeResultId && state.attempts[0]) {
+              state.activeResultId = state.attempts[0].id;
+            }
+          }
+        }
+        await window.CGpediaCloud.saveCloudDoc('users', targetUid, {
+          userId: targetUid,
+          displayName: state.student.name,
+          email: state.student.email,
+          phoneNumber: state.student.phone,
+          targetExams: state.student.targetExams,
+          leaderboardPublic: state.student.leaderboardPublic,
+          bookmarks: state.bookmarks,
+          mistakes: state.mistakes,
+          role: isCurrentUserAdmin() ? 'admin' : 'student'
+        });
+      } catch (_) {}
+    }
+
+    saveState();
+    const modalRoot = document.getElementById('genericModalContainer');
+    if (modalRoot) modalRoot.innerHTML = '';
+    renderApp();
+  }
+
+  async function performStudentLogout() {
+    if (!isLoggedOut() && state.student && state.student.uid) {
+      saveStudentWorkspaceSnapshot(state.student.uid);
+      if (window.CGpediaCloud && state.student.email) {
+        try {
+          await window.CGpediaCloud.saveCloudDoc('users', state.student.uid, {
+            userId: state.student.uid,
+            displayName: state.student.name,
+            email: state.student.email,
+            phoneNumber: state.student.phone,
+            targetExams: state.student.targetExams,
+            bookmarks: state.bookmarks || [],
+            mistakes: state.mistakes || [],
+            role: isCurrentUserAdmin() ? 'admin' : 'student'
+          });
+        } catch (_) {}
+      }
+    }
+
+    // Set intentionalLogout BEFORE calling signOutFirebase so auth listeners never auto-login
+    state.authSession = {
+      isAuthenticated: false,
+      intentionalLogout: true,
+      authMode: 'login',
+      prefillEmail: ''
+    };
+
+    if (window.CGpediaCloud && typeof window.CGpediaCloud.signOutFirebase === 'function') {
+      try {
+        await window.CGpediaCloud.signOutFirebase();
+      } catch (_) {}
+    }
+
+    // Clear active in-memory student data so no next user can see previous student's private info
+    state.student = {
+      uid: '',
+      name: 'Guest Aspirant',
+      email: '',
+      phone: '',
+      targetExams: ['CGPSC', 'UPSC', 'SSC'],
+      preferredLang: 'bilingual',
+      leaderboardPublic: true
+    };
+    state.attempts = [];
+    state.bookmarks = [];
+    state.mistakes = [];
+    state.activeResultId = null;
+    state.adminUnlocked = false;
+    state.activeTab = 'profile';
+
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (_) {}
+
+    const modalRoot = document.getElementById('genericModalContainer');
+    if (modalRoot) modalRoot.innerHTML = '';
+
+    renderApp();
+    toast('👋 You have been logged out securely. Sign in or switch to another student account.');
+  }
+
+  function openStudentAuthModal(initialMode, prefillEmail) {
+    state.authSession = Object.assign({}, state.authSession || {}, {
+      authMode: initialMode || 'login',
+      prefillEmail: prefillEmail !== undefined ? prefillEmail : ((state.authSession && state.authSession.prefillEmail) || '')
+    });
+    const modalRoot = document.getElementById('genericModalContainer');
+    if (!modalRoot) return;
+    modalRoot.innerHTML = `
+      <div class="modal-backdrop" id="studentAuthModalBackdrop">
+        <div class="modal-card" style="max-width:680px;padding:18px;" id="studentAuthModalInner"></div>
+      </div>
+    `;
+    const inner = document.getElementById('studentAuthModalInner');
+    if (inner) {
+      renderStudentAuthPortal(inner, true);
+    }
+  }
+
+  function renderStudentAuthPortal(containerEl, isModalOverlay) {
+    const mode = (state.authSession && state.authSession.authMode) || 'login';
+    const prefillEmail = (state.authSession && state.authSession.prefillEmail) || '';
+    const savedAccounts = loadAccountRegistry().filter((a) => a.email);
+    const exams = window.CGpediaCloud ? window.CGpediaCloud.EXAM_CATEGORIES : [];
+
+    containerEl.innerHTML = `
+      <div class="${isModalOverlay ? '' : 'card'}" style="${isModalOverlay ? '' : 'max-width:720px;margin:8px auto;'}">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+          <div style="display:flex;align-items:center;gap:12px;">
+            <img src="assets/cgpedia-logo-clean.png" alt="CGpedia" style="width:54px;height:54px;border-radius:50%;object-fit:cover;border:2px solid var(--secondary);" />
+            <div>
+              <span class="badge badge-exam">🔐 STUDENT ACCOUNT PORTAL</span>
+              <h2 style="font-size:1.18rem;font-weight:800;margin-top:2px;">
+                ${mode === 'register'
+                  ? 'Create New Student Account / नया छात्र खाता बनाएं'
+                  : mode === 'reset'
+                    ? 'Forgot & Reset Password / पासवर्ड रीसेट करें'
+                    : 'Student Login & Account Switcher / छात्र लॉगिन'}
+              </h2>
+              <p style="font-size:0.8rem;color:var(--text-secondary);">
+                Every student account keeps its own separate Test Attempts, Results, Bookmarks, Mistakes &amp; Purchased Test Series.
+              </p>
+            </div>
+          </div>
+          ${isModalOverlay ? `<button class="btn btn-outline btn-sm" id="closeStudentAuthModalBtn">✕ Close</button>` : ''}
+        </div>
+
+        <!-- Mode Switcher Tabs -->
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border);">
+          <button class="btn ${mode === 'login' ? 'btn-primary' : 'btn-outline'} btn-sm" data-auth-tab="login">
+            🔐 Login to Account
+          </button>
+          <button class="btn ${mode === 'register' ? 'btn-primary' : 'btn-outline'} btn-sm" data-auth-tab="register">
+            ✨ Create Account (Register)
+          </button>
+          <button class="btn ${mode === 'reset' ? 'btn-primary' : 'btn-outline'} btn-sm" data-auth-tab="reset">
+            🔑 Forgot / Reset Password
+          </button>
+        </div>
+
+        ${mode === 'login' ? `
+          <div class="grid-2" style="align-items:start;">
+            <div>
+              <h3 style="font-size:0.96rem;font-weight:800;margin-bottom:10px;">📧 Sign In with Email &amp; Password</h3>
+              <div class="form-group">
+                <label class="form-label">Registered Email ID / ईमेल आईडी</label>
+                <input type="email" class="form-input" id="authLoginEmailInput" value="${esc(prefillEmail)}" placeholder="student@gmail.com" autocomplete="username" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Password / पासवर्ड</label>
+                <div style="display:flex;gap:6px;">
+                  <input type="password" class="form-input" id="authLoginPasswordInput" placeholder="Enter your password" autocomplete="current-password" />
+                  <button type="button" class="btn btn-outline btn-sm" id="authToggleLoginPassBtn" title="Show/Hide Password">👁️</button>
+                </div>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                <button type="button" class="btn btn-outline btn-sm" data-auth-tab="reset" style="font-size:0.75rem;padding:4px 9px;">
+                  Forgot Password?
+                </button>
+                <button type="button" class="btn btn-outline btn-sm" data-auth-tab="register" style="font-size:0.75rem;padding:4px 9px;">
+                  ➕ New Student? Register
+                </button>
+              </div>
+              <button class="btn btn-primary" style="width:100%;margin-bottom:10px;" id="authLoginSubmitBtn">
+                🔓 Sign In to Student Account
+              </button>
+              <button class="btn btn-navy" style="width:100%;" id="authGoogleLoginBtn">
+                🌐 Continue with Google (Firebase Auth)
+              </button>
+            </div>
+
+            <!-- Saved Accounts on This Device (Multi-Account Switcher) -->
+            <div style="padding:14px;border-radius:12px;border:1px solid var(--border);background:var(--surface-alt);">
+              <h3 style="font-size:0.92rem;font-weight:800;margin-bottom:6px;">👥 Switch Student Account on This Device (${savedAccounts.length})</h3>
+              <p style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:10px;">
+                Multiple students can use separate accounts on this device. Select an account below to sign in with its isolated test history and packages:
+              </p>
+              ${savedAccounts.length === 0 ? `
+                <div style="padding:14px;border-radius:8px;border:1px dashed var(--border-strong);font-size:0.8rem;color:var(--text-muted);text-align:center;">
+                  No saved student accounts on this device yet. Click <strong>Create Account (Register)</strong> to create your first student profile.
+                </div>
+              ` : `
+                <div style="display:grid;gap:8px;max-height:260px;overflow-y:auto;">
+                  ${savedAccounts.map((acc) => {
+                    const isCurrent = !isLoggedOut() && state.student.uid === acc.uid;
+                    return `
+                      <div style="padding:10px;border-radius:10px;border:1px solid ${isCurrent ? 'var(--secondary)' : 'var(--border)'};background:var(--surface);display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                        <div style="min-width:0;">
+                          <div style="font-weight:800;font-size:0.86rem;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                            <span>${esc(acc.name || 'Student')}</span>
+                            ${isCurrent ? `<span class="badge badge-free" style="font-size:0.65rem;">ACTIVE</span>` : ''}
+                          </div>
+                          <div style="font-size:0.75rem;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;">${esc(acc.email)}</div>
+                          <div style="font-size:0.68rem;color:var(--text-muted);">UID: ${esc(acc.uid)}</div>
+                        </div>
+                        <div style="display:flex;gap:5px;flex-shrink:0;">
+                          <button class="btn btn-primary btn-sm" data-select-saved-acc="${esc(acc.email)}" style="padding:5px 9px;font-size:0.74rem;">
+                            ${isCurrent ? 'Active' : '🔄 Use'}
+                          </button>
+                          <button class="btn btn-outline btn-sm" data-remove-saved-acc="${esc(acc.uid)}" title="Remove from device list" style="padding:5px 7px;font-size:0.72rem;">✕</button>
+                        </div>
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
+              `}
+            </div>
+          </div>
+        ` : ''}
+
+        ${mode === 'register' ? `
+          <div>
+            <h3 style="font-size:0.98rem;font-weight:800;margin-bottom:10px;">✨ Register a New Individual Student Account</h3>
+            <div class="grid-2" style="gap:10px;">
+              <div class="form-group" style="margin-bottom:6px;">
+                <label class="form-label">Full Name / पूरा नाम *</label>
+                <input class="form-input" id="authRegNameInput" placeholder="e.g. Rahul Verma" autocomplete="name" />
+              </div>
+              <div class="form-group" style="margin-bottom:6px;">
+                <label class="form-label">Email Address / ईमेल आईडी *</label>
+                <input type="email" class="form-input" id="authRegEmailInput" value="${esc(prefillEmail)}" placeholder="student@gmail.com" autocomplete="email" />
+              </div>
+              <div class="form-group" style="margin-bottom:6px;">
+                <label class="form-label">Mobile / WhatsApp Number (Used for Password Recovery &amp; Unlocks) *</label>
+                <input type="tel" class="form-input" id="authRegPhoneInput" placeholder="98XXXXXXXX" autocomplete="tel" />
+              </div>
+              <div class="form-group" style="margin-bottom:6px;">
+                <label class="form-label">Create Password (Min 6 characters) *</label>
+                <input type="password" class="form-input" id="authRegPasswordInput" placeholder="Min 6 characters" autocomplete="new-password" />
+              </div>
+              <div class="form-group" style="margin-bottom:6px;">
+                <label class="form-label">Confirm Password / पासवर्ड की पुष्टि करें *</label>
+                <input type="password" class="form-input" id="authRegConfirmInput" placeholder="Re-enter password" autocomplete="new-password" />
+              </div>
+            </div>
+
+            <div class="form-group" style="margin-top:8px;">
+              <label class="form-label">Select Target Competitive Exams:</label>
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:6px;margin-top:4px;">
+                ${exams.map((ex, i) => `
+                  <label style="display:flex;align-items:center;gap:6px;padding:6px 8px;border:1px solid var(--border-strong);border-radius:8px;cursor:pointer;font-size:0.76rem;font-weight:700;">
+                    <input type="checkbox" class="auth-reg-exam-chk" value="${esc(ex.code)}" ${i < 3 ? 'checked' : ''} />
+                    <span>${esc(ex.icon)} ${esc(ex.nameEn)}</span>
+                  </label>
+                `).join('')}
+              </div>
+            </div>
+
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px;">
+              <button class="btn btn-outline btn-sm" data-auth-tab="login">⬅️ Already have an account? Login</button>
+              <button class="btn btn-success" id="authRegisterSubmitBtn">✅ Create Student Account &amp; Sign In</button>
+            </div>
+          </div>
+        ` : ''}
+
+        ${mode === 'reset' ? `
+          <div class="grid-2" style="align-items:start;">
+            <div style="padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--surface-alt);">
+              <h3 style="font-size:0.94rem;font-weight:800;margin-bottom:6px;">📨 Option 1: Send Password Reset Email (Firebase)</h3>
+              <p style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:10px;">
+                Enter your registered Email ID to receive an official password reset link via Firebase Authentication.
+              </p>
+              <div class="form-group">
+                <label class="form-label">Registered Email ID</label>
+                <input type="email" class="form-input" id="authResetEmailLinkInput" value="${esc(prefillEmail || state.student.email || '')}" placeholder="student@gmail.com" />
+              </div>
+              <button class="btn btn-primary" style="width:100%;" id="authSendResetLinkBtn">📧 Send Password Reset Email</button>
+            </div>
+
+            <div style="padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--surface-alt);">
+              <h3 style="font-size:0.94rem;font-weight:800;margin-bottom:6px;">🔑 Option 2: Instant In-App Password Reset</h3>
+              <p style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:10px;">
+                Verify your registered Email ID and registered Mobile Number to set a new password immediately.
+              </p>
+              <div class="form-group">
+                <label class="form-label">Registered Email ID</label>
+                <input type="email" class="form-input" id="authDirectResetEmail" value="${esc(prefillEmail || state.student.email || '')}" placeholder="student@gmail.com" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Registered Mobile / WhatsApp Number</label>
+                <input type="tel" class="form-input" id="authDirectResetPhone" placeholder="Enter registered mobile number" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">New Password (Min 6 characters)</label>
+                <input type="password" class="form-input" id="authDirectResetNewPass" placeholder="New password" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Confirm New Password</label>
+                <input type="password" class="form-input" id="authDirectResetConfirmPass" placeholder="Confirm new password" />
+              </div>
+              <button class="btn btn-success" style="width:100%;" id="authDirectResetSubmitBtn">🔄 Reset Password Now</button>
+            </div>
+          </div>
+        ` : ''}
+      </div>
+    `;
+
+    // Close Modal Button
+    const closeBtn = containerEl.querySelector('#closeStudentAuthModalBtn');
+    if (closeBtn) {
+      closeBtn.onclick = () => {
+        const modalRoot = document.getElementById('genericModalContainer');
+        if (modalRoot) modalRoot.innerHTML = '';
+      };
+    }
+
+    // Tab switching inside Auth Portal
+    containerEl.querySelectorAll('[data-auth-tab]').forEach((btn) => {
+      btn.onclick = () => {
+        state.authSession = Object.assign({}, state.authSession || {}, {
+          authMode: btn.getAttribute('data-auth-tab')
+        });
+        renderStudentAuthPortal(containerEl, isModalOverlay);
+      };
     });
 
+    // Show/Hide Password Toggle
+    const togglePassBtn = containerEl.querySelector('#authToggleLoginPassBtn');
+    const loginPassInput = containerEl.querySelector('#authLoginPasswordInput');
+    if (togglePassBtn && loginPassInput) {
+      togglePassBtn.onclick = () => {
+        loginPassInput.type = loginPassInput.type === 'password' ? 'text' : 'password';
+      };
+    }
+
+    // Saved Account Quick Switcher
+    containerEl.querySelectorAll('[data-select-saved-acc]').forEach((btn) => {
+      btn.onclick = () => {
+        const targetEmail = btn.getAttribute('data-select-saved-acc');
+        state.authSession = Object.assign({}, state.authSession || {}, {
+          authMode: 'login',
+          prefillEmail: targetEmail
+        });
+        renderStudentAuthPortal(containerEl, isModalOverlay);
+        const passEl = containerEl.querySelector('#authLoginPasswordInput');
+        if (passEl) passEl.focus();
+        toast(`ℹ️ Enter password for ${targetEmail} (or click Continue with Google) to sign in.`);
+      };
+    });
+
+    containerEl.querySelectorAll('[data-remove-saved-acc]').forEach((btn) => {
+      btn.onclick = () => {
+        const rmUid = btn.getAttribute('data-remove-saved-acc');
+        const nextList = loadAccountRegistry().filter((a) => a.uid !== rmUid);
+        saveAccountRegistry(nextList);
+        renderStudentAuthPortal(containerEl, isModalOverlay);
+        toast('🗑️ Removed account shortcut from device list.');
+      };
+    });
+
+    // 1. Handle Student Login (Email + Password)
+    const loginSubmitBtn = containerEl.querySelector('#authLoginSubmitBtn');
+    if (loginSubmitBtn) {
+      loginSubmitBtn.onclick = async () => {
+        const email = String(containerEl.querySelector('#authLoginEmailInput').value || '').trim().toLowerCase();
+        const password = String(containerEl.querySelector('#authLoginPasswordInput').value || '');
+        if (!email || !email.includes('@')) {
+          toast('⚠️ Please enter a valid registered Email ID.');
+          return;
+        }
+        if (!password || password.length < 4) {
+          toast('⚠️ Please enter your account password.');
+          return;
+        }
+
+        loginSubmitBtn.disabled = true;
+        loginSubmitBtn.textContent = '⏳ Signing in...';
+
+        const digest = computeCredentialDigest(email, password);
+        const regList = loadAccountRegistry();
+        const localAcc = regList.find((a) => String(a.email || '').toLowerCase() === email);
+
+        try {
+          if (window.CGpediaCloud && typeof window.CGpediaCloud.signInWithEmailPassword === 'function') {
+            const fbUser = await window.CGpediaCloud.signInWithEmailPassword(email, password);
+            if (fbUser) {
+              await activateStudentAccountSession({
+                uid: fbUser.uid,
+                name: fbUser.displayName || (localAcc && localAcc.name) || email.split('@')[0],
+                email: fbUser.email || email,
+                phone: (localAcc && localAcc.phone) || ''
+              }, { credDigest: digest, authProvider: 'password' });
+              toast(`✅ Welcome back, ${state.student.name}!`);
+              return;
+            }
+          }
+        } catch (fbErr) {
+          // If the account exists in local registry and password digest matches, allow seamless login
+          if (localAcc && localAcc.credDigest && localAcc.credDigest === digest) {
+            await activateStudentAccountSession(localAcc, { credDigest: digest });
+            toast(`✅ Welcome back, ${state.student.name}!`);
+            return;
+          }
+          loginSubmitBtn.disabled = false;
+          loginSubmitBtn.textContent = '🔓 Sign In to Student Account';
+          const errCode = String((fbErr && fbErr.code) || '');
+          if (errCode.includes('wrong-password') || errCode.includes('invalid-credential') || (localAcc && localAcc.credDigest && localAcc.credDigest !== digest)) {
+            toast('❌ Incorrect password. Please try again or click Forgot Password.');
+          } else if (errCode.includes('user-not-found') || !localAcc) {
+            toast('ℹ️ Account not found for this email. Click "Create Account (Register)" to register.');
+          } else {
+            toast('⚠️ Sign-in error: ' + (fbErr.message || 'Check your email and password.'));
+          }
+          return;
+        }
+
+        // Offline / fallback verification against local account registry
+        if (localAcc) {
+          if (localAcc.credDigest && localAcc.credDigest !== digest) {
+            loginSubmitBtn.disabled = false;
+            loginSubmitBtn.textContent = '🔓 Sign In to Student Account';
+            toast('❌ Incorrect password for this student account.');
+            return;
+          }
+          await activateStudentAccountSession(localAcc, { credDigest: digest });
+          toast(`✅ Welcome back, ${state.student.name}!`);
+        } else {
+          loginSubmitBtn.disabled = false;
+          loginSubmitBtn.textContent = '🔓 Sign In to Student Account';
+          toast('ℹ️ No account found with that email. Please click "Create Account (Register)" first.');
+        }
+      };
+    }
+
+    // 2. Handle Google Sign-In
+    const googleBtn = containerEl.querySelector('#authGoogleLoginBtn');
+    if (googleBtn) {
+      googleBtn.onclick = async () => {
+        try {
+          if (window.CGpediaCloud && typeof window.CGpediaCloud.signInWithGooglePopup === 'function') {
+            // Clear intentionalLogout right before explicit Google Sign-In
+            state.authSession.intentionalLogout = false;
+            const fbUser = await window.CGpediaCloud.signInWithGooglePopup();
+            if (fbUser) {
+              await activateStudentAccountSession({
+                uid: fbUser.uid,
+                name: fbUser.displayName || 'Aspirant',
+                email: String(fbUser.email || '').toLowerCase(),
+                phone: fbUser.phoneNumber || ''
+              }, { authProvider: 'google' });
+              toast(`✅ Signed in with Google as ${state.student.name}!`);
+            }
+          }
+        } catch (err) {
+          toast('ℹ️ Google Sign-In popup closed or unavailable. You can sign in or register with Email & Password.');
+        }
+      };
+    }
+
+    // 3. Handle Student Registration (Create Account)
+    const regSubmitBtn = containerEl.querySelector('#authRegisterSubmitBtn');
+    if (regSubmitBtn) {
+      regSubmitBtn.onclick = async () => {
+        const name = String(containerEl.querySelector('#authRegNameInput').value || '').trim();
+        const email = String(containerEl.querySelector('#authRegEmailInput').value || '').trim().toLowerCase();
+        const phone = String(containerEl.querySelector('#authRegPhoneInput').value || '').trim();
+        const pass = String(containerEl.querySelector('#authRegPasswordInput').value || '');
+        const confirmPass = String(containerEl.querySelector('#authRegConfirmInput').value || '');
+
+        if (!name) {
+          toast('⚠️ Please enter your Full Name.');
+          return;
+        }
+        if (!email || !email.includes('@')) {
+          toast('⚠️ Please enter a valid Email ID.');
+          return;
+        }
+        if (pass.length < 6) {
+          toast('⚠️ Password must be at least 6 characters long.');
+          return;
+        }
+        if (pass !== confirmPass) {
+          toast('⚠️ Password and Confirm Password do not match.');
+          return;
+        }
+
+        const pickedExams = [];
+        containerEl.querySelectorAll('.auth-reg-exam-chk:checked').forEach((chk) => pickedExams.push(chk.value));
+        const targetExams = pickedExams.length > 0 ? pickedExams : ['CGPSC'];
+
+        const regList = loadAccountRegistry();
+        const existingLocal = regList.find((a) => String(a.email || '').toLowerCase() === email);
+        if (existingLocal && existingLocal.credDigest) {
+          toast('⚠️ An account with this email already exists. Please switch to Login.');
+          return;
+        }
+
+        regSubmitBtn.disabled = true;
+        regSubmitBtn.textContent = '⏳ Creating Account...';
+        const digest = computeCredentialDigest(email, pass);
+
+        let createdUid = 'STU-' + Math.floor(100000 + Math.random() * 900000);
+        try {
+          if (window.CGpediaCloud && typeof window.CGpediaCloud.registerWithEmailPassword === 'function') {
+            const fbUser = await window.CGpediaCloud.registerWithEmailPassword(name, email, pass, phone, targetExams);
+            if (fbUser && fbUser.uid) {
+              createdUid = fbUser.uid;
+            }
+          }
+        } catch (fbErr) {
+          const code = String((fbErr && fbErr.code) || '');
+          if (code.includes('email-already-in-use')) {
+            regSubmitBtn.disabled = false;
+            regSubmitBtn.textContent = '✅ Create Student Account & Sign In';
+            toast('⚠️ This email is already registered in Firebase. Please Login or Reset Password.');
+            return;
+          }
+        }
+
+        await activateStudentAccountSession({
+          uid: createdUid,
+          name,
+          email,
+          phone,
+          targetExams,
+          preferredLang: state.lang || 'bilingual',
+          leaderboardPublic: true
+        }, {
+          credDigest: digest,
+          authProvider: 'password',
+          createdAtIso: new Date().toISOString(),
+          isNewRegistration: true
+        });
+
+        state.activeTab = 'dashboard';
+        saveState();
+        renderApp();
+        toast(`🎉 Account created for ${name}! Welcome to CGpedia.`);
+      };
+    }
+
+    // 4. Handle Forgot Password (Firebase Email Link)
+    const sendResetLinkBtn = containerEl.querySelector('#authSendResetLinkBtn');
+    if (sendResetLinkBtn) {
+      sendResetLinkBtn.onclick = async () => {
+        const email = String(containerEl.querySelector('#authResetEmailLinkInput').value || '').trim().toLowerCase();
+        if (!email || !email.includes('@')) {
+          toast('⚠️ Please enter your registered Email ID.');
+          return;
+        }
+        try {
+          if (window.CGpediaCloud && typeof window.CGpediaCloud.sendPasswordReset === 'function') {
+            await window.CGpediaCloud.sendPasswordReset(email);
+            toast(`📧 Password reset link sent to ${email}! Please check your inbox/spam folder.`);
+            return;
+          }
+        } catch (err) {
+          toast('ℹ️ Could not send reset email (' + (err.code || 'use Instant In-App Password Reset on the right') + ').');
+          return;
+        }
+        toast('ℹ️ Use Instant In-App Password Reset on the right to set a new password.');
+      };
+    }
+
+    // 5. Handle Direct In-App Password Reset
+    const directResetBtn = containerEl.querySelector('#authDirectResetSubmitBtn');
+    if (directResetBtn) {
+      directResetBtn.onclick = async () => {
+        const email = String(containerEl.querySelector('#authDirectResetEmail').value || '').trim().toLowerCase();
+        const phone = String(containerEl.querySelector('#authDirectResetPhone').value || '').trim();
+        const newPass = String(containerEl.querySelector('#authDirectResetNewPass').value || '');
+        const confirmPass = String(containerEl.querySelector('#authDirectResetConfirmPass').value || '');
+
+        if (!email || !email.includes('@')) {
+          toast('⚠️ Please enter your registered Email ID.');
+          return;
+        }
+        if (newPass.length < 6) {
+          toast('⚠️ New password must be at least 6 characters.');
+          return;
+        }
+        if (newPass !== confirmPass) {
+          toast('⚠️ New password and confirmation do not match.');
+          return;
+        }
+
+        const list = loadAccountRegistry();
+        const idx = list.findIndex((a) => String(a.email || '').toLowerCase() === email);
+        if (idx < 0) {
+          toast('⚠️ No local account found with that email. You can also use Option 1 (Firebase Reset Email) or Create Account.');
+          return;
+        }
+
+        const acc = list[idx];
+        const cleanSavedPhone = String(acc.phone || '').replace(/\D/g, '');
+        const cleanEnteredPhone = phone.replace(/\D/g, '');
+        if (cleanSavedPhone && cleanSavedPhone !== cleanEnteredPhone) {
+          toast('❌ Registered mobile number does not match this account.');
+          return;
+        }
+
+        const newDigest = computeCredentialDigest(email, newPass);
+        list[idx] = Object.assign({}, acc, { credDigest: newDigest, updatedAtIso: new Date().toISOString() });
+        saveAccountRegistry(list);
+
+        if (window.CGpediaCloud && typeof window.CGpediaCloud.updateCurrentFirebasePassword === 'function') {
+          try {
+            await window.CGpediaCloud.updateCurrentFirebasePassword(newPass);
+          } catch (_) {}
+        }
+
+        state.authSession = Object.assign({}, state.authSession || {}, {
+          authMode: 'login',
+          prefillEmail: email
+        });
+        renderStudentAuthPortal(containerEl, isModalOverlay);
+        toast('✅ Password reset successfully! You can now sign in with your new password.');
+      };
+    }
+  }
+
+  function renderProfileAndSettings(root) {
+    if (isLoggedOut()) {
+      renderStudentAuthPortal(root, false);
+      return;
+    }
+
+    const email = String(state.student.email || '').trim().toLowerCase();
+    const uid = String(state.student.uid || '').trim();
+    const uidLower = uid.toLowerCase();
+    const myActivations = (state.activations || []).filter((a) => {
+      const idm = String(a.studentIdentifier || '').trim().toLowerCase();
+      if (!idm) return false;
+      return (email && idm === email) || (uidLower && idm === uidLower) || (uidLower && String(a.userId || '').toLowerCase() === uidLower);
+    });
+    const myOrders = (state.orders || []).filter((o) => {
+      const oEmail = String(o.studentEmail || '').trim().toLowerCase();
+      return (o.userId && o.userId === uid) || (email && oEmail === email);
+    });
+    const savedAccounts = loadAccountRegistry().filter((a) => a.email);
+
     root.innerHTML = `
-      <div class="grid-2">
-        <div class="card">
-          <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;">
-            <img src="assets/cgpedia-logo-clean.png" alt="CGpedia" style="width:60px;height:60px;border-radius:50%;object-fit:cover;border:2px solid var(--secondary);" />
+      <!-- Top Account Session & Multi-Account Action Bar -->
+      <div class="card" style="border-left:5px solid var(--secondary);">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;">
+          <div style="display:flex;align-items:center;gap:14px;">
+            <img src="assets/cgpedia-logo-clean.png" alt="CGpedia" style="width:62px;height:62px;border-radius:50%;object-fit:cover;border:2.5px solid var(--secondary);" />
             <div>
-              <h2 style="font-size:1.1rem;font-weight:800;">${esc(state.student.name)}</h2>
-              <div style="font-size:0.8rem;color:var(--text-secondary);">User ID: <strong>${esc(state.student.uid)}</strong></div>
-              <div style="font-size:0.8rem;color:var(--text-muted);">${esc(state.student.email || 'Not signed in with email yet')}</div>
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                <span class="badge badge-free">🟢 ACTIVE STUDENT ACCOUNT</span>
+                ${isCurrentUserAdmin() ? `<span class="badge badge-paid">🛡️ OWNER ADMIN</span>` : ''}
+              </div>
+              <h2 style="font-size:1.18rem;font-weight:800;margin-top:3px;">${esc(state.student.name)}</h2>
+              <div style="font-size:0.82rem;color:var(--text-secondary);">
+                Email: <strong>${esc(state.student.email || 'Not linked yet — Sign in or Register')}</strong> • UID: <code>${esc(state.student.uid)}</code>
+              </div>
             </div>
           </div>
 
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-primary btn-sm" id="profSwitchAccountBtn">🔄 Switch / Login Account</button>
+            <button class="btn btn-navy btn-sm" id="profCreateNewAccBtn">➕ Create New Account</button>
+            <button class="btn btn-outline btn-sm" id="profResetPasswordBtn">🔑 Reset Password</button>
+            <button class="btn btn-danger btn-sm" id="profLogoutBtn">🚪 Logout</button>
+          </div>
+        </div>
+
+        <!-- Account-Specific Isolated Data Summary -->
+        <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-top:14px;margin-bottom:0;">
+          <div class="kpi-card" style="padding:10px;">
+            <div class="kpi-value">${(state.attempts || []).length}</div>
+            <div class="kpi-label">My Test Attempts</div>
+          </div>
+          <div class="kpi-card" style="padding:10px;">
+            <div class="kpi-value" style="color:var(--secondary);">${(state.bookmarks || []).length}</div>
+            <div class="kpi-label">My Bookmarks</div>
+          </div>
+          <div class="kpi-card" style="padding:10px;">
+            <div class="kpi-value" style="color:var(--danger);">${(state.mistakes || []).length}</div>
+            <div class="kpi-label">My Mistake Notebook</div>
+          </div>
+          <div class="kpi-card" style="padding:10px;">
+            <div class="kpi-value" style="color:var(--success);">${myActivations.length}</div>
+            <div class="kpi-label">My Unlocked Packages</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <h3 style="font-size:1rem;font-weight:800;margin-bottom:12px;">👤 Edit Student Profile Details</h3>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
-            <button class="btn btn-primary btn-sm" id="profGoogleSignInBtn">🔐 Sign In with Google (Firebase)</button>
-            <button class="btn btn-outline btn-sm" id="profTargetExamsBtn">🎯 Change Target Exams</button>
+            <button class="btn btn-primary btn-sm" id="profGoogleSignInBtn">🌐 Connect / Switch with Google</button>
+            <button class="btn btn-outline btn-sm" id="profTargetExamsBtn">🎯 Change Target Exams (${(state.student.targetExams || []).join(', ')})</button>
           </div>
 
           <div class="form-group">
@@ -1318,42 +2280,95 @@
             <input class="form-input" id="profNameInput" value="${esc(state.student.name)}" />
           </div>
           <div class="form-group">
-            <label class="form-label">Registered Email ID (Used for Paid Package Activation &amp; Admin Verify)</label>
+            <label class="form-label">Registered Email ID (Used for Paid Package Activation &amp; Login)</label>
             <input class="form-input" id="profEmailInput" value="${esc(state.student.email)}" placeholder="yourname@gmail.com" />
           </div>
           <div class="form-group">
             <label class="form-label">Mobile / WhatsApp Number</label>
             <input class="form-input" id="profPhoneInput" value="${esc(state.student.phone)}" placeholder="98XXXXXXXX" />
           </div>
-          <button class="btn btn-success" id="profSaveProfileBtn">💾 Save Profile</button>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <button class="btn btn-success" id="profSaveProfileBtn">💾 Save Profile</button>
+            <button class="btn btn-danger" id="profSecondaryLogoutBtn">🚪 Logout from Account</button>
+          </div>
         </div>
 
-        <div class="card">
-          <h3 style="font-size:1rem;font-weight:800;margin-bottom:12px;">🔓 My Activated Premium Packages &amp; Validity Countdown</h3>
-          ${myActivations.length === 0 ? `
-            <p style="font-size:0.84rem;color:var(--text-muted);margin-bottom:12px;">
-              You have no active paid subscriptions yet. When you unlock any Paid Test Series via UPI QR + WhatsApp Verification, your live validity countdown will appear here.
-            </p>
-          ` : `
-            <div style="display:grid;gap:10px;">
-              ${myActivations.map((act) => {
-                const remMs = Number(act.expiresAtMs || 0) - Date.now();
-                const remDays = Math.max(0, Math.ceil(remMs / 86400000));
-                const expired = remMs <= 0;
-                return `
-                  <div style="padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--surface-alt);">
-                    <div style="display:flex;justify-content:space-between;align-items:center;">
-                      <strong>${esc(act.targetTitle)}</strong>
-                      <span class="badge ${expired ? 'badge-live' : 'badge-free'}">${expired ? 'Expired' : remDays + ' Days Remaining'}</span>
+        <div style="display:grid;gap:16px;">
+          <div class="card" style="margin-bottom:0;">
+            <h3 style="font-size:1rem;font-weight:800;margin-bottom:12px;">🔓 My Activated Premium Packages &amp; Validity Countdown</h3>
+            ${myActivations.length === 0 ? `
+              <p style="font-size:0.84rem;color:var(--text-muted);margin-bottom:8px;">
+                You have no active paid subscriptions on this account (${esc(state.student.email || state.student.uid)}) yet. When you unlock any Paid Test Series via UPI QR + WhatsApp Verification, your live validity countdown will appear here.
+              </p>
+            ` : `
+              <div style="display:grid;gap:10px;">
+                ${myActivations.map((act) => {
+                  const remMs = Number(act.expiresAtMs || 0) - Date.now();
+                  const remDays = Math.max(0, Math.ceil(remMs / 86400000));
+                  const expired = remMs <= 0;
+                  return `
+                    <div style="padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--surface-alt);">
+                      <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <strong>${esc(act.targetTitle)}</strong>
+                        <span class="badge ${expired ? 'badge-live' : 'badge-free'}">${expired ? 'Expired' : remDays + ' Days Remaining'}</span>
+                      </div>
+                      <div style="font-size:0.76rem;color:var(--text-muted);margin-top:4px;">
+                        Activated: ${new Date(act.activatedAtMs).toLocaleDateString()} • Valid Until: ${new Date(act.expiresAtMs).toLocaleDateString()}
+                      </div>
                     </div>
-                    <div style="font-size:0.76rem;color:var(--text-muted);margin-top:4px;">
-                      Activated: ${new Date(act.activatedAtMs).toLocaleDateString()} • Valid Until: ${new Date(act.expiresAtMs).toLocaleDateString()}
+                  `;
+                }).join('')}
+              </div>
+            `}
+
+            ${myOrders.length > 0 ? `
+              <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);">
+                <div style="font-size:0.82rem;font-weight:800;margin-bottom:6px;">🧾 My Payment &amp; Order History (${myOrders.length})</div>
+                <div style="display:grid;gap:6px;">
+                  ${myOrders.slice(0, 5).map((ord) => `
+                    <div style="font-size:0.76rem;display:flex;justify-content:space-between;padding:6px 8px;border-radius:6px;background:var(--surface-alt);">
+                      <span>${esc(ord.targetTitle || ord.packageTitle || 'Test Series')}</span>
+                      <strong>₹${esc(ord.amountInr || ord.priceInr || 0)} • ${esc(ord.status || 'verified')}</strong>
                     </div>
-                  </div>
-                `;
-              }).join('')}
+                  `).join('')}
+                </div>
+              </div>
+            ` : ''}
+          </div>
+
+          <!-- Quick Account Switcher Card -->
+          <div class="card" style="margin-bottom:0;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+              <h3 style="font-size:0.95rem;font-weight:800;">👥 Saved Accounts on This Device (${savedAccounts.length})</h3>
+              <button class="btn btn-outline btn-sm" id="profOpenSwitcherModalBtn">🔄 Switch Account</button>
             </div>
-          `}
+            <p style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:10px;">
+              Switch to another student account or log out so another student can sign in with their own isolated progress:
+            </p>
+            ${savedAccounts.length === 0 ? `
+              <div style="font-size:0.8rem;color:var(--text-muted);">Save your profile with an email or register an account to enable quick account switching.</div>
+            ` : `
+              <div style="display:grid;gap:8px;">
+                ${savedAccounts.slice(0, 5).map((acc) => {
+                  const isMe = acc.uid === state.student.uid;
+                  return `
+                    <div style="padding:8px 10px;border-radius:8px;border:1px solid ${isMe ? 'var(--secondary)' : 'var(--border)'};background:var(--surface-alt);display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                      <div>
+                        <strong style="font-size:0.84rem;">${esc(acc.name)}</strong>
+                        ${isMe ? `<span class="badge badge-free" style="margin-left:6px;font-size:0.65rem;">CURRENT</span>` : ''}
+                        <div style="font-size:0.74rem;color:var(--text-secondary);">${esc(acc.email)}</div>
+                      </div>
+                      ${isMe ? `
+                        <button class="btn btn-danger btn-sm" data-quick-logout-acc="${esc(acc.uid)}" style="padding:4px 9px;font-size:0.74rem;">Logout</button>
+                      ` : `
+                        <button class="btn btn-primary btn-sm" data-quick-switch-acc="${esc(acc.email)}" style="padding:4px 9px;font-size:0.74rem;">Switch</button>
+                      `}
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            `}
+          </div>
         </div>
       </div>
     `;
@@ -1369,6 +2384,9 @@
           displayName: state.student.name,
           email: state.student.email,
           phoneNumber: state.student.phone,
+          targetExams: state.student.targetExams,
+          bookmarks: state.bookmarks || [],
+          mistakes: state.mistakes || [],
           role: isCurrentUserAdmin() ? 'admin' : 'student'
         });
       }
@@ -1381,17 +2399,55 @@
       gSignInBtn.onclick = async () => {
         try {
           if (window.CGpediaCloud) {
+            state.authSession.intentionalLogout = false;
             const fbUser = await window.CGpediaCloud.signInWithGooglePopup();
-            if (fbUser) handleFirebaseAuthUser(fbUser);
+            if (fbUser) {
+              await activateStudentAccountSession({
+                uid: fbUser.uid,
+                name: fbUser.displayName || 'Aspirant',
+                email: String(fbUser.email || '').toLowerCase(),
+                phone: fbUser.phoneNumber || ''
+              }, { authProvider: 'google' });
+              toast(`✅ Signed in as ${state.student.name}!`);
+            }
           }
         } catch (err) {
-          toast('ℹ️ Enter your registered Google email below and click Save Profile.');
+          openStudentAuthModal('login', '');
         }
       };
     }
 
     const targBtn = document.getElementById('profTargetExamsBtn');
     if (targBtn) targBtn.onclick = () => openOnboardingModal();
+
+    const logoutBtn1 = document.getElementById('profLogoutBtn');
+    if (logoutBtn1) logoutBtn1.onclick = () => performStudentLogout();
+
+    const logoutBtn2 = document.getElementById('profSecondaryLogoutBtn');
+    if (logoutBtn2) logoutBtn2.onclick = () => performStudentLogout();
+
+    const switchBtn = document.getElementById('profSwitchAccountBtn');
+    if (switchBtn) switchBtn.onclick = () => openStudentAuthModal('login', '');
+
+    const switchModalBtn = document.getElementById('profOpenSwitcherModalBtn');
+    if (switchModalBtn) switchModalBtn.onclick = () => openStudentAuthModal('login', '');
+
+    const createAccBtn = document.getElementById('profCreateNewAccBtn');
+    if (createAccBtn) createAccBtn.onclick = () => openStudentAuthModal('register', '');
+
+    const resetPassBtn = document.getElementById('profResetPasswordBtn');
+    if (resetPassBtn) resetPassBtn.onclick = () => openStudentAuthModal('reset', state.student.email || '');
+
+    root.querySelectorAll('[data-quick-logout-acc]').forEach((btn) => {
+      btn.onclick = () => performStudentLogout();
+    });
+
+    root.querySelectorAll('[data-quick-switch-acc]').forEach((btn) => {
+      btn.onclick = () => {
+        const targetEmail = btn.getAttribute('data-quick-switch-acc');
+        openStudentAuthModal('login', targetEmail);
+      };
+    });
   }
 
   function renderAdminGatePrompt(root) {
@@ -1965,14 +3021,25 @@
         state.bookmarks = state.bookmarks.filter((b) => b.id !== qObj.id);
         toast('🏷️ Removed from Bookmarks.');
       } else {
-        state.bookmarks.unshift(Object.assign({}, qObj, { testId, testTitle }));
+        state.bookmarks.unshift(Object.assign({}, qObj, {
+          testId,
+          testTitle,
+          userId: state.student.uid
+        }));
         toast('🔖 Question saved to Bookmarks for quick revision!');
       }
       saveState();
+      if (window.CGpediaCloud && state.student.uid) {
+        window.CGpediaCloud.saveCloudDoc('users', state.student.uid, {
+          userId: state.student.uid,
+          bookmarks: state.bookmarks
+        });
+      }
     },
     reportQuestionError: (qObj, testId, testTitle) => {
       const rep = {
         id: 'rep_' + Date.now(),
+        userId: state.student.uid,
         testId,
         testTitle,
         questionId: qObj.id,
@@ -1988,16 +3055,21 @@
       toast('🚩 Question flagged for Admin review.');
     },
     onExamCompleted: (resultRecord, wrongQuestions) => {
+      const taggedResult = Object.assign({}, resultRecord, {
+        userId: state.student.uid,
+        studentEmail: state.student.email || '',
+        studentName: state.student.name || 'Aspirant'
+      });
       state.attempts = state.attempts || [];
-      state.attempts.unshift(resultRecord);
-      state.activeResultId = resultRecord.id;
+      state.attempts.unshift(taggedResult);
+      state.activeResultId = taggedResult.id;
 
-      // Automatically populate Mistake Notebook with any wrong questions
+      // Automatically populate Mistake Notebook with any wrong questions for this student
       if (Array.isArray(wrongQuestions) && wrongQuestions.length > 0) {
         state.mistakes = state.mistakes || [];
         wrongQuestions.forEach((wq) => {
           if (!state.mistakes.some((m) => m.questionHi === wq.questionHi)) {
-            state.mistakes.unshift(wq);
+            state.mistakes.unshift(Object.assign({}, wq, { userId: state.student.uid }));
           }
         });
       }
@@ -2005,16 +3077,16 @@
       // Update Leaderboard if public
       if (state.student.leaderboardPublic !== false) {
         const lbEntry = {
-          id: 'lb_' + state.student.uid + '_' + resultRecord.testId,
+          id: 'lb_' + state.student.uid + '_' + taggedResult.testId,
           userId: state.student.uid,
           studentName: state.student.name,
-          testId: resultRecord.testId,
-          testTitle: resultRecord.testTitleHi,
-          score: resultRecord.score,
-          maxScore: resultRecord.maxScore,
-          accuracyPercent: resultRecord.accuracyPercent,
-          timeTakenSeconds: resultRecord.timeTakenSeconds,
-          submittedAtIso: resultRecord.submittedAtIso
+          testId: taggedResult.testId,
+          testTitle: taggedResult.testTitleHi,
+          score: taggedResult.score,
+          maxScore: taggedResult.maxScore,
+          accuracyPercent: taggedResult.accuracyPercent,
+          timeTakenSeconds: taggedResult.timeTakenSeconds,
+          submittedAtIso: taggedResult.submittedAtIso
         };
         state.leaderboard = (state.leaderboard || []).filter((e) => e.id !== lbEntry.id);
         state.leaderboard.push(lbEntry);
@@ -2023,12 +3095,21 @@
 
       saveState();
       if (window.CGpediaCloud) {
-        window.CGpediaCloud.saveCloudDoc('results', resultRecord.id, Object.assign({ userId: state.student.uid }, resultRecord));
+        window.CGpediaCloud.saveCloudDoc('results', taggedResult.id, taggedResult);
+        if (state.student.uid) {
+          window.CGpediaCloud.saveCloudDoc('users', state.student.uid, {
+            userId: state.student.uid,
+            displayName: state.student.name,
+            email: state.student.email,
+            bookmarks: state.bookmarks || [],
+            mistakes: state.mistakes || []
+          });
+        }
       }
       applyBrandingAndSecurity();
       state.activeTab = 'analytics';
       renderApp();
-      toast(`🎉 Exam submitted! Net Score: ${resultRecord.score} / ${resultRecord.maxScore} (${resultRecord.accuracyPercent}% Accuracy)`);
+      toast(`🎉 Exam submitted! Net Score: ${taggedResult.score} / ${taggedResult.maxScore} (${taggedResult.accuracyPercent}% Accuracy)`);
     }
   };
 
@@ -2036,15 +3117,27 @@
   // Cloud Sync Merge & Auth Handlers
   // =========================================================================
   function handleFirebaseAuthUser(fbUser) {
-    if (!fbUser) return;
+    // Do NOT auto-login if the student intentionally logged out
+    if (!fbUser || isLoggedOut()) return;
+    const incomingUid = String(fbUser.uid || '').trim();
+    const incomingEmail = String(fbUser.email || '').trim().toLowerCase();
+    if (incomingUid && state.student.uid !== incomingUid) {
+      activateStudentAccountSession({
+        uid: incomingUid,
+        name: fbUser.displayName || state.student.name || 'Aspirant',
+        email: incomingEmail || state.student.email || '',
+        phone: fbUser.phoneNumber || state.student.phone || ''
+      });
+      return;
+    }
     if (fbUser.displayName && state.student.name === 'Aspirant') {
       state.student.name = fbUser.displayName;
     }
-    if (fbUser.email) {
-      state.student.email = String(fbUser.email).toLowerCase();
+    if (incomingEmail) {
+      state.student.email = incomingEmail;
     }
-    if (fbUser.uid) {
-      state.student.uid = fbUser.uid;
+    if (incomingUid) {
+      state.student.uid = incomingUid;
     }
     saveState();
     renderApp();
@@ -2064,35 +3157,203 @@
     renderApp();
   }
 
-  function playSynthesizedAnthem() {
-    try {
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      if (!AudioContext) return;
-      if (anthemAudioCtx) {
-        anthemAudioCtx.close();
-        anthemAudioCtx = null;
-        toast('🔇 Anthem stopped.');
-        return;
+  function isAnthemPublishedForStudents() {
+    if (!state || !state.config || !state.config.anthemEnabled) return false;
+    const ad = state.config.anthemData;
+    if (!ad || !ad.published) return false;
+    return Boolean(ad.downloadUrl || ad.storagePath);
+  }
+
+  function formatPlayerSeconds(sec) {
+    if (!Number.isFinite(sec) || sec < 0) return '00:00';
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+  }
+
+  function closeAndStopStudentAnthemPlayer() {
+    studentAnthemPlayerOpen = false;
+    if (studentAnthemAudioEl) {
+      try { studentAnthemAudioEl.pause(); } catch (_) {}
+    }
+    const container = document.getElementById('studentAnthemFloatingPlayer');
+    if (container) {
+      container.style.display = 'none';
+    }
+    const anthemBtn = document.getElementById('anthemToggleBtn');
+    if (anthemBtn) {
+      anthemBtn.setAttribute('aria-expanded', 'false');
+    }
+  }
+
+  function syncStudentAnthemPlayerMeta() {
+    const ad = (state.config && state.config.anthemData) || {};
+    const titleEl = document.getElementById('stuAnthemPlayerTitle');
+    const descEl = document.getElementById('stuAnthemPlayerDesc');
+    if (titleEl) titleEl.textContent = ad.title || 'CGpedia Anthem';
+    if (descEl) descEl.textContent = ad.description || '';
+  }
+
+  async function toggleStudentAnthemFloatingPlayer() {
+    if (!isAnthemPublishedForStudents()) {
+      closeAndStopStudentAnthemPlayer();
+      return;
+    }
+
+    const container = document.getElementById('studentAnthemFloatingPlayer');
+    const anthemBtn = document.getElementById('anthemToggleBtn');
+    if (!container) return;
+
+    if (studentAnthemPlayerOpen) {
+      closeAndStopStudentAnthemPlayer();
+      return;
+    }
+
+    studentAnthemPlayerOpen = true;
+    if (anthemBtn) anthemBtn.setAttribute('aria-expanded', 'true');
+
+    const ad = state.config.anthemData || {};
+    container.style.display = 'block';
+    container.innerHTML = `
+      <div class="anthem-floating-card" oncontextmenu="return false;">
+        <div class="anthem-floating-header">
+          <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+            <div class="anthem-floating-icon">🎵</div>
+            <div style="min-width:0;">
+              <div class="anthem-floating-title" id="stuAnthemPlayerTitle">${esc(ad.title || 'CGpedia State Anthem')}</div>
+              <div class="anthem-floating-desc" id="stuAnthemPlayerDesc">${esc(ad.description || '')}</div>
+            </div>
+          </div>
+          <button type="button" class="btn btn-outline btn-sm" id="stuAnthemCloseBtn" title="Close Anthem Player" aria-label="Close Anthem Player">✕</button>
+        </div>
+
+        <audio id="stuAnthemHiddenAudio" preload="metadata" controlsList="nodownload" style="display:none;"></audio>
+
+        <div class="anthem-floating-controls">
+          <button type="button" class="btn btn-primary btn-sm" id="stuAnthemPlayPauseBtn" style="min-width:98px;">
+            ▶️ Play
+          </button>
+
+          <div class="anthem-floating-timeline">
+            <input type="range" id="stuAnthemSeekSlider" min="0" max="100" value="0" step="0.1" aria-label="Anthem playback timeline" />
+            <span id="stuAnthemTimeDisplay" class="anthem-floating-time">00:00 / 00:00</span>
+          </div>
+
+          <div class="anthem-floating-volume">
+            <button type="button" class="btn btn-outline btn-sm" id="stuAnthemMuteBtn" title="Mute / Unmute" aria-label="Toggle Mute">
+              ${studentAnthemMuted || studentAnthemVolume === 0 ? '🔇' : '🔊'}
+            </button>
+            <input type="range" id="stuAnthemVolumeSlider" min="0" max="100" value="${Math.round((studentAnthemMuted ? 0 : studentAnthemVolume) * 100)}" step="1" aria-label="Adjust Anthem volume" />
+          </div>
+        </div>
+      </div>
+    `;
+
+    studentAnthemAudioEl = document.getElementById('stuAnthemHiddenAudio');
+    const playPauseBtn = document.getElementById('stuAnthemPlayPauseBtn');
+    const seekSlider = document.getElementById('stuAnthemSeekSlider');
+    const timeDisplay = document.getElementById('stuAnthemTimeDisplay');
+    const muteBtn = document.getElementById('stuAnthemMuteBtn');
+    const volSlider = document.getElementById('stuAnthemVolumeSlider');
+    const closeBtn = document.getElementById('stuAnthemCloseBtn');
+
+    if (closeBtn) {
+      closeBtn.onclick = () => closeAndStopStudentAnthemPlayer();
+    }
+
+    if (!studentAnthemAudioEl) return;
+
+    studentAnthemAudioEl.volume = studentAnthemMuted ? 0 : studentAnthemVolume;
+    studentAnthemAudioEl.muted = studentAnthemMuted;
+
+    const resolvedUrl = window.CGpediaCloud && window.CGpediaCloud.resolveAnthemPlaybackUrl
+      ? await window.CGpediaCloud.resolveAnthemPlaybackUrl(ad)
+      : (ad.downloadUrl || '');
+
+    if (resolvedUrl) {
+      studentAnthemAudioEl.src = resolvedUrl;
+    }
+
+    if (playPauseBtn) {
+      playPauseBtn.onclick = async () => {
+        if (!studentAnthemAudioEl.src) {
+          const freshUrl = window.CGpediaCloud && window.CGpediaCloud.resolveAnthemPlaybackUrl
+            ? await window.CGpediaCloud.resolveAnthemPlaybackUrl(ad)
+            : (ad.downloadUrl || '');
+          if (freshUrl) studentAnthemAudioEl.src = freshUrl;
+        }
+        if (studentAnthemAudioEl.paused) {
+          studentAnthemAudioEl.play().catch((err) => {
+            toast('⚠️ Unable to play Anthem audio: ' + (err.message || 'Check connection'));
+          });
+        } else {
+          studentAnthemAudioEl.pause();
+        }
+      };
+    }
+
+    studentAnthemAudioEl.onplay = () => {
+      if (playPauseBtn) playPauseBtn.innerHTML = '⏸️ Pause';
+    };
+    studentAnthemAudioEl.onpause = () => {
+      if (playPauseBtn) playPauseBtn.innerHTML = '▶️ Play';
+    };
+    studentAnthemAudioEl.onended = () => {
+      if (playPauseBtn) playPauseBtn.innerHTML = '▶️ Play';
+      if (seekSlider) seekSlider.value = '0';
+    };
+    studentAnthemAudioEl.onloadedmetadata = () => {
+      if (timeDisplay) {
+        timeDisplay.textContent = `00:00 / ${formatPlayerSeconds(studentAnthemAudioEl.duration)}`;
       }
-      anthemAudioCtx = new AudioContext();
-      const notes = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 392.00, 329.63];
-      let startTime = anthemAudioCtx.currentTime;
-      notes.forEach((freq) => {
-        const osc = anthemAudioCtx.createOscillator();
-        const gain = anthemAudioCtx.createGain();
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(freq, startTime);
-        gain.gain.setValueAtTime(0.14, startTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.45);
-        osc.connect(gain);
-        gain.connect(anthemAudioCtx.destination);
-        osc.start(startTime);
-        osc.stop(startTime + 0.45);
-        startTime += 0.48;
-      });
-      toast('🎵 Playing CGpedia State Anthem (अरपा पैरी के धार)...');
-      setTimeout(() => { anthemAudioCtx = null; }, 4200);
-    } catch (_) {}
+    };
+    studentAnthemAudioEl.ontimeupdate = () => {
+      const dur = studentAnthemAudioEl.duration || 0;
+      const cur = studentAnthemAudioEl.currentTime || 0;
+      if (dur > 0 && seekSlider) {
+        seekSlider.value = String(((cur / dur) * 100).toFixed(1));
+      }
+      if (timeDisplay) {
+        timeDisplay.textContent = `${formatPlayerSeconds(cur)} / ${formatPlayerSeconds(dur)}`;
+      }
+    };
+
+    if (seekSlider) {
+      seekSlider.oninput = () => {
+        const dur = studentAnthemAudioEl.duration || 0;
+        if (dur > 0) {
+          studentAnthemAudioEl.currentTime = (Number(seekSlider.value) / 100) * dur;
+        }
+      };
+    }
+
+    if (volSlider) {
+      volSlider.oninput = () => {
+        const pct = Number(volSlider.value || 0);
+        studentAnthemVolume = Math.max(0, Math.min(1, pct / 100));
+        studentAnthemMuted = studentAnthemVolume === 0;
+        studentAnthemAudioEl.muted = studentAnthemMuted;
+        studentAnthemAudioEl.volume = studentAnthemVolume;
+        if (muteBtn) {
+          muteBtn.textContent = studentAnthemMuted ? '🔇' : '🔊';
+        }
+      };
+    }
+
+    if (muteBtn) {
+      muteBtn.onclick = () => {
+        studentAnthemMuted = !studentAnthemMuted;
+        if (!studentAnthemMuted && studentAnthemVolume === 0) {
+          studentAnthemVolume = 0.75;
+        }
+        studentAnthemAudioEl.muted = studentAnthemMuted;
+        studentAnthemAudioEl.volume = studentAnthemMuted ? 0 : studentAnthemVolume;
+        muteBtn.textContent = studentAnthemMuted ? '🔇' : '🔊';
+        if (volSlider) {
+          volSlider.value = String(Math.round((studentAnthemMuted ? 0 : studentAnthemVolume) * 100));
+        }
+      };
+    }
   }
 
   // =========================================================================
@@ -2107,7 +3368,11 @@
     openQuestionEditorModal,
     parseBulkQuestionsText,
     handleFirebaseAuthUser,
-    mergeCloudCollection
+    mergeCloudCollection,
+    getCurrentStudentUid,
+    openStudentAuthModal,
+    performStudentLogout,
+    toggleStudentAnthemFloatingPlayer
   };
   window.CGpediaApp = publicApi;
 
@@ -2179,9 +3444,23 @@
       };
     }
 
+    const headerAuthBtn = document.getElementById('headerAuthToggleBtn');
+    if (headerAuthBtn) {
+      headerAuthBtn.onclick = () => {
+        if (isLoggedOut()) {
+          state.activeTab = 'profile';
+          renderApp();
+        } else if (state.student && state.student.email) {
+          performStudentLogout();
+        } else {
+          openStudentAuthModal('login', '');
+        }
+      };
+    }
+
     const anthemBtn = document.getElementById('anthemToggleBtn');
     if (anthemBtn) {
-      anthemBtn.onclick = () => playSynthesizedAnthem();
+      anthemBtn.onclick = () => toggleStudentAnthemFloatingPlayer();
     }
 
     // Security Blur when window loses focus if screenshot restriction is enabled

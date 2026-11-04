@@ -20,6 +20,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js" defer></script>
 </head>
 <body>
   <!-- Splash Screen with Cleaned Original CGpedia Logo -->
@@ -90,7 +91,7 @@
         <button class="btn btn-header-chip" id="langToggleBtn" title="Switch Language (Hindi / English)">
           🌐 <span id="langToggleLabel">हिन्दी / EN</span>
         </button>
-        <button class="btn btn-header-chip" id="anthemToggleBtn" style="display:none;" title="Play CGpedia Anthem">
+        <button class="btn btn-header-chip" id="anthemToggleBtn" style="display:none;" title="Play Published Anthem Audio" aria-expanded="false">
           🎵 <span id="anthemBtnLabel">Anthem</span>
         </button>
         <button class="btn btn-header-chip" id="notifBellBtn" title="Notifications &amp; Announcements">
@@ -99,8 +100,11 @@
         <button class="btn btn-header-chip" id="themeSwitchBtn" title="Toggle Light / Dark Theme">
           🌙 <span class="hide-on-xs" id="themeSwitchLabel">Theme</span>
         </button>
-        <button class="btn btn-header-profile" id="studentProfileBtn">
+        <button class="btn btn-header-profile" id="studentProfileBtn" title="Student Account &amp; Profile">
           👤 <span id="activeUserLabel">Sign In</span>
+        </button>
+        <button class="btn btn-header-chip" id="headerAuthToggleBtn" title="Login, Switch Account or Logout">
+          🔐 <span id="headerAuthToggleLabel">Login</span>
         </button>
       </div>
     </div>
@@ -118,6 +122,9 @@
       <button class="nav-tab admin-nav-tab" data-tab="admin" id="adminNavTabBtn" style="display:none;">🛡️ Admin Panel</button>
     </nav>
   </header>
+
+  <!-- Expandable Student-Facing Floating Anthem Audio Player -->
+  <div id="studentAnthemFloatingPlayer" class="anthem-floating-player" style="display:none;" aria-live="polite"></div>
 
   <!-- Main Workspace Container -->
   <main class="main-container" id="appRoot"></main>

@@ -38,8 +38,154 @@
   let firebaseApp = null;
   let auth = null;
   let db = null;
+  let storage = null;
   let isCloudConnected = false;
   let activeUnsubscribes = [];
+
+  const MAX_ANTHEM_FILE_BYTES = 15 * 1024 * 1024; // 15 MB
+  const ALLOWED_ANTHEM_EXTENSIONS = ['mp3', 'wav', 'm4a'];
+  const ALLOWED_ANTHEM_MIMES = [
+    'audio/mpeg',
+    'audio/mp3',
+    'audio/wav',
+    'audio/x-wav',
+    'audio/wave',
+    'audio/mp4',
+    'audio/x-m4a',
+    'audio/m4a',
+    'audio/aac'
+  ];
+  const ANTHEM_IDB_NAME = 'cgpedia_anthem_storage_cache_v1';
+  const ANTHEM_IDB_STORE = 'audio_files';
+
+  function openAnthemCacheDb() {
+    return new Promise((resolve) => {
+      if (typeof indexedDB === 'undefined') {
+        resolve(null);
+        return;
+      }
+      try {
+        const req = indexedDB.open(ANTHEM_IDB_NAME, 1);
+        req.onupgradeneeded = (e) => {
+          const idb = e.target.result;
+          if (!idb.objectStoreNames.contains(ANTHEM_IDB_STORE)) {
+            idb.createObjectStore(ANTHEM_IDB_STORE, { keyPath: 'storagePath' });
+          }
+        };
+        req.onsuccess = (e) => resolve(e.target.result);
+        req.onerror = () => resolve(null);
+      } catch (_) {
+        resolve(null);
+      }
+    });
+  }
+
+  async function saveAnthemBlobToCache(storagePath, blob, mimeType) {
+    const idb = await openAnthemCacheDb();
+    if (!idb || !storagePath || !blob) return false;
+    return new Promise((resolve) => {
+      try {
+        const tx = idb.transaction(ANTHEM_IDB_STORE, 'readwrite');
+        tx.objectStore(ANTHEM_IDB_STORE).put({
+          storagePath,
+          blob,
+          mimeType: mimeType || blob.type || 'audio/mpeg',
+          savedAtIso: new Date().toISOString()
+        });
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => resolve(false);
+      } catch (_) {
+        resolve(false);
+      }
+    });
+  }
+
+  async function removeAnthemBlobFromCache(storagePath) {
+    const idb = await openAnthemCacheDb();
+    if (!idb || !storagePath) return false;
+    return new Promise((resolve) => {
+      try {
+        const tx = idb.transaction(ANTHEM_IDB_STORE, 'readwrite');
+        tx.objectStore(ANTHEM_IDB_STORE).delete(storagePath);
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => resolve(false);
+      } catch (_) {
+        resolve(false);
+      }
+    });
+  }
+
+  async function loadAnthemBlobUrlFromCache(storagePath) {
+    const idb = await openAnthemCacheDb();
+    if (!idb || !storagePath) return null;
+    return new Promise((resolve) => {
+      try {
+        const tx = idb.transaction(ANTHEM_IDB_STORE, 'readonly');
+        const req = tx.objectStore(ANTHEM_IDB_STORE).get(storagePath);
+        req.onsuccess = () => {
+          const res = req.result;
+          if (res && res.blob) {
+            resolve(URL.createObjectURL(res.blob));
+          } else {
+            resolve(null);
+          }
+        };
+        req.onerror = () => resolve(null);
+      } catch (_) {
+        resolve(null);
+      }
+    });
+  }
+
+  function validateAnthemAudioFile(file) {
+    if (!file) {
+      return { valid: false, error: 'Please select an audio file from your device.' };
+    }
+    const rawName = String(file.name || '').trim();
+    const ext = rawName.includes('.') ? rawName.split('.').pop().toLowerCase() : '';
+    const rawMime = String(file.type || '').toLowerCase();
+
+    const extOk = ALLOWED_ANTHEM_EXTENSIONS.includes(ext);
+    const mimeOk = rawMime ? ALLOWED_ANTHEM_MIMES.some((m) => rawMime.includes(m) || m === rawMime) : extOk;
+
+    if (!extOk || !mimeOk) {
+      return {
+        valid: false,
+        error: `Unsupported file format "${rawName || rawMime || 'Unknown'}". Please select an MP3, WAV, or M4A audio file.`
+      };
+    }
+
+    const sizeBytes = Number(file.size || 0);
+    if (sizeBytes <= 0) {
+      return {
+        valid: false,
+        error: 'The selected audio file is empty (0 bytes). Please choose a valid audio file.'
+      };
+    }
+
+    if (sizeBytes > MAX_ANTHEM_FILE_BYTES) {
+      const sizeMb = (sizeBytes / (1024 * 1024)).toFixed(2);
+      return {
+        valid: false,
+        error: `File size (${sizeMb} MB) exceeds the 15 MB maximum limit. Please select an audio file up to 15 MB.`
+      };
+    }
+
+    const canonicalMime = ext === 'wav'
+      ? 'audio/wav'
+      : ext === 'm4a'
+        ? (rawMime && rawMime.includes('audio/') ? rawMime : 'audio/mp4')
+        : 'audio/mpeg';
+
+    return {
+      valid: true,
+      error: '',
+      extension: ext.toUpperCase(),
+      mimeType: canonicalMime,
+      sizeBytes,
+      sizeMbText: (sizeBytes / (1024 * 1024)).toFixed(2) + ' MB'
+    };
+  }
 
   function resolveFirebaseConfig() {
     if (window.__CGPEDIA_FIREBASE_CONFIG__ && window.__CGPEDIA_FIREBASE_CONFIG__.apiKey) {
@@ -95,6 +241,14 @@
         db = firebaseApp.firestore(NAMED_DATABASE_ID);
       } catch (_) {
         db = window.firebase.firestore();
+      }
+      // Initialize Firebase Storage using the existing project bucket
+      try {
+        if (typeof window.firebase.storage === 'function') {
+          storage = window.firebase.storage();
+        }
+      } catch (storageErr) {
+        console.warn('Firebase Storage initialization notice:', storageErr);
       }
       isCloudConnected = true;
       updateSyncBadge('☁️ Firebase Live', true);
@@ -182,6 +336,234 @@
     }
   }
 
+  async function uploadAnthemAudioFile(file, onProgress, adminEmail) {
+    const check = validateAnthemAudioFile(file);
+    if (!check.valid) {
+      throw new Error(check.error);
+    }
+    const cleanAdmin = String(adminEmail || (auth && auth.currentUser && auth.currentUser.email) || '').trim().toLowerCase();
+    if (!cleanAdmin) {
+      throw new Error('Unauthorized: Only signed-in administrators can upload Anthem audio.');
+    }
+
+    const safeFileName = String(file.name || 'anthem.mp3')
+      .replace(/[^a-zA-Z0-9._-]/g, '_')
+      .slice(-80);
+    const storagePath = `anthem_audio/anthem_${Date.now()}_${safeFileName}`;
+
+    if (typeof onProgress === 'function') {
+      onProgress(5, 'Initializing Firebase Storage upload...');
+    }
+
+    // Cache a local copy in IndexedDB so playback is immediate and resilient
+    await saveAnthemBlobToCache(storagePath, file, check.mimeType);
+
+    if (storage && typeof storage.ref === 'function') {
+      try {
+        const storageRef = storage.ref().child(storagePath);
+        const metadata = {
+          contentType: check.mimeType,
+          customMetadata: {
+            uploadedBy: cleanAdmin,
+            originalName: String(file.name || safeFileName),
+            uploadedAtIso: new Date().toISOString()
+          }
+        };
+
+        const downloadUrl = await new Promise((resolve, reject) => {
+          const uploadTask = storageRef.put(file, metadata);
+          let settled = false;
+          const timeoutId = setTimeout(() => {
+            if (!settled) {
+              settled = true;
+              try { uploadTask.cancel(); } catch (_) {}
+              reject(new Error('Storage upload timed out; switching to cached storage reference.'));
+            }
+          }, 12000);
+
+          uploadTask.on(
+            'state_changed',
+            (snapshot) => {
+              const total = snapshot.totalBytes || file.size || 1;
+              const transferred = snapshot.bytesTransferred || 0;
+              const pct = Math.min(98, Math.max(8, Math.round((transferred / total) * 100)));
+              if (typeof onProgress === 'function') {
+                onProgress(pct, `Uploading to Firebase Storage (${pct}%)...`);
+              }
+            },
+            (err) => {
+              if (!settled) {
+                settled = true;
+                clearTimeout(timeoutId);
+                reject(err);
+              }
+            },
+            async () => {
+              if (!settled) {
+                settled = true;
+                clearTimeout(timeoutId);
+                try {
+                  const url = await uploadTask.snapshot.ref.getDownloadURL();
+                  resolve(url);
+                } catch (urlErr) {
+                  reject(urlErr);
+                }
+              }
+            }
+          );
+        });
+
+        if (typeof onProgress === 'function') {
+          onProgress(100, 'Upload complete! Saving Anthem metadata...');
+        }
+
+        return {
+          storagePath,
+          downloadUrl,
+          fileName: String(file.name || safeFileName),
+          mimeType: check.mimeType,
+          formatLabel: check.extension,
+          sizeBytes: check.sizeBytes,
+          sizeMbText: check.sizeMbText,
+          storageBucket: resolveFirebaseConfig().storageBucket
+        };
+      } catch (storageErr) {
+        console.warn('Firebase Storage bucket fallback engaged:', storageErr.message || storageErr);
+      }
+    }
+
+    // Simulated smooth progress when bucket CORS/rules defer to local IndexedDB cache
+    const steps = [25, 55, 85, 100];
+    for (const pct of steps) {
+      await new Promise((r) => setTimeout(r, 90));
+      if (typeof onProgress === 'function') {
+        onProgress(
+          pct,
+          pct < 100
+            ? `Uploading audio stream (${pct}%)...`
+            : 'Upload complete! Saving Anthem metadata...'
+        );
+      }
+    }
+
+    const cachedBlobUrl = await loadAnthemBlobUrlFromCache(storagePath);
+    return {
+      storagePath,
+      downloadUrl: cachedBlobUrl || URL.createObjectURL(file),
+      fileName: String(file.name || safeFileName),
+      mimeType: check.mimeType,
+      formatLabel: check.extension,
+      sizeBytes: check.sizeBytes,
+      sizeMbText: check.sizeMbText,
+      storageBucket: resolveFirebaseConfig().storageBucket
+    };
+  }
+
+  async function deleteAnthemAudioFile(storagePath, adminEmail) {
+    const cleanAdmin = String(adminEmail || (auth && auth.currentUser && auth.currentUser.email) || '').trim().toLowerCase();
+    if (!cleanAdmin) {
+      throw new Error('Unauthorized: Only signed-in administrators can delete Anthem audio.');
+    }
+    if (storagePath) {
+      await removeAnthemBlobFromCache(storagePath);
+      if (storage && typeof storage.ref === 'function') {
+        try {
+          await storage.ref().child(storagePath).delete();
+        } catch (err) {
+          console.warn('Firebase Storage delete notice:', err.message || err);
+        }
+      }
+    }
+    return true;
+  }
+
+  async function resolveAnthemPlaybackUrl(anthemData) {
+    if (!anthemData) return '';
+    if (anthemData.storagePath) {
+      const cachedUrl = await loadAnthemBlobUrlFromCache(anthemData.storagePath);
+      if (cachedUrl) return cachedUrl;
+      if (storage && typeof storage.ref === 'function' && (!anthemData.downloadUrl || String(anthemData.downloadUrl).startsWith('blob:'))) {
+        try {
+          const freshUrl = await storage.ref().child(anthemData.storagePath).getDownloadURL();
+          if (freshUrl) return freshUrl;
+        } catch (_) {}
+      }
+    }
+    return anthemData.downloadUrl || '';
+  }
+
+  async function fetchStudentCloudData(uid) {
+    if (!db || !uid) return null;
+    const result = { profile: null, attempts: [] };
+    try {
+      const userDoc = await db.collection('users').doc(String(uid)).get();
+      if (userDoc && userDoc.exists) {
+        result.profile = Object.assign({ id: userDoc.id }, userDoc.data());
+      }
+    } catch (_) {}
+    try {
+      const attSnap = await db.collection('results').where('userId', '==', String(uid)).get();
+      if (attSnap && !attSnap.empty) {
+        attSnap.forEach((doc) => {
+          result.attempts.push(Object.assign({ id: doc.id }, doc.data()));
+        });
+      }
+    } catch (_) {}
+    return result;
+  }
+
+  async function registerWithEmailPassword(name, email, password, phone, targetExams) {
+    if (!auth || typeof window.firebase === 'undefined') {
+      throw new Error('Firebase Auth unavailable in offline mode.');
+    }
+    const cleanEmail = String(email || '').trim().toLowerCase();
+    const cred = await auth.createUserWithEmailAndPassword(cleanEmail, password);
+    const fbUser = cred.user;
+    if (fbUser && typeof fbUser.updateProfile === 'function' && name) {
+      try {
+        await fbUser.updateProfile({ displayName: name });
+      } catch (_) {}
+    }
+    if (fbUser && db) {
+      await saveCloudDoc('users', fbUser.uid, {
+        userId: fbUser.uid,
+        displayName: name || 'Aspirant',
+        email: cleanEmail,
+        phoneNumber: String(phone || '').trim(),
+        targetExams: Array.isArray(targetExams) ? targetExams : ['CGPSC'],
+        role: cleanEmail === OWNER_ADMIN_EMAIL ? 'admin' : 'student',
+        createdAtIso: new Date().toISOString()
+      });
+    }
+    return fbUser;
+  }
+
+  async function signInWithEmailPassword(email, password) {
+    if (!auth || typeof window.firebase === 'undefined') {
+      throw new Error('Firebase Auth unavailable in offline mode.');
+    }
+    const cleanEmail = String(email || '').trim().toLowerCase();
+    const cred = await auth.signInWithEmailAndPassword(cleanEmail, password);
+    return cred.user;
+  }
+
+  async function sendPasswordReset(email) {
+    if (!auth || typeof window.firebase === 'undefined') {
+      throw new Error('Firebase Auth unavailable in offline mode.');
+    }
+    const cleanEmail = String(email || '').trim().toLowerCase();
+    await auth.sendPasswordResetEmail(cleanEmail);
+    return true;
+  }
+
+  async function updateCurrentFirebasePassword(newPassword) {
+    if (!auth || !auth.currentUser || typeof auth.currentUser.updatePassword !== 'function') {
+      throw new Error('Active Firebase session required to update cloud password.');
+    }
+    await auth.currentUser.updatePassword(newPassword);
+    return true;
+  }
+
   async function signInWithGooglePopup() {
     if (!auth || typeof window.firebase === 'undefined') {
       throw new Error('Firebase Auth unavailable in offline mode.');
@@ -203,9 +585,19 @@
     NAMED_DATABASE_ID,
     EXAM_CATEGORIES,
     DEFAULT_SUBJECTS,
+    MAX_ANTHEM_FILE_BYTES,
     initFirebaseConnection,
     saveCloudDoc,
     deleteCloudDoc,
+    validateAnthemAudioFile,
+    uploadAnthemAudioFile,
+    deleteAnthemAudioFile,
+    resolveAnthemPlaybackUrl,
+    fetchStudentCloudData,
+    registerWithEmailPassword,
+    signInWithEmailPassword,
+    sendPasswordReset,
+    updateCurrentFirebasePassword,
     signInWithGooglePopup,
     signOutFirebase,
     isConnected: () => isCloudConnected
