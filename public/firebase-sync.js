@@ -225,6 +225,9 @@
   function initFirebaseConnection(onStateReady) {
     if (typeof window.firebase === 'undefined') {
       updateSyncBadge('⚡ Local + Offline Ready', false);
+      if (window.CGpediaApp && typeof window.CGpediaApp.handleFirebaseAuthUser === 'function') {
+        window.CGpediaApp.handleFirebaseAuthUser(null);
+      }
       if (onStateReady) onStateReady(false);
       return;
     }
@@ -254,8 +257,8 @@
       updateSyncBadge('☁️ Firebase Live', true);
 
       auth.onAuthStateChanged((fbUser) => {
-        if (fbUser && window.CGpediaApp && typeof window.CGpediaApp.handleFirebaseAuthUser === 'function') {
-          window.CGpediaApp.handleFirebaseAuthUser(fbUser);
+        if (window.CGpediaApp && typeof window.CGpediaApp.handleFirebaseAuthUser === 'function') {
+          window.CGpediaApp.handleFirebaseAuthUser(fbUser || null);
         }
       });
 
@@ -264,6 +267,9 @@
     } catch (err) {
       console.warn('Firebase initialization fallback:', err);
       updateSyncBadge('⚡ Offline Mode', false);
+      if (window.CGpediaApp && typeof window.CGpediaApp.handleFirebaseAuthUser === 'function') {
+        window.CGpediaApp.handleFirebaseAuthUser(null);
+      }
       if (onStateReady) onStateReady(false);
     }
   }

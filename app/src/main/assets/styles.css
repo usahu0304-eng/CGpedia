@@ -1397,3 +1397,343 @@ body.screenshot-restricted {
   }
 }
 
+/* =========================================================================
+   Header Settings Gear Button, Hero Card Actions & Navigation Below Hero Card
+   ========================================================================= */
+.btn-settings-gear {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  color: #FFFFFF;
+  border: 1.5px solid rgba(255, 255, 255, 0.28);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.15rem;
+  cursor: pointer;
+  transition: background 0.18s ease, transform 0.18s ease;
+  flex-shrink: 0;
+}
+
+.btn-settings-gear:hover {
+  background: rgba(255, 255, 255, 0.24);
+  transform: rotate(24deg);
+}
+
+.hero-and-nav-shell {
+  max-width: 1280px;
+  margin: 16px auto 0;
+  padding: 0 16px;
+}
+
+.hero-and-nav-shell .hero-banner {
+  margin-bottom: 12px;
+}
+
+.hero-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.hero-compact-icon-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.16);
+  color: #FFFFFF;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.05rem;
+  cursor: pointer;
+  position: relative;
+  transition: background 0.15s ease, transform 0.15s ease;
+  flex-shrink: 0;
+}
+
+.hero-compact-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.26);
+}
+
+.hero-compact-icon-btn .notif-pill {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+  font-size: 0.64rem;
+  border: 1.5px solid #0F2557;
+}
+
+.nav-tabs.nav-tabs-below-hero {
+  background: #0F2557;
+  border-radius: var(--radius-md);
+  padding: 7px 10px;
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 4px;
+}
+
+.hero-and-nav-shell .anthem-floating-player {
+  max-width: 100%;
+  padding: 0;
+  margin: 0 0 12px;
+}
+
+.main-container {
+  padding-top: 14px;
+}
+
+/* =========================================================================
+   Right-Side Settings Drawer & Distinct Destructive Logout Button
+   ========================================================================= */
+.settings-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 4400;
+  background: rgba(9, 17, 34, 0.55);
+  backdrop-filter: blur(3px);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.22s ease, visibility 0.22s ease;
+}
+
+.settings-drawer-backdrop.open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.settings-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 4450;
+  width: min(380px, 92vw);
+  background: var(--surface);
+  color: var(--text);
+  border-left: 1px solid var(--border);
+  box-shadow: -8px 0 30px rgba(9, 17, 34, 0.24);
+  transform: translateX(104%);
+  transition: transform 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-drawer.open {
+  transform: translateX(0);
+}
+
+.settings-drawer-inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.settings-drawer-header {
+  padding: 16px 18px;
+  background: #0F2557;
+  color: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.settings-drawer-header-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.05rem;
+}
+
+.settings-drawer-title {
+  font-size: 1.05rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.settings-drawer-subtitle {
+  font-size: 0.74rem;
+  color: #BFDBFE;
+}
+
+.settings-drawer-close-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  color: #FFFFFF;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  font-size: 0.95rem;
+  font-weight: 800;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.settings-drawer-close-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.settings-drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settings-drawer-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-section-label {
+  font-size: 0.71rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.settings-profile-card,
+.settings-option-box {
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+}
+
+.settings-profile-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #0F2557 0%, #1D4ED8 100%);
+  color: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.15rem;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.settings-profile-name {
+  font-size: 0.94rem;
+  font-weight: 800;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.settings-profile-email {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  word-break: break-all;
+}
+
+.settings-profile-meta {
+  font-size: 0.73rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.settings-segmented-group {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  gap: 6px;
+}
+
+.settings-segment-btn {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s ease;
+  text-align: center;
+}
+
+.settings-segment-btn:hover {
+  border-color: var(--secondary);
+  color: var(--text);
+}
+
+.settings-segment-btn.active {
+  background: var(--secondary);
+  color: #FFFFFF;
+  border-color: var(--secondary);
+}
+
+.settings-drawer-footer {
+  padding: 14px 18px calc(14px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.settings-logout-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 16px;
+  border-radius: 10px;
+  background: #FEE2E2;
+  color: #991B1B;
+  border: 1.5px solid #FCA5A5;
+  font-size: 0.9rem;
+  font-weight: 800;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
+}
+
+.settings-logout-btn:hover {
+  background: #FECACA;
+  border-color: #F87171;
+  color: #7F1D1D;
+}
+
+[data-theme="dark"] .settings-logout-btn {
+  background: rgba(239, 68, 68, 0.18);
+  color: #FCA5A5;
+  border-color: rgba(248, 113, 113, 0.45);
+}
+
+[data-theme="dark"] .settings-logout-btn:hover {
+  background: rgba(239, 68, 68, 0.28);
+  color: #FECACA;
+}
+
+.settings-logout-icon {
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+

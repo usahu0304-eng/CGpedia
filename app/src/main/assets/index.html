@@ -68,7 +68,7 @@
     </div>
   </div>
 
-  <!-- Sticky Application Header -->
+  <!-- 1. Sticky Application Header: Branding on Left + Settings Gear Icon on Extreme Right -->
   <header class="app-header" id="mainAppHeader">
     <div class="header-inner">
       <div class="brand-identity" id="brandHomeTrigger" role="button" tabindex="0" aria-label="CGpedia Home">
@@ -85,32 +85,53 @@
       </div>
 
       <div class="header-actions">
-        <button class="btn btn-header-chip" id="activeExamSelectorBtn" title="Change Target Exam Category">
-          🎯 <span id="activeExamHeaderLabel">All Exams</span> ▾
-        </button>
-        <button class="btn btn-header-chip" id="langToggleBtn" title="Switch Language (Hindi / English)">
-          🌐 <span id="langToggleLabel">हिन्दी / EN</span>
-        </button>
-        <button class="btn btn-header-chip" id="anthemToggleBtn" style="display:none;" title="Play Published Anthem Audio" aria-expanded="false">
-          🎵 <span id="anthemBtnLabel">Anthem</span>
-        </button>
-        <button class="btn btn-header-chip" id="notifBellBtn" title="Notifications &amp; Announcements">
-          🔔 <span id="notifBadgeCount" class="notif-pill" style="display:none;">0</span>
-        </button>
-        <button class="btn btn-header-chip" id="themeSwitchBtn" title="Toggle Light / Dark Theme">
-          🌙 <span class="hide-on-xs" id="themeSwitchLabel">Theme</span>
-        </button>
-        <button class="btn btn-header-profile" id="studentProfileBtn" title="Student Account &amp; Profile">
-          👤 <span id="activeUserLabel">Sign In</span>
-        </button>
-        <button class="btn btn-header-chip" id="headerAuthToggleBtn" title="Login, Switch Account or Logout">
-          🔐 <span id="headerAuthToggleLabel">Login</span>
+        <button type="button" class="btn-settings-gear" id="settingsDrawerTriggerBtn" style="display:none;" title="Open Settings" aria-label="Open Settings Drawer" aria-expanded="false">
+          ⚙️
         </button>
       </div>
     </div>
+  </header>
 
-    <!-- Primary Top Navigation Tabs (Scrollable on Mobile, Full Bar on Desktop) -->
-    <nav class="nav-tabs" id="mainNavTabs" aria-label="Main Navigation">
+  <!-- 2. CGpedia Competitive Exam Preparation Hero Card & 3. Main Horizontal Navigation Bar -->
+  <section class="hero-and-nav-shell" id="topHeroNavWrapper" style="display:none;">
+    <div class="hero-banner" id="persistentHeroCard">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:14px;">
+          <img src="assets/cgpedia-logo-clean.png" alt="CGpedia Official Logo" style="width:66px;height:66px;border-radius:50%;object-fit:cover;border:2.5px solid #93C5FD;background:#F4EFEA;flex-shrink:0;" />
+          <div>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <span class="badge" id="heroStudentGreetingBadge" style="background:rgba(255,255,255,0.18);color:#fff;">नमस्ते, Aspirant 👋</span>
+              <span class="badge" id="heroOwnerAdminBadge" style="background:#EA580C;color:#fff;display:none;">🛡️ Owner Admin Verified</span>
+            </div>
+            <h1 style="font-size:1.35rem;font-weight:800;margin-top:4px;">CGpedia Competitive Exam Preparation</h1>
+            <p style="font-size:0.84rem;color:#DBEAFE;">UPSC • CGPSC &amp; State PSC • SSC • Banking • Railway • CTET • UGC NET • Police &amp; Defence</p>
+          </div>
+        </div>
+
+        <div class="hero-card-actions">
+          <button type="button" class="btn" style="background:rgba(255,255,255,0.16);color:#fff;border:1px solid rgba(255,255,255,0.3);" id="homeEditOnboardingBtn">
+            🎯 My Target Exams
+          </button>
+          <button type="button" class="hero-compact-icon-btn" id="anthemToggleBtn" title="Play CGpedia Anthem" aria-label="Play CGpedia Anthem" aria-expanded="false">
+            🎵
+          </button>
+          <button type="button" class="hero-compact-icon-btn" id="notifBellBtn" title="Notifications &amp; Announcements" aria-label="Notifications and Announcements">
+            🔔<span id="notifBadgeCount" class="notif-pill" style="display:none;">0</span>
+          </button>
+        </div>
+      </div>
+
+      <div style="margin-top:14px;display:flex;gap:8px;">
+        <input class="form-input" id="globalHomeSearchInput" placeholder="🔍 Search exams, mock tests, subjects, or PYQ papers..." style="background:rgba(255,255,255,0.95);color:#0F172A;border:none;" />
+        <button type="button" class="btn btn-warning" id="globalHomeSearchBtn">Search</button>
+      </div>
+    </div>
+
+    <!-- Expandable Student-Facing Floating Anthem Audio Player -->
+    <div id="studentAnthemFloatingPlayer" class="anthem-floating-player" style="display:none;" aria-live="polite"></div>
+
+    <!-- 3. Main Horizontal Navigation Bar Directly Below the Hero Card -->
+    <nav class="nav-tabs nav-tabs-below-hero" id="mainNavTabs" aria-label="Main Navigation">
       <button class="nav-tab active" data-tab="dashboard">🏠 Home</button>
       <button class="nav-tab" data-tab="test-series">📚 Test Series</button>
       <button class="nav-tab" data-tab="practice">🎯 Practice &amp; PYQs</button>
@@ -118,19 +139,15 @@
       <button class="nav-tab" data-tab="leaderboard">🏆 Leaderboard</button>
       <button class="nav-tab" data-tab="current-affairs">⚡ Current Affairs</button>
       <button class="nav-tab" data-tab="notifications">📢 Updates</button>
-      <button class="nav-tab" data-tab="profile">👤 Profile</button>
       <button class="nav-tab admin-nav-tab" data-tab="admin" id="adminNavTabBtn" style="display:none;">🛡️ Admin Panel</button>
     </nav>
-  </header>
+  </section>
 
-  <!-- Expandable Student-Facing Floating Anthem Audio Player -->
-  <div id="studentAnthemFloatingPlayer" class="anthem-floating-player" style="display:none;" aria-live="polite"></div>
-
-  <!-- Main Workspace Container -->
+  <!-- 4. Main Workspace Container (Home Page Content & Active Module Views) -->
   <main class="main-container" id="appRoot"></main>
 
   <!-- Mobile Bottom Navigation Bar (Sticky on Handheld Screens) -->
-  <nav class="mobile-bottom-nav" id="mobileBottomNav" aria-label="Bottom Navigation">
+  <nav class="mobile-bottom-nav" id="mobileBottomNav" style="display:none;" aria-label="Bottom Navigation">
     <button class="bottom-nav-item active" data-tab="dashboard">
       <span class="bottom-nav-icon">🏠</span>
       <span class="bottom-nav-label">Home</span>
@@ -147,11 +164,15 @@
       <span class="bottom-nav-icon">📊</span>
       <span class="bottom-nav-label">Analytics</span>
     </button>
-    <button class="bottom-nav-item" data-tab="profile">
-      <span class="bottom-nav-icon">👤</span>
-      <span class="bottom-nav-label">Profile</span>
+    <button class="bottom-nav-item" data-tab="leaderboard">
+      <span class="bottom-nav-icon">🏆</span>
+      <span class="bottom-nav-label">Ranks</span>
     </button>
   </nav>
+
+  <!-- Right-Side Settings Drawer -->
+  <div class="settings-drawer-backdrop" id="settingsDrawerBackdrop" aria-hidden="true"></div>
+  <aside class="settings-drawer" id="settingsDrawerPanel" aria-label="Settings Drawer" aria-hidden="true"></aside>
 
   <!-- Fullscreen CBT Examination Engine Container -->
   <div id="cbtExamContainer"></div>

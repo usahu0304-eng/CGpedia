@@ -132,7 +132,7 @@
       lang: 'bilingual',
       onboarded: false,
       authSession: {
-        isAuthenticated: true,
+        isAuthenticated: false,
         intentionalLogout: false,
         authMode: 'login',
         prefillEmail: ''
@@ -161,8 +161,8 @@
         screenshotRestriction: true
       },
       student: {
-        uid: 'STU-' + Math.floor(100000 + Math.random() * 900000),
-        name: 'Aspirant',
+        uid: '',
+        name: '',
         email: '',
         phone: '',
         targetExams: ['CGPSC', 'UPSC', 'SSC'],
@@ -195,6 +195,12 @@
   let studentAnthemPlayerOpen = false;
   let studentAnthemVolume = 0.85;
   let studentAnthemMuted = false;
+  let synthAnthemCtx = null;
+  let synthAnthemTimer = null;
+  let synthAnthemPlaying = false;
+  let settingsDrawerOpen = false;
+  let settingsProfileEditExpanded = false;
+  let authStateCheckComplete = isStudentAuthenticated();
 
   function loadState() {
     const def = createDefaultState();
@@ -207,9 +213,26 @@
         config: Object.assign({}, def.config, parsed.config || {}),
         student: Object.assign({}, def.student, parsed.student || {})
       });
-      // Ensure backward compatibility: tag existing student data with active student's UID
-      if (!merged.authSession.intentionalLogout && merged.student && merged.student.uid) {
-        const uid = merged.student.uid;
+
+      const hasValidAccount = Boolean(
+        merged.authSession &&
+        merged.authSession.isAuthenticated === true &&
+        merged.authSession.intentionalLogout !== true &&
+        merged.student &&
+        String(merged.student.uid || '').trim() &&
+        String(merged.student.email || '').trim().includes('@')
+      );
+
+      if (!hasValidAccount) {
+        merged.authSession.isAuthenticated = false;
+        merged.student = Object.assign({}, def.student);
+        merged.attempts = [];
+        merged.bookmarks = [];
+        merged.mistakes = [];
+        merged.activeResultId = null;
+        merged.adminUnlocked = false;
+      } else {
+        const uid = String(merged.student.uid).trim();
         merged.attempts = (merged.attempts || [])
           .filter((a) => !a.userId || a.userId === uid)
           .map((a) => Object.assign({}, a, { userId: uid }));
@@ -226,12 +249,21 @@
     }
   }
 
+  function isStudentAuthenticated() {
+    if (!state || !state.authSession) return false;
+    if (state.authSession.intentionalLogout === true) return false;
+    if (state.authSession.isAuthenticated !== true) return false;
+    const uid = String((state.student && state.student.uid) || '').trim();
+    const email = String((state.student && state.student.email) || '').trim();
+    return Boolean(uid && email && email.includes('@'));
+  }
+
   function isLoggedOut() {
-    return Boolean(state && state.authSession && state.authSession.intentionalLogout === true);
+    return !isStudentAuthenticated();
   }
 
   function getCurrentStudentUid() {
-    if (isLoggedOut()) return '';
+    if (!isStudentAuthenticated()) return '';
     return String((state && state.student && state.student.uid) || '').trim();
   }
 
@@ -296,35 +328,36 @@
     if (titleEl) titleEl.textContent = state.config.appTitle || 'CGpedia';
     if (subEl) subEl.textContent = state.config.appSubtitle || 'Competitive Exam & CBT Test Portal';
 
-    const userLabel = document.getElementById('activeUserLabel');
-    if (userLabel) {
-      if (isLoggedOut()) {
-        userLabel.textContent = 'Sign In / Register';
-      } else if (state.student.email) {
-        userLabel.textContent = `${state.student.name} ${isCurrentUserAdmin() ? '🛡️' : '✓'}`;
-      } else {
-        userLabel.textContent = `${state.student.name} (Account)`;
-      }
+    // Hide or show Hero + Main Navigation wrapper and Settings Gear button when student is unauthenticated
+    const heroNavWrapper = document.getElementById('topHeroNavWrapper');
+    const mobileBottomNav = document.getElementById('mobileBottomNav');
+    const settingsGearBtn = document.getElementById('settingsDrawerTriggerBtn');
+    const authenticated = isStudentAuthenticated();
+    if (heroNavWrapper) {
+      heroNavWrapper.style.display = authenticated ? 'block' : 'none';
+    }
+    if (mobileBottomNav) {
+      mobileBottomNav.style.display = authenticated ? '' : 'none';
+    }
+    if (settingsGearBtn) {
+      settingsGearBtn.style.display = authenticated ? 'inline-flex' : 'none';
+    }
+    if (!authenticated && settingsDrawerOpen) {
+      closeSettingsDrawer();
     }
 
-    const headerAuthBtn = document.getElementById('headerAuthToggleBtn');
-    const headerAuthLabel = document.getElementById('headerAuthToggleLabel');
-    if (headerAuthBtn && headerAuthLabel) {
-      if (isLoggedOut()) {
-        headerAuthBtn.innerHTML = '🔐 <span id="headerAuthToggleLabel">Login</span>';
-        headerAuthBtn.title = 'Sign In or Create Student Account';
-      } else if (state.student.email) {
-        headerAuthBtn.innerHTML = '🚪 <span id="headerAuthToggleLabel">Logout</span>';
-        headerAuthBtn.title = 'Logout from ' + state.student.email;
-      } else {
-        headerAuthBtn.innerHTML = '🔐 <span id="headerAuthToggleLabel">Login / Switch</span>';
-        headerAuthBtn.title = 'Sign In, Create Account or Switch Student Account';
-      }
+    // Update Hero Card greeting badge and Admin badge
+    const greetingBadge = document.getElementById('heroStudentGreetingBadge');
+    if (greetingBadge) {
+      greetingBadge.textContent = `नमस्ते, ${(state.student && state.student.name) || 'Aspirant'} 👋`;
     }
-
-    const examHeaderLabel = document.getElementById('activeExamHeaderLabel');
-    if (examHeaderLabel) {
-      examHeaderLabel.textContent = state.selectedExamFilter === 'ALL' ? 'All Exams' : state.selectedExamFilter;
+    const ownerAdminBadge = document.getElementById('heroOwnerAdminBadge');
+    if (ownerAdminBadge) {
+      ownerAdminBadge.style.display = isCurrentUserAdmin() ? 'inline-flex' : 'none';
+    }
+    const heroSearchInput = document.getElementById('globalHomeSearchInput');
+    if (heroSearchInput && document.activeElement !== heroSearchInput) {
+      heroSearchInput.value = state.searchQuery || '';
     }
 
     const adminTabBtn = document.getElementById('adminNavTabBtn');
@@ -333,14 +366,22 @@
     }
 
     const anthemBtn = document.getElementById('anthemToggleBtn');
-    const publishedAnthem = isAnthemPublishedForStudents();
+    const hasUploadedButUnpublished = Boolean(
+      state &&
+      state.config &&
+      state.config.anthemData &&
+      (state.config.anthemData.downloadUrl || state.config.anthemData.storagePath) &&
+      state.config.anthemData.published === false
+    );
     if (anthemBtn) {
-      anthemBtn.style.display = publishedAnthem ? 'inline-flex' : 'none';
-      if (publishedAnthem && state.config.anthemData && state.config.anthemData.title) {
+      anthemBtn.style.display = hasUploadedButUnpublished ? 'none' : 'inline-flex';
+      if (state.config && state.config.anthemData && state.config.anthemData.title) {
         anthemBtn.title = state.config.anthemData.title;
+      } else {
+        anthemBtn.title = 'Play CGpedia Anthem';
       }
     }
-    if (!publishedAnthem) {
+    if (hasUploadedButUnpublished || !authenticated) {
       closeAndStopStudentAnthemPlayer();
     } else if (studentAnthemPlayerOpen) {
       syncStudentAnthemPlayerMeta();
@@ -351,6 +392,10 @@
       const count = (state.notifications || []).length;
       notifBadge.textContent = String(count);
       notifBadge.style.display = count > 0 ? 'inline-block' : 'none';
+    }
+
+    if (settingsDrawerOpen && authenticated) {
+      renderSettingsDrawerContent();
     }
 
     if (state.config.screenshotRestriction) {
@@ -375,8 +420,72 @@
     });
   }
 
+  const PROTECTED_TABS = [
+    'dashboard',
+    'test-series',
+    'practice',
+    'analytics',
+    'leaderboard',
+    'current-affairs',
+    'notifications',
+    'profile',
+    'admin'
+  ];
+
+  function enforceRouteUrlProtection() {
+    const rawHash = String(window.location.hash || '').replace(/^#\/?/, '').trim().toLowerCase();
+    if (!isStudentAuthenticated()) {
+      if (rawHash === 'register' || rawHash === 'reset' || rawHash === 'login') {
+        state.authSession = Object.assign({}, state.authSession || {}, {
+          authMode: rawHash
+        });
+      }
+      if (window.location.hash !== '#login' && rawHash !== 'register' && rawHash !== 'reset') {
+        try {
+          window.history.replaceState({ authGate: 'login' }, '', '#login');
+        } catch (_) {}
+      }
+      return false;
+    }
+
+    // User is authenticated: prevent non-admin students from accessing #admin
+    if (rawHash === 'admin' && !isCurrentUserAdmin()) {
+      state.activeTab = 'dashboard';
+      try {
+        window.history.replaceState({ tab: 'dashboard', authenticated: true }, '', '#dashboard');
+      } catch (_) {}
+      toast('🔒 Access Denied: Admin Panel is restricted to authorized administrators.');
+      return true;
+    }
+
+    if (PROTECTED_TABS.includes(rawHash)) {
+      state.activeTab = rawHash;
+    } else {
+      const targetTab = PROTECTED_TABS.includes(state.activeTab) ? state.activeTab : 'dashboard';
+      if (targetTab === 'admin' && !isCurrentUserAdmin()) {
+        state.activeTab = 'dashboard';
+      } else {
+        state.activeTab = targetTab;
+      }
+      try {
+        window.history.replaceState({ tab: state.activeTab, authenticated: true }, '', '#' + state.activeTab);
+      } catch (_) {}
+    }
+    return true;
+  }
+
+  function renderAuthVerificationLoading(root) {
+    root.innerHTML = `
+      <div class="card" style="max-width:460px;margin:48px auto;text-align:center;padding:32px 24px;">
+        <img src="assets/cgpedia-logo-clean.png" alt="CGpedia" style="width:68px;height:68px;border-radius:50%;object-fit:cover;margin-bottom:12px;border:2px solid var(--secondary);" />
+        <h2 style="font-size:1.1rem;font-weight:800;margin-bottom:6px;">Verifying Authentication Session...</h2>
+        <p style="font-size:0.84rem;color:var(--text-secondary);">Please wait while CGpedia checks your account credentials.</p>
+      </div>
+    `;
+  }
+
   // =========================================================================
-  // Main View Router (With Protected Student Session Gate After Logout)
+  // Main View Router (Mandatory Authentication Entry Point & Route Guard)
   // =========================================================================
   function renderApp() {
     applyBrandingAndSecurity();
@@ -385,12 +494,22 @@
     const root = document.getElementById('appRoot');
     if (!root) return;
 
-    // When a student has logged out, show the dedicated Student Login / Registration Screen
-    // and prevent unauthorized access to protected student pages until signed in.
-    if (isLoggedOut() && state.activeTab !== 'admin') {
-      renderStudentAuthPortal(root);
+    // Show loading screen while Firebase Authentication status is being determined
+    if (!authStateCheckComplete && !isStudentAuthenticated()) {
+      renderAuthVerificationLoading(root);
       return;
     }
+
+    // Mandatory Authentication Gate: Unauthenticated users always see the Login / Welcome Page
+    if (!isStudentAuthenticated()) {
+      enforceRouteUrlProtection();
+      const cbtRoot = document.getElementById('cbtExamContainer');
+      if (cbtRoot) cbtRoot.innerHTML = '';
+      renderStudentAuthPortal(root, false);
+      return;
+    }
+
+    enforceRouteUrlProtection();
 
     // Check if there is an unsubmitted CBT session for the current student UID
     const savedSession = window.CGpediaCBT && window.CGpediaCBT.getSavedActiveSession();
@@ -413,7 +532,9 @@
       renderProfileAndSettings(root);
     } else if (state.activeTab === 'admin') {
       if (!isCurrentUserAdmin()) {
-        renderAdminGatePrompt(root);
+        state.activeTab = 'dashboard';
+        saveState();
+        renderHomeDashboard(root, savedSession);
       } else {
         window.CGpediaAdmin.renderAdminConsole(root, state, publicApi);
       }
@@ -430,35 +551,6 @@
     const pinnedNotifs = (state.notifications || []).filter((n) => n.isPinned);
 
     root.innerHTML = `
-      <!-- Hero Welcome & Search Banner -->
-      <div class="hero-banner">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
-          <div style="display:flex;align-items:center;gap:14px;">
-            <img src="assets/cgpedia-logo-clean.png" alt="CGpedia Official Logo" style="width:66px;height:66px;border-radius:50%;object-fit:cover;border:2.5px solid #93C5FD;background:#F4EFEA;flex-shrink:0;" />
-            <div>
-              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                <span class="badge" style="background:rgba(255,255,255,0.18);color:#fff;">नमस्ते, ${esc(state.student.name)} 👋</span>
-                ${isCurrentUserAdmin() ? `<span class="badge" style="background:#EA580C;color:#fff;">🛡️ Owner Admin Verified</span>` : ''}
-              </div>
-              <h1 style="font-size:1.35rem;font-weight:800;margin-top:4px;">CGpedia Competitive Exam Preparation</h1>
-              <p style="font-size:0.84rem;color:#DBEAFE;">UPSC • CGPSC &amp; State PSC • SSC • Banking • Railway • CTET • UGC NET • Police &amp; Defence</p>
-            </div>
-          </div>
-
-          <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            ${isCurrentUserAdmin() ? `
-              <button class="btn" style="background:#EA580C;color:#fff;" id="homeGoAdminBtn">🛡️ Open Admin Panel</button>
-            ` : ''}
-            <button class="btn" style="background:rgba(255,255,255,0.16);color:#fff;border:1px solid rgba(255,255,255,0.3);" id="homeEditOnboardingBtn">🎯 My Target Exams</button>
-          </div>
-        </div>
-
-        <div style="margin-top:14px;display:flex;gap:8px;">
-          <input class="form-input" id="globalHomeSearchInput" value="${esc(state.searchQuery)}" placeholder="🔍 Search exams, mock tests, subjects, or PYQ papers..." style="background:rgba(255,255,255,0.95);color:#0F172A;border:none;" />
-          <button class="btn btn-warning" id="globalHomeSearchBtn">Search</button>
-        </div>
-      </div>
-
       <!-- Resume Interrupted CBT Banner (If Any) -->
       ${savedCbtSession ? `
         <div class="card" style="border-left:5px solid #EA580C;background:var(--warning-soft);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
@@ -1530,8 +1622,11 @@
       authMode: 'login',
       prefillEmail: ''
     };
+    authStateCheckComplete = true;
     state.student = nextStudent;
     state.onboarded = true;
+    // Redirect to the CGpedia Home Page upon successful Login or Registration
+    state.activeTab = 'dashboard';
 
     if (isBrandNewAccount || !savedWorkspace) {
       state.attempts = [];
@@ -1604,13 +1699,75 @@
     }
 
     saveState();
+    try {
+      window.history.replaceState({ tab: 'dashboard', authenticated: true }, '', '#dashboard');
+    } catch (_) {}
     const modalRoot = document.getElementById('genericModalContainer');
     if (modalRoot) modalRoot.innerHTML = '';
     renderApp();
   }
 
-  async function performStudentLogout() {
-    if (!isLoggedOut() && state.student && state.student.uid) {
+  function openLogoutConfirmationDialog() {
+    const modalRoot = document.getElementById('genericModalContainer');
+    if (!modalRoot) return;
+
+    modalRoot.innerHTML = `
+      <div class="modal-backdrop" id="logoutConfirmModalBackdrop" role="dialog" aria-modal="true" aria-labelledby="logoutConfirmModalTitle" aria-describedby="logoutConfirmModalDesc">
+        <div class="modal-card" style="max-width:420px;width:100%;text-align:center;padding:24px 22px;margin:auto;">
+          <div style="width:52px;height:52px;border-radius:50%;background:var(--danger-soft);color:var(--danger);display:flex;align-items:center;justify-content:center;font-size:1.45rem;margin:0 auto 12px;">
+            🚪
+          </div>
+          <h2 id="logoutConfirmModalTitle" style="font-size:1.15rem;font-weight:800;color:var(--text);margin-bottom:8px;">
+            Confirm Logout
+          </h2>
+          <p id="logoutConfirmModalDesc" style="font-size:0.9rem;color:var(--text-secondary);line-height:1.5;margin-bottom:20px;">
+            Are you sure you want to log out of your account?
+          </p>
+          <div style="display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;">
+            <button type="button" class="btn btn-outline" id="cancelLogoutConfirmBtn" style="flex:1;min-width:120px;">
+              Cancel
+            </button>
+            <button type="button" class="btn btn-danger" id="confirmYesLogoutBtn" style="flex:1;min-width:130px;">
+              Yes, Logout
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const cancelBtn = document.getElementById('cancelLogoutConfirmBtn');
+    const confirmBtn = document.getElementById('confirmYesLogoutBtn');
+    const backdrop = document.getElementById('logoutConfirmModalBackdrop');
+
+    if (cancelBtn) {
+      cancelBtn.focus();
+      cancelBtn.onclick = () => {
+        // Close confirmation dialog, keep student logged in, and preserve current page & session
+        modalRoot.innerHTML = '';
+      };
+    }
+
+    if (confirmBtn) {
+      confirmBtn.onclick = async () => {
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Logging out...';
+        if (cancelBtn) cancelBtn.disabled = true;
+        await executeStudentLogout();
+      };
+    }
+
+    if (backdrop) {
+      // Prevent accidental logout or accidental dismissal when clicking outside the dialog card
+      backdrop.onclick = (e) => {
+        if (e.target === backdrop) {
+          e.stopPropagation();
+        }
+      };
+    }
+  }
+
+  async function executeStudentLogout() {
+    if (isStudentAuthenticated() && state.student && state.student.uid) {
       saveStudentWorkspaceSnapshot(state.student.uid);
       if (window.CGpediaCloud && state.student.email) {
         try {
@@ -1635,6 +1792,7 @@
       authMode: 'login',
       prefillEmail: ''
     };
+    authStateCheckComplete = true;
 
     if (window.CGpediaCloud && typeof window.CGpediaCloud.signOutFirebase === 'function') {
       try {
@@ -1645,7 +1803,7 @@
     // Clear active in-memory student data so no next user can see previous student's private info
     state.student = {
       uid: '',
-      name: 'Guest Aspirant',
+      name: '',
       email: '',
       phone: '',
       targetExams: ['CGPSC', 'UPSC', 'SSC'],
@@ -1657,17 +1815,35 @@
     state.mistakes = [];
     state.activeResultId = null;
     state.adminUnlocked = false;
-    state.activeTab = 'profile';
+    state.activeTab = 'dashboard';
+
+    closeSettingsDrawer();
+    closeAndStopStudentAnthemPlayer();
+    const cbtRoot = document.getElementById('cbtExamContainer');
+    if (cbtRoot) cbtRoot.innerHTML = '';
 
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (_) {}
+
+    // Replace and push #login history barrier so browser Back button cannot return to protected Home Page
+    try {
+      window.history.replaceState({ authGate: 'login' }, '', '#login');
+      window.history.pushState({ authGate: 'login' }, '', '#login');
     } catch (_) {}
 
     const modalRoot = document.getElementById('genericModalContainer');
     if (modalRoot) modalRoot.innerHTML = '';
 
     renderApp();
-    toast('👋 You have been logged out securely. Sign in or switch to another student account.');
+    toast('👋 You have been logged out securely. Please sign in to continue.');
+  }
+
+  function performStudentLogout(forceImmediate) {
+    if (forceImmediate === true) {
+      return executeStudentLogout();
+    }
+    openLogoutConfirmationDialog();
   }
 
   function openStudentAuthModal(initialMode, prefillEmail) {
@@ -3117,20 +3293,24 @@
   // Cloud Sync Merge & Auth Handlers
   // =========================================================================
   function handleFirebaseAuthUser(fbUser) {
+    authStateCheckComplete = true;
     // Do NOT auto-login if the student intentionally logged out
-    if (!fbUser || isLoggedOut()) return;
+    if (!fbUser || (state.authSession && state.authSession.intentionalLogout === true)) {
+      renderApp();
+      return;
+    }
     const incomingUid = String(fbUser.uid || '').trim();
     const incomingEmail = String(fbUser.email || '').trim().toLowerCase();
-    if (incomingUid && state.student.uid !== incomingUid) {
+    if (incomingUid && incomingEmail && (!isStudentAuthenticated() || state.student.uid !== incomingUid)) {
       activateStudentAccountSession({
         uid: incomingUid,
-        name: fbUser.displayName || state.student.name || 'Aspirant',
-        email: incomingEmail || state.student.email || '',
+        name: fbUser.displayName || state.student.name || incomingEmail.split('@')[0] || 'Aspirant',
+        email: incomingEmail,
         phone: fbUser.phoneNumber || state.student.phone || ''
       });
       return;
     }
-    if (fbUser.displayName && state.student.name === 'Aspirant') {
+    if (fbUser.displayName && (!state.student.name || state.student.name === 'Aspirant')) {
       state.student.name = fbUser.displayName;
     }
     if (incomingEmail) {
@@ -3171,8 +3351,54 @@
     return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
   }
 
+  function stopSynthesizedAnthem() {
+    synthAnthemPlaying = false;
+    if (synthAnthemTimer) {
+      clearTimeout(synthAnthemTimer);
+      synthAnthemTimer = null;
+    }
+    if (synthAnthemCtx) {
+      try { synthAnthemCtx.close(); } catch (_) {}
+      synthAnthemCtx = null;
+    }
+  }
+
+  function startSynthesizedAnthem(onEndedCallback) {
+    stopSynthesizedAnthem();
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return false;
+      synthAnthemCtx = new AudioContext();
+      synthAnthemPlaying = true;
+      const notes = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 392.00, 329.63, 293.66, 261.63];
+      let startTime = synthAnthemCtx.currentTime;
+      const effectiveVol = studentAnthemMuted ? 0.0001 : Math.max(0.01, studentAnthemVolume * 0.22);
+      notes.forEach((freq) => {
+        const osc = synthAnthemCtx.createOscillator();
+        const gain = synthAnthemCtx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, startTime);
+        gain.gain.setValueAtTime(effectiveVol, startTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.44);
+        osc.connect(gain);
+        gain.connect(synthAnthemCtx.destination);
+        osc.start(startTime);
+        osc.stop(startTime + 0.44);
+        startTime += 0.46;
+      });
+      synthAnthemTimer = setTimeout(() => {
+        stopSynthesizedAnthem();
+        if (typeof onEndedCallback === 'function') onEndedCallback();
+      }, notes.length * 460 + 120);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   function closeAndStopStudentAnthemPlayer() {
     studentAnthemPlayerOpen = false;
+    stopSynthesizedAnthem();
     if (studentAnthemAudioEl) {
       try { studentAnthemAudioEl.pause(); } catch (_) {}
     }
@@ -3190,16 +3416,11 @@
     const ad = (state.config && state.config.anthemData) || {};
     const titleEl = document.getElementById('stuAnthemPlayerTitle');
     const descEl = document.getElementById('stuAnthemPlayerDesc');
-    if (titleEl) titleEl.textContent = ad.title || 'CGpedia Anthem';
-    if (descEl) descEl.textContent = ad.description || '';
+    if (titleEl) titleEl.textContent = ad.title || 'छत्तीसगढ़ राज्य गीत — अरपा पैरी के धार (Chhattisgarh State Anthem)';
+    if (descEl) descEl.textContent = ad.description || 'रचयिता: डॉ. नरेन्द्र देव वर्मा • Official State Anthem of Chhattisgarh';
   }
 
   async function toggleStudentAnthemFloatingPlayer() {
-    if (!isAnthemPublishedForStudents()) {
-      closeAndStopStudentAnthemPlayer();
-      return;
-    }
-
     const container = document.getElementById('studentAnthemFloatingPlayer');
     const anthemBtn = document.getElementById('anthemToggleBtn');
     if (!container) return;
@@ -3212,7 +3433,11 @@
     studentAnthemPlayerOpen = true;
     if (anthemBtn) anthemBtn.setAttribute('aria-expanded', 'true');
 
-    const ad = state.config.anthemData || {};
+    const ad = (state.config && state.config.anthemData) || {};
+    const hasUploadedPublishedAudio = isAnthemPublishedForStudents();
+    const displayTitle = ad.title || 'छत्तीसगढ़ राज्य गीत — अरपा पैरी के धार (Chhattisgarh State Anthem)';
+    const displayDesc = ad.description || 'रचयिता: डॉ. नरेन्द्र देव वर्मा • Official State Anthem of Chhattisgarh';
+
     container.style.display = 'block';
     container.innerHTML = `
       <div class="anthem-floating-card" oncontextmenu="return false;">
@@ -3220,8 +3445,8 @@
           <div style="display:flex;align-items:center;gap:10px;min-width:0;">
             <div class="anthem-floating-icon">🎵</div>
             <div style="min-width:0;">
-              <div class="anthem-floating-title" id="stuAnthemPlayerTitle">${esc(ad.title || 'CGpedia State Anthem')}</div>
-              <div class="anthem-floating-desc" id="stuAnthemPlayerDesc">${esc(ad.description || '')}</div>
+              <div class="anthem-floating-title" id="stuAnthemPlayerTitle">${esc(displayTitle)}</div>
+              <div class="anthem-floating-desc" id="stuAnthemPlayerDesc">${esc(displayDesc)}</div>
             </div>
           </div>
           <button type="button" class="btn btn-outline btn-sm" id="stuAnthemCloseBtn" title="Close Anthem Player" aria-label="Close Anthem Player">✕</button>
@@ -3236,7 +3461,7 @@
 
           <div class="anthem-floating-timeline">
             <input type="range" id="stuAnthemSeekSlider" min="0" max="100" value="0" step="0.1" aria-label="Anthem playback timeline" />
-            <span id="stuAnthemTimeDisplay" class="anthem-floating-time">00:00 / 00:00</span>
+            <span id="stuAnthemTimeDisplay" class="anthem-floating-time">00:00 / ${hasUploadedPublishedAudio ? '00:00' : '00:05'}</span>
           </div>
 
           <div class="anthem-floating-volume">
@@ -3266,28 +3491,51 @@
     studentAnthemAudioEl.volume = studentAnthemMuted ? 0 : studentAnthemVolume;
     studentAnthemAudioEl.muted = studentAnthemMuted;
 
-    const resolvedUrl = window.CGpediaCloud && window.CGpediaCloud.resolveAnthemPlaybackUrl
-      ? await window.CGpediaCloud.resolveAnthemPlaybackUrl(ad)
-      : (ad.downloadUrl || '');
-
-    if (resolvedUrl) {
-      studentAnthemAudioEl.src = resolvedUrl;
+    let resolvedUrl = '';
+    if (hasUploadedPublishedAudio) {
+      resolvedUrl = window.CGpediaCloud && window.CGpediaCloud.resolveAnthemPlaybackUrl
+        ? await window.CGpediaCloud.resolveAnthemPlaybackUrl(ad)
+        : (ad.downloadUrl || '');
+      if (resolvedUrl) {
+        studentAnthemAudioEl.src = resolvedUrl;
+      }
     }
 
     if (playPauseBtn) {
       playPauseBtn.onclick = async () => {
-        if (!studentAnthemAudioEl.src) {
-          const freshUrl = window.CGpediaCloud && window.CGpediaCloud.resolveAnthemPlaybackUrl
-            ? await window.CGpediaCloud.resolveAnthemPlaybackUrl(ad)
-            : (ad.downloadUrl || '');
-          if (freshUrl) studentAnthemAudioEl.src = freshUrl;
-        }
-        if (studentAnthemAudioEl.paused) {
-          studentAnthemAudioEl.play().catch((err) => {
-            toast('⚠️ Unable to play Anthem audio: ' + (err.message || 'Check connection'));
-          });
+        if (hasUploadedPublishedAudio) {
+          if (!studentAnthemAudioEl.src) {
+            const freshUrl = window.CGpediaCloud && window.CGpediaCloud.resolveAnthemPlaybackUrl
+              ? await window.CGpediaCloud.resolveAnthemPlaybackUrl(ad)
+              : (ad.downloadUrl || '');
+            if (freshUrl) studentAnthemAudioEl.src = freshUrl;
+          }
+          if (studentAnthemAudioEl.paused) {
+            studentAnthemAudioEl.play().catch((err) => {
+              toast('⚠️ Unable to play Anthem audio: ' + (err.message || 'Check connection'));
+            });
+          } else {
+            studentAnthemAudioEl.pause();
+          }
         } else {
-          studentAnthemAudioEl.pause();
+          // Synthesized ceremonial Anthem fallback when no custom audio file is uploaded yet
+          if (synthAnthemPlaying) {
+            stopSynthesizedAnthem();
+            playPauseBtn.innerHTML = '▶️ Play';
+            if (seekSlider) seekSlider.value = '0';
+            if (timeDisplay) timeDisplay.textContent = '00:00 / 00:05';
+          } else {
+            const ok = startSynthesizedAnthem(() => {
+              if (playPauseBtn) playPauseBtn.innerHTML = '▶️ Play';
+              if (seekSlider) seekSlider.value = '0';
+              if (timeDisplay) timeDisplay.textContent = '00:00 / 00:05';
+            });
+            if (ok) {
+              playPauseBtn.innerHTML = '⏸️ Pause';
+              if (seekSlider) seekSlider.value = '50';
+              if (timeDisplay) timeDisplay.textContent = '00:02 / 00:05';
+            }
+          }
         }
       };
     }
@@ -3357,6 +3605,311 @@
   }
 
   // =========================================================================
+  // Right-Side Settings Drawer (My Profile, All Exams, Language, Appearance, Logout)
+  // =========================================================================
+  function openSettingsDrawer() {
+    settingsDrawerOpen = true;
+    const backdrop = document.getElementById('settingsDrawerBackdrop');
+    const panel = document.getElementById('settingsDrawerPanel');
+    const gearBtn = document.getElementById('settingsDrawerTriggerBtn');
+    if (backdrop) {
+      backdrop.classList.add('open');
+      backdrop.setAttribute('aria-hidden', 'false');
+    }
+    if (panel) {
+      panel.classList.add('open');
+      panel.setAttribute('aria-hidden', 'false');
+    }
+    if (gearBtn) {
+      gearBtn.setAttribute('aria-expanded', 'true');
+    }
+    renderSettingsDrawerContent();
+  }
+
+  function closeSettingsDrawer() {
+    settingsDrawerOpen = false;
+    const backdrop = document.getElementById('settingsDrawerBackdrop');
+    const panel = document.getElementById('settingsDrawerPanel');
+    const gearBtn = document.getElementById('settingsDrawerTriggerBtn');
+    if (backdrop) {
+      backdrop.classList.remove('open');
+      backdrop.setAttribute('aria-hidden', 'true');
+    }
+    if (panel) {
+      panel.classList.remove('open');
+      panel.setAttribute('aria-hidden', 'true');
+    }
+    if (gearBtn) {
+      gearBtn.setAttribute('aria-expanded', 'false');
+    }
+  }
+
+  function toggleSettingsDrawer() {
+    if (settingsDrawerOpen) {
+      closeSettingsDrawer();
+    } else {
+      openSettingsDrawer();
+    }
+  }
+
+  function renderSettingsDrawerContent() {
+    const panel = document.getElementById('settingsDrawerPanel');
+    if (!panel) return;
+
+    const exams = window.CGpediaCloud ? window.CGpediaCloud.EXAM_CATEGORIES : [];
+    const loggedOut = isLoggedOut();
+    const stu = state.student || {};
+    const activeExamObj = exams.find((e) => e.code === state.selectedExamFilter);
+    const activeExamLabel = state.selectedExamFilter === 'ALL'
+      ? 'All Exams (सभी परीक्षाएं)'
+      : (activeExamObj ? `${activeExamObj.icon} ${activeExamObj.nameEn}` : state.selectedExamFilter);
+
+    panel.innerHTML = `
+      <div class="settings-drawer-inner">
+        <!-- Drawer Header -->
+        <div class="settings-drawer-header">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span class="settings-drawer-header-icon">⚙️</span>
+            <div>
+              <h2 class="settings-drawer-title">Settings</h2>
+              <p class="settings-drawer-subtitle">Account, Exam Preferences, Language &amp; Theme</p>
+            </div>
+          </div>
+          <button type="button" class="settings-drawer-close-btn" id="closeSettingsDrawerBtn" aria-label="Close Settings Drawer" title="Close Settings">✕</button>
+        </div>
+
+        <!-- Drawer Scrollable Body -->
+        <div class="settings-drawer-body">
+          <!-- 1. My Profile -->
+          <div class="settings-drawer-section">
+            <div class="settings-section-label">1. MY PROFILE</div>
+            <div class="settings-profile-card">
+              <div style="display:flex;align-items:center;gap:12px;">
+                <div class="settings-profile-avatar">
+                  ${esc(String(stu.name || 'A').trim().charAt(0).toUpperCase())}
+                </div>
+                <div style="min-width:0;flex:1;">
+                  <div class="settings-profile-name">
+                    ${esc(loggedOut ? 'Not Signed In' : (stu.name || 'Aspirant'))}
+                    ${!loggedOut && isCurrentUserAdmin() ? `<span class="badge" style="background:#EA580C;color:#fff;font-size:0.65rem;">🛡️ Admin</span>` : ''}
+                  </div>
+                  <div class="settings-profile-email">
+                    ${esc(loggedOut ? 'Sign in to access your personal account' : (stu.email || 'Local Student Account'))}
+                  </div>
+                  ${!loggedOut && stu.phone ? `<div class="settings-profile-meta">📱 ${esc(stu.phone)}</div>` : ''}
+                  ${!loggedOut && stu.uid ? `<div class="settings-profile-meta">🆔 UID: ${esc(stu.uid)}</div>` : ''}
+                </div>
+              </div>
+
+              ${!loggedOut ? `
+                <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;gap:6px;flex-wrap:wrap;">
+                  <button type="button" class="btn btn-outline btn-sm" id="drawerToggleProfileEditBtn" style="flex:1;">
+                    ✏️ ${settingsProfileEditExpanded ? 'Hide Edit Form' : 'Edit Profile'}
+                  </button>
+                  <button type="button" class="btn btn-navy btn-sm" id="drawerOpenFullProfileBtn" style="flex:1;">
+                    👤 Account Details
+                  </button>
+                </div>
+
+                ${settingsProfileEditExpanded ? `
+                  <div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);display:grid;gap:8px;">
+                    <div>
+                      <label class="form-label" style="font-size:0.74rem;margin-bottom:2px;">Full Name</label>
+                      <input class="form-input" id="drawerEditNameInput" value="${esc(stu.name || '')}" style="padding:7px 10px;font-size:0.82rem;" />
+                    </div>
+                    <div>
+                      <label class="form-label" style="font-size:0.74rem;margin-bottom:2px;">Email Address</label>
+                      <input class="form-input" id="drawerEditEmailInput" type="email" value="${esc(stu.email || '')}" style="padding:7px 10px;font-size:0.82rem;" />
+                    </div>
+                    <div>
+                      <label class="form-label" style="font-size:0.74rem;margin-bottom:2px;">Mobile / WhatsApp Number</label>
+                      <input class="form-input" id="drawerEditPhoneInput" value="${esc(stu.phone || '')}" style="padding:7px 10px;font-size:0.82rem;" />
+                    </div>
+                    <button type="button" class="btn btn-primary btn-sm" id="drawerSaveProfileInlineBtn">💾 Save Profile Info</button>
+                  </div>
+                ` : ''}
+              ` : `
+                <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+                  <button type="button" class="btn btn-primary btn-sm" id="drawerSignInBtn" style="width:100%;">
+                    🔐 Sign In / Create Account
+                  </button>
+                </div>
+              `}
+            </div>
+          </div>
+
+          <!-- 2. All Exams -->
+          <div class="settings-drawer-section">
+            <div class="settings-section-label">2. ALL EXAMS</div>
+            <div class="settings-option-box">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">
+                <div>
+                  <div style="font-size:0.85rem;font-weight:700;color:var(--text);">Active Exam Category</div>
+                  <div style="font-size:0.76rem;color:var(--text-secondary);" id="drawerActiveExamText">${esc(activeExamLabel)}</div>
+                </div>
+                <button type="button" class="btn btn-outline btn-sm" id="drawerOpenTargetExamsModalBtn">🎯 Target Exams</button>
+              </div>
+              <select class="form-select" id="drawerAllExamsSelect" aria-label="Select Exam Category" style="padding:8px 10px;font-size:0.83rem;">
+                <option value="ALL" ${state.selectedExamFilter === 'ALL' ? 'selected' : ''}>🌟 All Exams (सभी प्रतियोगी परीक्षाएं)</option>
+                ${exams.map((ex) => `
+                  <option value="${esc(ex.code)}" ${state.selectedExamFilter === ex.code ? 'selected' : ''}>
+                    ${esc(ex.icon)} ${esc(ex.nameEn)} — ${esc(ex.nameHi)}
+                  </option>
+                `).join('')}
+              </select>
+            </div>
+          </div>
+
+          <!-- 3. Language -->
+          <div class="settings-drawer-section">
+            <div class="settings-section-label">3. LANGUAGE (हिन्दी / ENGLISH)</div>
+            <div class="settings-option-box">
+              <div class="settings-segmented-group" role="group" aria-label="Select Language">
+                <button type="button" class="settings-segment-btn ${state.lang === 'bilingual' ? 'active' : ''}" data-drawer-lang="bilingual">
+                  🌐 हिन्दी + EN
+                </button>
+                <button type="button" class="settings-segment-btn ${state.lang === 'hi' ? 'active' : ''}" data-drawer-lang="hi">
+                  🇮🇳 हिन्दी
+                </button>
+                <button type="button" class="settings-segment-btn ${state.lang === 'en' ? 'active' : ''}" data-drawer-lang="en">
+                  🔤 English
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 4. Appearance -->
+          <div class="settings-drawer-section">
+            <div class="settings-section-label">4. APPEARANCE</div>
+            <div class="settings-option-box">
+              <div class="settings-segmented-group" role="group" aria-label="Select Appearance Theme">
+                <button type="button" class="settings-segment-btn ${state.theme !== 'dark' ? 'active' : ''}" data-drawer-theme="light">
+                  ☀️ Light Mode
+                </button>
+                <button type="button" class="settings-segment-btn ${state.theme === 'dark' ? 'active' : ''}" data-drawer-theme="dark">
+                  🌙 Dark Mode
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 5. Logout Button at the Bottom of the Settings Drawer -->
+        <div class="settings-drawer-footer">
+          <button type="button" class="settings-logout-btn" id="drawerLogoutBtn">
+            <span class="settings-logout-icon">🚪</span>
+            <span>Logout</span>
+          </button>
+        </div>
+      </div>
+    `;
+
+    // Bind Drawer Events
+    const closeBtn = document.getElementById('closeSettingsDrawerBtn');
+    if (closeBtn) {
+      closeBtn.onclick = () => closeSettingsDrawer();
+    }
+
+    const toggleEditBtn = document.getElementById('drawerToggleProfileEditBtn');
+    if (toggleEditBtn) {
+      toggleEditBtn.onclick = () => {
+        settingsProfileEditExpanded = !settingsProfileEditExpanded;
+        renderSettingsDrawerContent();
+      };
+    }
+
+    const saveInlineBtn = document.getElementById('drawerSaveProfileInlineBtn');
+    if (saveInlineBtn) {
+      saveInlineBtn.onclick = () => {
+        const nameVal = (document.getElementById('drawerEditNameInput').value || '').trim();
+        const emailVal = (document.getElementById('drawerEditEmailInput').value || '').trim().toLowerCase();
+        const phoneVal = (document.getElementById('drawerEditPhoneInput').value || '').trim();
+        if (nameVal) state.student.name = nameVal;
+        if (emailVal) state.student.email = emailVal;
+        state.student.phone = phoneVal;
+        settingsProfileEditExpanded = false;
+        saveState();
+        if (window.CGpediaCloud && state.student.uid) {
+          window.CGpediaCloud.saveCloudDoc('users', state.student.uid, {
+            userId: state.student.uid,
+            displayName: state.student.name,
+            email: state.student.email,
+            phoneNumber: state.student.phone,
+            targetExams: state.student.targetExams
+          });
+        }
+        renderApp();
+        toast('✅ Profile information updated!');
+      };
+    }
+
+    const openFullProfBtn = document.getElementById('drawerOpenFullProfileBtn');
+    if (openFullProfBtn) {
+      openFullProfBtn.onclick = () => {
+        closeSettingsDrawer();
+        state.activeTab = 'profile';
+        saveState();
+        renderApp();
+      };
+    }
+
+    const signInBtn = document.getElementById('drawerSignInBtn');
+    if (signInBtn) {
+      signInBtn.onclick = () => {
+        closeSettingsDrawer();
+        openStudentAuthModal('login', '');
+      };
+    }
+
+    const targetExamsModalBtn = document.getElementById('drawerOpenTargetExamsModalBtn');
+    if (targetExamsModalBtn) {
+      targetExamsModalBtn.onclick = () => {
+        closeSettingsDrawer();
+        openOnboardingModal();
+      };
+    }
+
+    const allExamsSelect = document.getElementById('drawerAllExamsSelect');
+    if (allExamsSelect) {
+      allExamsSelect.onchange = () => {
+        state.selectedExamFilter = allExamsSelect.value;
+        saveState();
+        renderApp();
+        toast(`🎯 Exam category set to: ${allExamsSelect.value === 'ALL' ? 'All Exams' : allExamsSelect.value}`);
+      };
+    }
+
+    panel.querySelectorAll('[data-drawer-lang]').forEach((btn) => {
+      btn.onclick = () => {
+        const chosenLang = btn.getAttribute('data-drawer-lang');
+        state.lang = chosenLang;
+        if (state.student) state.student.preferredLang = chosenLang;
+        saveState();
+        renderApp();
+        toast(`🌐 Language updated to: ${chosenLang === 'bilingual' ? 'Hindi + English' : chosenLang === 'hi' ? 'हिन्दी (Hindi)' : 'English'}`);
+      };
+    });
+
+    panel.querySelectorAll('[data-drawer-theme]').forEach((btn) => {
+      btn.onclick = () => {
+        const chosenTheme = btn.getAttribute('data-drawer-theme');
+        state.theme = chosenTheme;
+        saveState();
+        applyBrandingAndSecurity();
+        toast(`${chosenTheme === 'dark' ? '🌙 Dark Mode' : '☀️ Light Mode'} activated`);
+      };
+    });
+
+    const logoutBtn = document.getElementById('drawerLogoutBtn');
+    if (logoutBtn) {
+      logoutBtn.onclick = () => {
+        closeSettingsDrawer();
+        performStudentLogout();
+      };
+    }
+  }
+
+  // =========================================================================
   // Initialization & Global Event Listeners
   // =========================================================================
   const publicApi = {
@@ -3372,7 +3925,9 @@
     getCurrentStudentUid,
     openStudentAuthModal,
     performStudentLogout,
-    toggleStudentAnthemFloatingPlayer
+    toggleStudentAnthemFloatingPlayer,
+    openSettingsDrawer,
+    closeSettingsDrawer
   };
   window.CGpediaApp = publicApi;
 
@@ -3383,10 +3938,66 @@
       if (splash) splash.classList.add('hidden');
     }, 650);
 
-    // Top & Bottom Navigation Click Handlers
+    // Safety fallback timer so auth loading state resolves even if offline
+    setTimeout(() => {
+      if (!authStateCheckComplete) {
+        authStateCheckComplete = true;
+        renderApp();
+      }
+    }, 420);
+
+    // Browser Back/Forward (popstate) & manual URL hash change protection
+    window.addEventListener('popstate', () => {
+      if (!isStudentAuthenticated()) {
+        try {
+          window.history.replaceState({ authGate: 'login' }, '', '#login');
+        } catch (_) {}
+      }
+      renderApp();
+    });
+
+    window.addEventListener('hashchange', () => {
+      const rawHash = String(window.location.hash || '').replace(/^#\/?/, '').trim().toLowerCase();
+      if (!isStudentAuthenticated()) {
+        if (rawHash !== 'login' && rawHash !== 'register' && rawHash !== 'reset') {
+          try {
+            window.history.replaceState({ authGate: 'login' }, '', '#login');
+          } catch (_) {}
+        }
+        renderApp();
+        return;
+      }
+      if (PROTECTED_TABS.includes(rawHash)) {
+        if (rawHash === 'admin' && !isCurrentUserAdmin()) {
+          toast('🔒 Access Denied: Admin Panel is restricted to authorized administrators.');
+          state.activeTab = 'dashboard';
+          try {
+            window.history.replaceState({ tab: 'dashboard', authenticated: true }, '', '#dashboard');
+          } catch (_) {}
+        } else {
+          state.activeTab = rawHash;
+        }
+        saveState();
+        renderApp();
+      }
+    });
+
+    // Top & Bottom Navigation Click Handlers (with authentication & admin route guard)
     document.querySelectorAll('#mainNavTabs .nav-tab, #mobileBottomNav .bottom-nav-item').forEach((btn) => {
       btn.onclick = () => {
-        state.activeTab = btn.getAttribute('data-tab');
+        if (!isStudentAuthenticated()) {
+          renderApp();
+          return;
+        }
+        const targetTab = btn.getAttribute('data-tab');
+        if (targetTab === 'admin' && !isCurrentUserAdmin()) {
+          toast('🔒 Access Denied: Admin Panel is restricted to authorized administrators.');
+          return;
+        }
+        state.activeTab = targetTab;
+        try {
+          window.history.pushState({ tab: targetTab, authenticated: true }, '', '#' + targetTab);
+        } catch (_) {}
         saveState();
         renderApp();
       };
@@ -3396,71 +4007,82 @@
     const brandHome = document.getElementById('brandHomeTrigger');
     if (brandHome) {
       brandHome.onclick = () => {
+        if (!isStudentAuthenticated()) {
+          renderApp();
+          return;
+        }
         state.activeTab = 'dashboard';
+        try {
+          window.history.pushState({ tab: 'dashboard', authenticated: true }, '', '#dashboard');
+        } catch (_) {}
         saveState();
         renderApp();
       };
     }
 
-    // Header Actions
-    const examBtn = document.getElementById('activeExamSelectorBtn');
-    if (examBtn) {
-      examBtn.onclick = () => openOnboardingModal();
+    // Settings Gear Icon & Drawer Backdrop
+    const settingsBtn = document.getElementById('settingsDrawerTriggerBtn');
+    if (settingsBtn) {
+      settingsBtn.onclick = () => {
+        if (!isStudentAuthenticated()) return;
+        toggleSettingsDrawer();
+      };
+    }
+    const settingsBackdrop = document.getElementById('settingsDrawerBackdrop');
+    if (settingsBackdrop) {
+      settingsBackdrop.onclick = () => closeSettingsDrawer();
     }
 
-    const langBtn = document.getElementById('langToggleBtn');
-    if (langBtn) {
-      langBtn.onclick = () => {
-        state.lang = state.lang === 'bilingual' ? 'hi' : state.lang === 'hi' ? 'en' : 'bilingual';
-        saveState();
-        toast(`🌐 Language mode: ${state.lang.toUpperCase()}`);
+    // Persistent Hero Card Controls: My Target Exams, Anthem Icon, Notification Bell Icon, and Search
+    const heroTargetExamsBtn = document.getElementById('homeEditOnboardingBtn');
+    if (heroTargetExamsBtn) {
+      heroTargetExamsBtn.onclick = () => {
+        if (!isStudentAuthenticated()) return;
+        openOnboardingModal();
       };
     }
 
-    const themeBtn = document.getElementById('themeSwitchBtn');
-    if (themeBtn) {
-      themeBtn.onclick = () => {
-        state.theme = state.theme === 'dark' ? 'light' : 'dark';
-        saveState();
-        applyBrandingAndSecurity();
+    const anthemBtn = document.getElementById('anthemToggleBtn');
+    if (anthemBtn) {
+      anthemBtn.onclick = () => {
+        if (!isStudentAuthenticated()) return;
+        toggleStudentAnthemFloatingPlayer();
       };
     }
 
     const notifBtn = document.getElementById('notifBellBtn');
     if (notifBtn) {
       notifBtn.onclick = () => {
+        if (!isStudentAuthenticated()) return;
         state.activeTab = 'notifications';
+        try {
+          window.history.pushState({ tab: 'notifications', authenticated: true }, '', '#notifications');
+        } catch (_) {}
         saveState();
         renderApp();
       };
     }
 
-    const profBtn = document.getElementById('studentProfileBtn');
-    if (profBtn) {
-      profBtn.onclick = () => {
-        state.activeTab = 'profile';
+    const heroSearchBtn = document.getElementById('globalHomeSearchBtn');
+    const heroSearchInput = document.getElementById('globalHomeSearchInput');
+    if (heroSearchBtn && heroSearchInput) {
+      const triggerHeroSearch = () => {
+        if (!isStudentAuthenticated()) return;
+        state.searchQuery = heroSearchInput.value.trim();
+        state.activeTab = 'test-series';
+        try {
+          window.history.pushState({ tab: 'test-series', authenticated: true }, '', '#test-series');
+        } catch (_) {}
         saveState();
         renderApp();
       };
-    }
-
-    const headerAuthBtn = document.getElementById('headerAuthToggleBtn');
-    if (headerAuthBtn) {
-      headerAuthBtn.onclick = () => {
-        if (isLoggedOut()) {
-          state.activeTab = 'profile';
-          renderApp();
-        } else if (state.student && state.student.email) {
-          performStudentLogout();
-        } else {
-          openStudentAuthModal('login', '');
+      heroSearchBtn.onclick = triggerHeroSearch;
+      heroSearchInput.onkeydown = (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          triggerHeroSearch();
         }
       };
-    }
-
-    const anthemBtn = document.getElementById('anthemToggleBtn');
-    if (anthemBtn) {
-      anthemBtn.onclick = () => toggleStudentAnthemFloatingPlayer();
     }
 
     // Security Blur when window loses focus if screenshot restriction is enabled
