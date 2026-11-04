@@ -218,9 +218,13 @@
       remainingSeconds: Math.max(60, Number(testObj.durationMinutes || 30) * 60),
       totalDurationSeconds: Math.max(60, Number(testObj.durationMinutes || 30) * 60),
       startedAtIso: new Date().toISOString(),
+      paletteOpen: false,
       paletteOpenMobile: false,
       submitted: false
     };
+    if (typeof session.paletteOpen !== 'boolean') {
+      session.paletteOpen = false;
+    }
 
     setNativeScreenshotProtection(true);
     persistActiveSession(session);
@@ -282,96 +286,96 @@
     const sections = ['ALL', ...Array.from(new Set(questions.map((item) => item.subjectTag || 'General Studies')))];
     const selectedOpt = session.answers[curIdx];
     const isBookmarked = appCallbacks && typeof appCallbacks.isBookmarked === 'function' ? appCallbacks.isBookmarked(q.id) : false;
+    const isPaletteOpen = Boolean(session.paletteOpen);
 
     container.innerHTML = `
       <div class="cbt-fullscreen">
-        <!-- Top Exam Header -->
+        <!-- Compact Top Exam Header -->
         <header class="cbt-topbar">
-          <div style="display:flex;align-items:center;gap:10px;min-width:0;">
-            <img src="assets/cgpedia-logo-clean.png" alt="CGpedia" style="width:36px;height:36px;border-radius:50%;object-fit:cover;border:1.5px solid #93C5FD;flex-shrink:0;" />
-            <div style="min-width:0;">
-              <div style="font-weight:800;font-size:0.94rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(session.testTitleHi)}</div>
-              <div style="font-size:0.72rem;color:#BFDBFE;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(session.testTitleEn)}</div>
+          <div class="cbt-topbar-title-group">
+            <img src="assets/cgpedia-logo-clean.png" alt="CGpedia" class="cbt-topbar-logo" />
+            <div class="cbt-topbar-title" title="${esc(session.testTitleHi || session.testTitleEn)}">
+              ${esc(session.testTitleHi || session.testTitleEn)}
             </div>
           </div>
 
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-            <select id="cbtInExamLangSelect" class="btn-header-chip" style="background:#1E3A8A;color:#fff;">
+          <div class="cbt-topbar-controls">
+            <select id="cbtInExamLangSelect" class="cbt-compact-select" aria-label="Language Selection">
               <option value="bilingual" ${session.langMode === 'bilingual' ? 'selected' : ''}>🌐 हिं + EN</option>
-              <option value="hi" ${session.langMode === 'hi' ? 'selected' : ''}>🌐 केवल हिन्दी</option>
-              <option value="en" ${session.langMode === 'en' ? 'selected' : ''}>🌐 English Only</option>
+              <option value="hi" ${session.langMode === 'hi' ? 'selected' : ''}>🌐 हिन्दी</option>
+              <option value="en" ${session.langMode === 'en' ? 'selected' : ''}>🌐 EN</option>
             </select>
 
-            <div class="cbt-timer-box ${session.remainingSeconds <= 300 ? 'low-time' : ''}" id="cbtTimerBox">
+            <div class="cbt-timer-box ${session.remainingSeconds <= 300 ? 'low-time' : ''}" id="cbtTimerBox" title="Remaining Time">
               ⏱️ <span id="cbtLiveClockDisplay">${formatClock(session.remainingSeconds)}</span>
             </div>
 
-            <button class="btn btn-header-chip" id="cbtToggleMobilePaletteBtn" title="Question Palette">
-              🔢 Palette (${counts.answered + counts['answered-review']}/${questions.length})
+            <button class="btn cbt-palette-toggle-btn ${isPaletteOpen ? 'active' : ''}" id="cbtToggleMobilePaletteBtn" type="button" aria-expanded="${isPaletteOpen}" title="Toggle Question Palette">
+              🔢 Question Palette (${counts.answered + counts['answered-review']}/${questions.length})
             </button>
 
-            <button class="btn btn-success btn-sm" id="cbtOpenSubmitSummaryBtn">
+            <button class="btn btn-success cbt-submit-top-btn" id="cbtOpenSubmitSummaryBtn" type="button">
               ✅ Submit Test
             </button>
           </div>
         </header>
 
-        <!-- Section Switcher Strip -->
-        <div style="background:var(--surface);border-bottom:1px solid var(--border);padding:8px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;overflow-x:auto;">
-          <div style="display:flex;align-items:center;gap:6px;">
+        <!-- Compact Section Switcher Strip -->
+        <div class="cbt-section-strip">
+          <div class="cbt-section-chips">
             ${sections.map((sec) => `
-              <button class="filter-chip ${session.activeSection === sec ? 'active' : ''}" data-cbt-section="${esc(sec)}" style="padding:4px 11px;font-size:0.74rem;">
-                ${sec === 'ALL' ? 'All Sections (' + questions.length + ')' : esc(sec)}
+              <button class="filter-chip ${session.activeSection === sec ? 'active' : ''}" data-cbt-section="${esc(sec)}" style="padding:2px 9px;font-size:0.71rem;">
+                ${sec === 'ALL' ? 'All (' + questions.length + ')' : esc(sec)}
               </button>
             `).join('')}
           </div>
-          <div style="font-size:0.75rem;color:var(--text-muted);white-space:nowrap;">
-            Marks: <strong style="color:var(--success);">+${session.marksPerQuestion}</strong> | Negative: <strong style="color:var(--danger);">-${session.negativeMarking}</strong>
+          <div class="cbt-marking-pill">
+            <strong style="color:var(--success);">+${session.marksPerQuestion}</strong> / <strong style="color:var(--danger);">-${session.negativeMarking}</strong>
           </div>
         </div>
 
-        <!-- Main Split Body: Question Area + 5-State Palette Sidebar -->
-        <div class="cbt-body">
+        <!-- Main Split Body: Question Area + Toggleable 5-State Palette Sidebar -->
+        <div class="cbt-body ${isPaletteOpen ? 'palette-open' : ''}">
           <div class="cbt-question-pane">
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
-              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                <span class="badge badge-exam" style="font-size:0.82rem;padding:4px 12px;">Question ${curIdx + 1} of ${questions.length}</span>
-                <span class="badge badge-draft">${esc(q.subjectTag || 'General Studies')}</span>
-                ${q.pyqTag ? `<span class="badge badge-paid">PYQ: ${esc(q.pyqTag)}</span>` : ''}
-                ${session.review[curIdx] ? `<span class="badge badge-review">🟣 Marked for Review</span>` : ''}
+            <div class="cbt-question-meta-bar">
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                <span class="badge badge-exam" style="font-size:0.76rem;padding:2px 9px;">Q ${curIdx + 1} / ${questions.length}</span>
+                <span class="badge badge-draft" style="font-size:0.7rem;padding:2px 8px;">${esc(q.subjectTag || 'General Studies')}</span>
+                ${q.pyqTag ? `<span class="badge badge-paid" style="font-size:0.7rem;padding:2px 8px;">PYQ: ${esc(q.pyqTag)}</span>` : ''}
+                ${session.review[curIdx] ? `<span class="badge badge-review" style="font-size:0.7rem;padding:2px 8px;">🟣 Marked for Review</span>` : ''}
               </div>
-              <div style="display:flex;align-items:center;gap:8px;">
-                <span style="font-size:0.76rem;color:var(--text-muted);">⏱️ Time on Q: <strong id="cbtCurrentQuestionTime">${session.questionTimeSec[curIdx] || 0}s</strong></span>
-                <button class="btn btn-outline btn-sm" id="cbtBookmarkQBtn" title="Bookmark Question">
-                  ${isBookmarked ? '🔖 Saved' : '🏷️ Bookmark'}
+              <div style="display:flex;align-items:center;gap:6px;">
+                <span style="font-size:0.72rem;color:var(--text-muted);">⏱️ <strong id="cbtCurrentQuestionTime">${session.questionTimeSec[curIdx] || 0}s</strong></span>
+                <button class="btn btn-outline btn-sm" id="cbtBookmarkQBtn" title="Bookmark Question" style="padding:2px 8px;font-size:0.71rem;">
+                  ${isBookmarked ? '🔖 Saved' : '🏷️ Save'}
                 </button>
-                <button class="btn btn-outline btn-sm" id="cbtReportErrorBtn" title="Report Error in Question">
+                <button class="btn btn-outline btn-sm" id="cbtReportErrorBtn" title="Report Error in Question" style="padding:2px 8px;font-size:0.71rem;">
                   🚩 Report
                 </button>
               </div>
             </div>
 
             <!-- Question Stem Card -->
-            <div class="card" style="padding:18px;margin-bottom:16px;border-left:4px solid var(--primary);">
+            <div class="card cbt-question-stem-card">
               ${(session.langMode === 'bilingual' || session.langMode === 'hi') ? `
-                <div style="font-size:1.03rem;font-weight:700;color:var(--text);margin-bottom:${session.langMode === 'bilingual' ? '10px' : '0'};line-height:1.6;">
+                <div style="font-size:0.98rem;font-weight:700;color:var(--text);margin-bottom:${session.langMode === 'bilingual' ? '6px' : '0'};line-height:1.5;">
                   ${esc(q.questionHi)}
                 </div>
               ` : ''}
               ${(session.langMode === 'bilingual' || session.langMode === 'en') ? `
-                <div style="font-size:0.96rem;font-weight:600;color:${session.langMode === 'bilingual' ? 'var(--text-secondary)' : 'var(--text)'};line-height:1.55;">
+                <div style="font-size:0.92rem;font-weight:600;color:${session.langMode === 'bilingual' ? 'var(--text-secondary)' : 'var(--text)'};line-height:1.45;">
                   ${esc(q.questionEn)}
                 </div>
               ` : ''}
               ${q.imageUrl ? `
-                <div style="margin-top:12px;">
-                  <img src="${esc(q.imageUrl)}" alt="Question Diagram" style="max-width:100%;max-height:280px;border-radius:8px;border:1px solid var(--border);" />
+                <div style="margin-top:8px;">
+                  <img src="${esc(q.imageUrl)}" alt="Question Diagram" style="max-width:100%;max-height:220px;border-radius:8px;border:1px solid var(--border);" />
                 </div>
               ` : ''}
             </div>
 
             <!-- Options List -->
-            <div style="margin-bottom:16px;">
+            <div class="cbt-options-list">
               ${[0, 1, 2, 3].map((optIdx) => {
                 const letter = ['A', 'B', 'C', 'D'][optIdx];
                 const optHi = (q.optionsHi && q.optionsHi[optIdx]) || '';
@@ -382,10 +386,10 @@
                     <div class="cbt-option-letter">${letter}</div>
                     <div style="flex:1;">
                       ${(session.langMode === 'bilingual' || session.langMode === 'hi') ? `
-                        <div style="font-weight:700;font-size:0.94rem;color:var(--text);">${esc(optHi)}</div>
+                        <div style="font-weight:700;font-size:0.9rem;color:var(--text);line-height:1.35;">${esc(optHi)}</div>
                       ` : ''}
                       ${(session.langMode === 'bilingual' || session.langMode === 'en') ? `
-                        <div style="font-size:0.86rem;color:${session.langMode === 'bilingual' ? 'var(--text-secondary)' : 'var(--text)'};margin-top:${session.langMode === 'bilingual' ? '2px' : '0'};">${esc(optEn)}</div>
+                        <div style="font-size:0.83rem;color:${session.langMode === 'bilingual' ? 'var(--text-secondary)' : 'var(--text)'};margin-top:${session.langMode === 'bilingual' ? '2px' : '0'};line-height:1.35;">${esc(optEn)}</div>
                       ` : ''}
                     </div>
                   </div>
@@ -394,15 +398,21 @@
             </div>
           </div>
 
-          <!-- Right Sidebar: 5-State NTA Question Palette -->
-          <aside class="cbt-palette-sidebar ${session.paletteOpenMobile ? 'mobile-open' : ''}" id="cbtPaletteSidebar">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-              <h3 style="font-size:0.92rem;font-weight:800;">Question Palette / प्रश्न पैलेट</h3>
-              <button class="btn btn-outline btn-sm" id="cbtCloseMobilePaletteBtn" style="padding:3px 8px;">✕</button>
+          <!-- Mobile Backdrop for Question Palette Drawer -->
+          <div class="cbt-palette-backdrop ${isPaletteOpen ? 'palette-open' : ''}" id="cbtPaletteBackdrop"></div>
+
+          <!-- Toggleable Right Sidebar / Drawer: 5-State NTA Question Palette -->
+          <aside class="cbt-palette-sidebar ${isPaletteOpen ? 'palette-open' : ''}" id="cbtPaletteSidebar" aria-hidden="${!isPaletteOpen}">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border);">
+              <div>
+                <h3 style="font-size:0.88rem;font-weight:800;margin:0;">Question Palette</h3>
+                <div style="font-size:0.7rem;color:var(--text-muted);">प्रश्न पैलेट • कुल ${questions.length} प्रश्न</div>
+              </div>
+              <button class="btn btn-outline btn-sm" id="cbtCloseMobilePaletteBtn" type="button" style="padding:3px 9px;font-weight:800;" title="Close Question Palette">✕ Close</button>
             </div>
 
             <!-- 5-State Summary Counters -->
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:0.73rem;font-weight:700;margin-bottom:12px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:0.72rem;font-weight:700;margin-bottom:10px;">
               <div style="display:flex;align-items:center;gap:6px;">
                 <span style="width:18px;height:18px;border-radius:4px;background:#16A34A;color:#fff;display:inline-flex;align-items:center;justify-content:center;">${counts.answered}</span>
                 <span>Answered</span>
@@ -432,15 +442,15 @@
                 }
                 const st = computeQuestionState(session, idx);
                 return `
-                  <button class="palette-btn state-${st} ${idx === curIdx ? 'current' : ''}" data-cbt-jump="${idx}">
+                  <button class="palette-btn state-${st} ${idx === curIdx ? 'current' : ''}" data-cbt-jump="${idx}" type="button" title="Question ${idx + 1}">
                     ${idx + 1}
                   </button>
                 `;
               }).join('')}
             </div>
 
-            <div style="margin-top:auto;padding-top:16px;">
-              <button class="btn btn-success" style="width:100%;" id="cbtSidebarSubmitBtn">
+            <div style="margin-top:auto;padding-top:14px;">
+              <button class="btn btn-success" style="width:100%;" id="cbtSidebarSubmitBtn" type="button">
                 ✅ Review &amp; Submit Exam
               </button>
             </div>
@@ -505,30 +515,45 @@
       };
     });
 
-    // Palette jump buttons
+    // Palette jump buttons (auto-close on mobile <= 920px, stay open on desktop > 920px)
     document.querySelectorAll('[data-cbt-jump]').forEach((btn) => {
       btn.onclick = () => {
         session.currentIndex = Number(btn.getAttribute('data-cbt-jump'));
-        session.paletteOpenMobile = false;
+        if (window.innerWidth <= 920) {
+          session.paletteOpen = false;
+        }
+        session.paletteOpenMobile = session.paletteOpen;
         persistActiveSession(session);
         renderLiveCbtDom(session, appCallbacks);
       };
     });
 
-    // Mobile palette drawer toggle
+    // Question Palette toggle button (works on both desktop and mobile)
     const togglePalBtn = document.getElementById('cbtToggleMobilePaletteBtn');
     if (togglePalBtn) {
       togglePalBtn.onclick = () => {
-        session.paletteOpenMobile = !session.paletteOpenMobile;
+        session.paletteOpen = !session.paletteOpen;
+        session.paletteOpenMobile = session.paletteOpen;
+        persistActiveSession(session);
         renderLiveCbtDom(session, appCallbacks);
       };
     }
+
+    const closePaletteHandler = () => {
+      session.paletteOpen = false;
+      session.paletteOpenMobile = false;
+      persistActiveSession(session);
+      renderLiveCbtDom(session, appCallbacks);
+    };
+
     const closePalBtn = document.getElementById('cbtCloseMobilePaletteBtn');
     if (closePalBtn) {
-      closePalBtn.onclick = () => {
-        session.paletteOpenMobile = false;
-        renderLiveCbtDom(session, appCallbacks);
-      };
+      closePalBtn.onclick = closePaletteHandler;
+    }
+
+    const backdropEl = document.getElementById('cbtPaletteBackdrop');
+    if (backdropEl) {
+      backdropEl.onclick = closePaletteHandler;
     }
 
     // Previous
