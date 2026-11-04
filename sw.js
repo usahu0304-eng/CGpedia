@@ -1,10 +1,17 @@
-const CACHE_NAME = 'cgpedia-pwa-v3';
+const CACHE_NAME = 'cgpedia-platform-v4';
 const ASSETS = [
   '/',
   '/index.html',
   '/styles.css',
+  '/firebase-sync.js',
+  '/exam-engine.js',
+  '/admin-console.js',
   '/app.js',
-  '/manifest.webmanifest'
+  '/manifest.webmanifest',
+  '/favicon.png',
+  '/assets/cgpedia-logo-clean.png',
+  '/assets/icon-192.png',
+  '/assets/icon-512.png'
 ];
 
 self.addEventListener('install', (event) => {
@@ -31,6 +38,9 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
+  const url = new URL(event.request.url);
+  if (url.origin !== self.location.origin) return;
+
   event.respondWith(
     fetch(event.request)
       .then((response) => {

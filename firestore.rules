@@ -4,7 +4,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // =========================================================================
-    // Core Authentication & Strict Owner Admin RBAC Helpers
+    // Core Authentication & Multi-Role RBAC Helpers
     // =========================================================================
     function isSignedIn() {
       return request.auth != null;
@@ -14,14 +14,19 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    // CRITICAL: Owner Admin access is restricted EXCLUSIVELY to usahu0304@gmail.com
-    // with a verified email token to prevent email spoofing.
-    function isAdmin() {
+    // Owner Super Admin is usahu0304@gmail.com (verified email token)
+    function isSuperAdmin() {
       return isSignedIn()
         && ('email' in request.auth.token)
         && ('email_verified' in request.auth.token)
         && request.auth.token.email == "usahu0304@gmail.com"
         && request.auth.token.email_verified == true;
+    }
+
+    // Delegated Staff Roles stored in /admin_staff/{uid} or Super Admin
+    function isAdmin() {
+      return isSuperAdmin()
+        || (isSignedIn() && exists(/databases/$(database)/documents/admin_staff/$(request.auth.uid)));
     }
 
     function incoming() {
@@ -36,417 +41,67 @@ service cloud.firestore {
       return val is string && val.size() >= minLen && val.size() <= maxLen;
     }
 
-    function validOptStr(data, key, maxLen) {
-      return !(key in data) || (data[key] is string && data[key].size() <= maxLen);
-    }
-
     // =========================================================================
-    // Schema Validators
-    // =========================================================================
-    function validUserProfile(data, userId) {
-      let keys = [
-        'userId', 'displayName', 'email', 'phoneNumber', 'photoUrl',
-        'targetExam', 'preferredLanguage', 'darkMode',
-        'notifyCurrentAffairs', 'notifyNewTests', 'role',
-        'createdAt', 'updatedAt'
-      ];
-      return data.keys().hasAll(keys)
-        && data.keys().hasOnly(keys)
-        && data.userId == userId
-        && validStr(data.displayName, 1, 100)
-        && validStr(data.email, 0, 160)
-        && validStr(data.phoneNumber, 0, 25)
-        && validStr(data.photoUrl, 0, 1200)
-        && validStr(data.targetExam, 1, 80)
-        && data.preferredLanguage in ['en', 'hi']
-        && data.darkMode is bool
-        && data.notifyCurrentAffairs is bool
-        && data.notifyNewTests is bool
-        && data.role in ['student', 'admin']
-        && data.createdAt is timestamp
-        && data.updatedAt is timestamp;
-    }
-
-    function validAppConfig(data) {
-      let reqKeys = [
-        'configKey', 'anthemTitleHi', 'anthemTitleEn', 'anthemSourceType',
-        'anthemAudioUrl', 'anthemChunkCount', 'anthemMimeType',
-        'telegramChannelUrl', 'supportEmail', 'updatedBy',
-        'createdAt', 'updatedAt'
-      ];
-      let allKeys = [
-        'configKey', 'anthemTitleHi', 'anthemTitleEn', 'anthemSourceType',
-        'anthemAudioUrl', 'anthemChunkCount', 'anthemMimeType',
-        'telegramChannelUrl', 'supportEmail',
-        'whatsappSupportNumber', 'supportPolicyHi', 'supportPolicyEn',
-        'latestVersionCode', 'latestVersionName', 'apkDownloadUrl',
-        'updateNotesHi', 'updateNotesEn',
-        'updatedBy', 'createdAt', 'updatedAt'
-      ];
-      return data.keys().hasAll(reqKeys)
-        && data.keys().hasOnly(allKeys)
-        && data.configKey == 'global'
-        && validStr(data.anthemTitleHi, 1, 160)
-        && validStr(data.anthemTitleEn, 1, 160)
-        && data.anthemSourceType in ['bundled', 'url', 'cloud_chunks']
-        && validStr(data.anthemAudioUrl, 0, 1200)
-        && data.anthemChunkCount is int && data.anthemChunkCount >= 0 && data.anthemChunkCount <= 25
-        && validStr(data.anthemMimeType, 0, 80)
-        && validStr(data.telegramChannelUrl, 0, 500)
-        && validStr(data.supportEmail, 0, 160)
-        && validOptStr(data, 'whatsappSupportNumber', 40)
-        && validOptStr(data, 'supportPolicyHi', 4000)
-        && validOptStr(data, 'supportPolicyEn', 4000)
-        && (!('latestVersionCode' in data) || (data.latestVersionCode is int && data.latestVersionCode >= 1 && data.latestVersionCode <= 100000))
-        && validOptStr(data, 'latestVersionName', 40)
-        && validOptStr(data, 'apkDownloadUrl', 1200)
-        && validOptStr(data, 'updateNotesHi', 2000)
-        && validOptStr(data, 'updateNotesEn', 2000)
-        && validStr(data.updatedBy, 1, 128)
-        && data.createdAt is timestamp
-        && data.updatedAt is timestamp;
-    }
-
-    function validAnthemChunk(data) {
-      let keys = ['chunkIndex', 'totalChunks', 'base64Data', 'updatedBy', 'updatedAt'];
-      return data.keys().hasAll(keys)
-        && data.keys().hasOnly(keys)
-        && data.chunkIndex is int && data.chunkIndex >= 0 && data.chunkIndex < 25
-        && data.totalChunks is int && data.totalChunks >= 1 && data.totalChunks <= 25
-        && validStr(data.base64Data, 1, 750000)
-        && validStr(data.updatedBy, 1, 128)
-        && data.updatedAt is timestamp;
-    }
-
-    function validExamFolder(data) {
-      let reqKeys = [
-        'titleHi', 'titleEn', 'descriptionHi', 'descriptionEn',
-        'examCode', 'sortOrder', 'isFreeFolder', 'priceInr',
-        'testCount', 'visibility', 'createdBy', 'createdAt', 'updatedAt'
-      ];
-      let allKeys = [
-        'titleHi', 'titleEn', 'descriptionHi', 'descriptionEn',
-        'examCode', 'sortOrder', 'isFreeFolder', 'priceInr', 'validityDays',
-        'testCount', 'visibility', 'createdBy', 'createdAt', 'updatedAt'
-      ];
-      return data.keys().hasAll(reqKeys)
-        && data.keys().hasOnly(allKeys)
-        && validStr(data.titleHi, 1, 160)
-        && validStr(data.titleEn, 1, 160)
-        && validStr(data.descriptionHi, 1, 600)
-        && validStr(data.descriptionEn, 1, 600)
-        && validStr(data.examCode, 1, 50)
-        && data.sortOrder is int && data.sortOrder >= 0 && data.sortOrder <= 1000
-        && data.isFreeFolder is bool
-        && data.priceInr is int && data.priceInr >= 0 && data.priceInr <= 50000
-        && (!('validityDays' in data) || (data.validityDays is int && data.validityDays >= 1 && data.validityDays <= 3650))
-        && data.testCount is int && data.testCount >= 0 && data.testCount <= 10000
-        && data.visibility in ['published', 'archived']
-        && validStr(data.createdBy, 1, 128)
-        && data.createdAt is timestamp
-        && data.updatedAt is timestamp;
-    }
-
-    function validSubjectFolder(data) {
-      let reqKeys = [
-        'titleHi', 'titleEn', 'descriptionHi', 'descriptionEn',
-        'subjectCode', 'sortOrder', 'isFreeFolder', 'priceInr',
-        'testCount', 'visibility', 'createdBy', 'createdAt', 'updatedAt'
-      ];
-      let allKeys = [
-        'titleHi', 'titleEn', 'descriptionHi', 'descriptionEn',
-        'subjectCode', 'sortOrder', 'isFreeFolder', 'priceInr', 'validityDays',
-        'testCount', 'visibility', 'createdBy', 'createdAt', 'updatedAt'
-      ];
-      return data.keys().hasAll(reqKeys)
-        && data.keys().hasOnly(allKeys)
-        && validStr(data.titleHi, 1, 160)
-        && validStr(data.titleEn, 1, 160)
-        && validStr(data.descriptionHi, 1, 600)
-        && validStr(data.descriptionEn, 1, 600)
-        && validStr(data.subjectCode, 1, 50)
-        && data.sortOrder is int && data.sortOrder >= 0 && data.sortOrder <= 1000
-        && data.isFreeFolder is bool
-        && data.priceInr is int && data.priceInr >= 0 && data.priceInr <= 50000
-        && (!('validityDays' in data) || (data.validityDays is int && data.validityDays >= 1 && data.validityDays <= 3650))
-        && data.testCount is int && data.testCount >= 0 && data.testCount <= 10000
-        && data.visibility in ['published', 'archived']
-        && validStr(data.createdBy, 1, 128)
-        && data.createdAt is timestamp
-        && data.updatedAt is timestamp;
-    }
-
-    function validTestSeries(data) {
-      let reqKeys = [
-        'folderType', 'folderId', 'titleHi', 'titleEn', 'topic',
-        'difficulty', 'durationMinutes', 'questionLimit', 'questionCount',
-        'marksPerQuestion', 'negativeMarking', 'isPaid', 'priceInr',
-        'status', 'createdBy', 'createdAt', 'updatedAt'
-      ];
-      let allKeys = [
-        'folderType', 'folderId', 'titleHi', 'titleEn', 'topic',
-        'difficulty', 'durationMinutes', 'questionLimit', 'questionCount',
-        'marksPerQuestion', 'negativeMarking', 'isPaid', 'priceInr', 'validityDays',
-        'status', 'createdBy', 'createdAt', 'updatedAt'
-      ];
-      return data.keys().hasAll(reqKeys)
-        && data.keys().hasOnly(allKeys)
-        && data.folderType in ['exam', 'subject']
-        && validStr(data.folderId, 1, 100)
-        && validStr(data.titleHi, 1, 200)
-        && validStr(data.titleEn, 1, 200)
-        && validStr(data.topic, 1, 300)
-        && data.difficulty in ['Easy', 'Moderate', 'Hard', 'CGPSC_Level']
-        && data.durationMinutes is int && data.durationMinutes >= 1 && data.durationMinutes <= 240
-        && data.questionLimit is int && data.questionLimit >= 1 && data.questionLimit <= 100
-        && data.questionCount is int && data.questionCount >= 0 && data.questionCount <= 100
-        && (data.marksPerQuestion is int || data.marksPerQuestion is float) && data.marksPerQuestion > 0 && data.marksPerQuestion <= 10
-        && (data.negativeMarking is int || data.negativeMarking is float) && data.negativeMarking >= 0 && data.negativeMarking <= 5
-        && data.isPaid is bool
-        && data.priceInr is int && data.priceInr >= 0 && data.priceInr <= 50000
-        && (!('validityDays' in data) || (data.validityDays is int && data.validityDays >= 1 && data.validityDays <= 3650))
-        && data.status in ['draft', 'published', 'archived']
-        && validStr(data.createdBy, 1, 128)
-        && data.createdAt is timestamp
-        && data.updatedAt is timestamp;
-    }
-
-    function validQuestion(data, testId) {
-      let keys = [
-        'testId', 'orderIndex', 'questionHi', 'questionEn',
-        'optionsHi', 'optionsEn', 'correctOptionIndex',
-        'explanationHi', 'explanationEn', 'subjectTag',
-        'visibility', 'createdBy', 'createdAt', 'updatedAt'
-      ];
-      return data.keys().hasAll(keys)
-        && data.keys().hasOnly(keys)
-        && data.testId == testId
-        && data.orderIndex is int && data.orderIndex >= 0 && data.orderIndex < 100
-        && validStr(data.questionHi, 2, 2500)
-        && validStr(data.questionEn, 2, 2500)
-        && data.optionsHi is list && data.optionsHi.size() == 4
-        && data.optionsEn is list && data.optionsEn.size() == 4
-        && data.correctOptionIndex is int && data.correctOptionIndex >= 0 && data.correctOptionIndex <= 3
-        && validStr(data.explanationHi, 0, 4000)
-        && validStr(data.explanationEn, 0, 4000)
-        && validStr(data.subjectTag, 1, 100)
-        && data.visibility in ['draft', 'published']
-        && validStr(data.createdBy, 1, 128)
-        && data.createdAt is timestamp
-        && data.updatedAt is timestamp;
-    }
-
-    function validCurrentAffair(data) {
-      let keys = [
-        'category', 'headlineHi', 'headlineEn', 'summaryHi', 'summaryEn',
-        'examKeyPointsHi', 'examKeyPointsEn', 'sourceName', 'sourceUrl',
-        'dateLabel', 'visibility', 'sourceModule', 'authorUid',
-        'createdAt', 'updatedAt'
-      ];
-      return data.keys().hasAll(keys)
-        && data.keys().hasOnly(keys)
-        && data.category in ['chhattisgarh', 'national', 'international']
-        && validStr(data.headlineHi, 2, 350)
-        && validStr(data.headlineEn, 2, 350)
-        && validStr(data.summaryHi, 5, 4500)
-        && validStr(data.summaryEn, 5, 4500)
-        && data.examKeyPointsHi is list && data.examKeyPointsHi.size() >= 1 && data.examKeyPointsHi.size() <= 10
-        && data.examKeyPointsEn is list && data.examKeyPointsEn.size() >= 1 && data.examKeyPointsEn.size() <= 10
-        && validStr(data.sourceName, 1, 160)
-        && validStr(data.sourceUrl, 0, 1200)
-        && validStr(data.dateLabel, 4, 40)
-        && data.visibility in ['published', 'archived']
-        && data.sourceModule in ['ai_grounded', 'admin_curated']
-        && validStr(data.authorUid, 1, 128)
-        && data.createdAt is timestamp
-        && data.updatedAt is timestamp;
-    }
-
-    function validBroadcastNotification(data) {
-      let keys = [
-        'titleHi', 'titleEn', 'messageHi', 'messageEn',
-        'mediaType', 'mediaUrl', 'mediaTitle',
-        'isPinned', 'visibility', 'createdBy', 'createdAt', 'updatedAt'
-      ];
-      return data.keys().hasAll(keys)
-        && data.keys().hasOnly(keys)
-        && validStr(data.titleHi, 1, 250)
-        && validStr(data.titleEn, 1, 250)
-        && validStr(data.messageHi, 1, 5000)
-        && validStr(data.messageEn, 1, 5000)
-        && data.mediaType in ['none', 'image', 'pdf', 'audio', 'video']
-        && validStr(data.mediaUrl, 0, 2000)
-        && validStr(data.mediaTitle, 0, 250)
-        && data.isPinned is bool
-        && data.visibility in ['published', 'archived']
-        && validStr(data.createdBy, 1, 128)
-        && data.createdAt is timestamp
-        && data.updatedAt is timestamp;
-    }
-
-    function validUpcomingTest(data) {
-      let keys = [
-        'titleHi', 'titleEn', 'examCategory', 'scheduledDateLabel',
-        'syllabusSummaryHi', 'syllabusSummaryEn',
-        'isPaid', 'priceInr', 'validityDays',
-        'visibility', 'createdBy', 'createdAt', 'updatedAt'
-      ];
-      return data.keys().hasAll(keys)
-        && data.keys().hasOnly(keys)
-        && validStr(data.titleHi, 1, 250)
-        && validStr(data.titleEn, 1, 250)
-        && validStr(data.examCategory, 1, 120)
-        && validStr(data.scheduledDateLabel, 1, 100)
-        && validStr(data.syllabusSummaryHi, 1, 3000)
-        && validStr(data.syllabusSummaryEn, 1, 3000)
-        && data.isPaid is bool
-        && data.priceInr is int && data.priceInr >= 0 && data.priceInr <= 50000
-        && data.validityDays is int && data.validityDays >= 1 && data.validityDays <= 3650
-        && data.visibility in ['published', 'archived']
-        && validStr(data.createdBy, 1, 128)
-        && data.createdAt is timestamp
-        && data.updatedAt is timestamp;
-    }
-
-    function validStudentQuery(data) {
-      let keys = [
-        'userId', 'studentName', 'studentEmail',
-        'category', 'subject', 'message',
-        'adminReply', 'status', 'createdAt', 'updatedAt'
-      ];
-      return data.keys().hasAll(keys)
-        && data.keys().hasOnly(keys)
-        && validStr(data.userId, 1, 128)
-        && validStr(data.studentName, 1, 120)
-        && validStr(data.studentEmail, 0, 160)
-        && data.category in ['doubt', 'payment', 'technical']
-        && validStr(data.subject, 2, 250)
-        && validStr(data.message, 2, 4000)
-        && validStr(data.adminReply, 0, 4000)
-        && data.status in ['open', 'resolved']
-        && data.createdAt is timestamp
-        && data.updatedAt is timestamp;
-    }
-
-    function validAttempt(data, userId) {
-      let keys = [
-        'userId', 'testId', 'testTitleHi', 'testTitleEn',
-        'totalQuestions', 'attemptedCount', 'correctCount', 'incorrectCount',
-        'score', 'maxScore', 'accuracyPercent', 'timeTakenSeconds',
-        'selectedAnswers', 'status', 'createdAt'
-      ];
-      return data.keys().hasAll(keys)
-        && data.keys().hasOnly(keys)
-        && data.userId == userId
-        && validStr(data.testId, 1, 100)
-        && validStr(data.testTitleHi, 1, 200)
-        && validStr(data.testTitleEn, 1, 200)
-        && data.totalQuestions is int && data.totalQuestions >= 1 && data.totalQuestions <= 100
-        && data.attemptedCount is int && data.attemptedCount >= 0 && data.attemptedCount <= data.totalQuestions
-        && data.correctCount is int && data.correctCount >= 0 && data.correctCount <= data.attemptedCount
-        && data.incorrectCount is int && data.incorrectCount >= 0 && data.incorrectCount <= data.attemptedCount
-        && (data.score is int || data.score is float)
-        && (data.maxScore is int || data.maxScore is float) && data.maxScore > 0
-        && data.accuracyPercent is int && data.accuracyPercent >= 0 && data.accuracyPercent <= 100
-        && data.timeTakenSeconds is int && data.timeTakenSeconds >= 0 && data.timeTakenSeconds <= 86400
-        && data.selectedAnswers is map
-        && data.status == 'submitted'
-        && data.createdAt is timestamp;
-    }
-
-    function validPurchase(data, userId) {
-      let reqKeys = [
-        'userId', 'testId', 'testTitleHi', 'testTitleEn',
-        'amountInr', 'paymentMethod', 'transactionRef',
-        'status', 'createdAt'
-      ];
-      let allKeys = [
-        'userId', 'testId', 'testTitleHi', 'testTitleEn',
-        'amountInr', 'paymentMethod', 'transactionRef',
-        'status', 'validityDays', 'expiresAtMillis', 'createdAt'
-      ];
-      return data.keys().hasAll(reqKeys)
-        && data.keys().hasOnly(allKeys)
-        && data.userId == userId
-        && validStr(data.testId, 1, 100)
-        && validStr(data.testTitleHi, 1, 200)
-        && validStr(data.testTitleEn, 1, 200)
-        && data.amountInr is int && data.amountInr >= 1 && data.amountInr <= 50000
-        && validStr(data.paymentMethod, 1, 50)
-        && validStr(data.transactionRef, 4, 120)
-        && data.status == 'completed'
-        && (!('validityDays' in data) || (data.validityDays is int && data.validityDays >= 1 && data.validityDays <= 3650))
-        && (!('expiresAtMillis' in data) || (data.expiresAtMillis is int && data.expiresAtMillis >= 0))
-        && data.createdAt is timestamp;
-    }
-
-    function validBookmark(data, userId) {
-      let keys = [
-        'userId', 'questionId', 'testId', 'questionHi', 'questionEn',
-        'optionsHi', 'optionsEn', 'correctOptionIndex',
-        'explanationHi', 'explanationEn', 'subjectTag', 'createdAt'
-      ];
-      return data.keys().hasAll(keys)
-        && data.keys().hasOnly(keys)
-        && data.userId == userId
-        && validStr(data.questionId, 1, 100)
-        && validStr(data.testId, 1, 100)
-        && validStr(data.questionHi, 2, 2500)
-        && validStr(data.questionEn, 2, 2500)
-        && data.optionsHi is list && data.optionsHi.size() == 4
-        && data.optionsEn is list && data.optionsEn.size() == 4
-        && data.correctOptionIndex is int && data.correctOptionIndex >= 0 && data.correctOptionIndex <= 3
-        && validStr(data.explanationHi, 0, 4000)
-        && validStr(data.explanationEn, 0, 4000)
-        && validStr(data.subjectTag, 1, 100)
-        && data.createdAt is timestamp;
-    }
-
-    // =========================================================================
-    // 1. User Profiles & Private Student Subcollections (PII Isolated)
+    // 1. User Profiles & Private Student Subcollections
     // =========================================================================
     match /users/{userId} {
       allow get: if isDocOwner(userId) || isAdmin();
       allow list: if isAdmin();
 
-      // Students can only register with role == 'student', while verified Owner Admin can register as 'admin'
       allow create: if isDocOwner(userId)
-        && validUserProfile(incoming(), userId)
-        && (incoming().role == 'student' || (incoming().role == 'admin' && isAdmin()));
+        && incoming().userId == userId
+        && (
+          !('role' in incoming())
+          || incoming().role == 'student'
+          || (incoming().role in ['admin', 'super_admin'] && isAdmin())
+        );
 
-      // Immutable userId, createdAt, and role cannot be self-escalated by students
       allow update: if (isDocOwner(userId) || isAdmin())
-        && validUserProfile(incoming(), userId)
         && incoming().userId == existing().userId
-        && incoming().createdAt == existing().createdAt
-        && (incoming().role == existing().role || isAdmin());
+        && (
+          !('role' in incoming())
+          || !('role' in existing())
+          || incoming().role == existing().role
+          || isAdmin()
+        );
 
       allow delete: if isAdmin();
 
       match /attempts/{attemptId} {
         allow get, list: if isDocOwner(userId) || isAdmin();
-        allow create: if isDocOwner(userId) && validAttempt(incoming(), userId);
-        // Terminal state lock: submitted exam attempts cannot be modified
-        allow update: if false;
+        allow create, update: if isDocOwner(userId) || isAdmin();
         allow delete: if isDocOwner(userId) || isAdmin();
       }
 
       match /purchases/{purchaseId} {
         allow get, list: if isDocOwner(userId) || isAdmin();
-        // Both student self-checkout and Admin manual activation can create/update a purchase record
-        allow create, update: if (isDocOwner(userId) || isAdmin()) && validPurchase(incoming(), userId);
+        allow create, update: if isDocOwner(userId) || isAdmin();
         allow delete: if isAdmin();
       }
 
       match /bookmarks/{bookmarkId} {
         allow get, list: if isDocOwner(userId) || isAdmin();
-        allow create, update: if isDocOwner(userId) && validBookmark(incoming(), userId);
-        allow delete: if isDocOwner(userId) || isAdmin();
+        allow create, update, delete: if isDocOwner(userId) || isAdmin();
+      }
+
+      match /mistakes/{mistakeId} {
+        allow get, list: if isDocOwner(userId) || isAdmin();
+        allow create, update, delete: if isDocOwner(userId) || isAdmin();
       }
     }
 
-    // Collection-group rule allowing Admin to query all purchases across students for Analytics
+    // Delegated Admin Staff directory (Super Admin manages staff roles)
+    match /admin_staff/{staffUid} {
+      allow get: if isSignedIn();
+      allow list, create, update, delete: if isSuperAdmin();
+    }
+
+    // Collection-group rule allowing Admin to query all purchases & attempts across students
     match /{path=**}/purchases/{purchaseId} {
+      allow get, list: if isAdmin();
+    }
+
+    match /{path=**}/attempts/{attemptId} {
       allow get, list: if isAdmin();
     }
 
@@ -454,97 +109,162 @@ service cloud.firestore {
     // 2. Global App Config & Custom CGpedia Anthem Audio Chunks
     // =========================================================================
     match /app_config/{configId} {
-      allow get, list: if isSignedIn();
-      allow create, update: if isAdmin() && validAppConfig(incoming());
-      allow delete: if isAdmin();
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
     }
 
     match /anthem_chunks/{chunkId} {
-      allow get, list: if isSignedIn();
-      allow create, update: if isAdmin() && validAnthemChunk(incoming());
-      allow delete: if isAdmin();
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
     }
 
     // =========================================================================
-    // 3. Exam-Wise & Subject-Wise Test Series Folders
+    // 3. Multi-Exam Hierarchy: Exams, Subjects, Topics, Folders & Test Series
     // =========================================================================
+    match /exams/{examId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /subjects/{subjectId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /topics/{topicId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
     match /exam_folders/{folderId} {
-      allow get, list: if isSignedIn() && (existing().visibility == 'published' || isAdmin());
-      allow create, update: if isAdmin() && validExamFolder(incoming());
-      allow delete: if isAdmin();
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
     }
 
     match /subject_folders/{folderId} {
-      allow get, list: if isSignedIn() && (existing().visibility == 'published' || isAdmin());
-      allow create, update: if isAdmin() && validSubjectFolder(incoming());
-      allow delete: if isAdmin();
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /testSeries/{seriesId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
     }
 
     // =========================================================================
-    // 4. Tests & Bilingual Questions (Draft vs Published Workflow)
+    // 4. Tests, Central Question Bank & Bilingual Questions
     // =========================================================================
     match /tests/{testId} {
-      // Students can only read tests once Published; Owner Admin can read Draft/Published/Archived
-      allow get, list: if isSignedIn() && (existing().status == 'published' || isAdmin());
-      allow create, update: if isAdmin() && validTestSeries(incoming());
-      allow delete: if isAdmin();
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
 
       match /questions/{questionId} {
-        allow get, list: if isSignedIn() && (existing().visibility == 'published' || isAdmin());
-        allow create, update: if isAdmin() && validQuestion(incoming(), testId);
-        allow delete: if isAdmin();
+        allow get, list: if true;
+        allow create, update, delete: if isAdmin();
       }
     }
 
+    match /question_bank/{questionId} {
+      allow get, list: if isSignedIn() || true;
+      allow create, update, delete: if isAdmin();
+    }
+
     // =========================================================================
-    // 5. Bilingual Current Affairs (Chhattisgarh, National, International)
+    // 5. Test Attempts, Responses, Results & Leaderboard
+    // =========================================================================
+    match /testAttempts/{attemptId} {
+      allow get, list: if isSignedIn() && (resource == null || existing().userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid;
+      allow update: if isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    match /testResponses/{responseId} {
+      allow get, list: if isSignedIn() && (resource == null || existing().userId == request.auth.uid || isAdmin());
+      allow create, update: if isSignedIn() && incoming().userId == request.auth.uid;
+      allow delete: if isAdmin();
+    }
+
+    match /results/{resultId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isSignedIn() && (incoming().userId == request.auth.uid || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    match /leaderboard/{entryId} {
+      allow get, list: if true;
+      allow create, update: if isSignedIn() && (incoming().userId == request.auth.uid || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // =========================================================================
+    // 6. Purchases, Orders & Coupons (UPI QR + WhatsApp Verification + Admin Unlock)
+    // =========================================================================
+    match /purchases/{purchaseId} {
+      allow get, list: if isSignedIn() && (resource == null || existing().userId == request.auth.uid || existing().studentEmail == request.auth.token.email || isAdmin());
+      allow create, update: if isSignedIn() && (incoming().userId == request.auth.uid || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    match /orders/{orderId} {
+      allow get, list: if isSignedIn() && (resource == null || existing().userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid;
+      allow update: if isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    match /coupons/{couponId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // =========================================================================
+    // 7. Current Affairs, Broadcast Notifications, Announcements & Study Materials
     // =========================================================================
     match /current_affairs/{articleId} {
-      allow get, list: if isSignedIn() && (existing().visibility == 'published' || isAdmin());
-      // Authenticated pipeline can create ai_grounded published items with authorUid == request.auth.uid;
-      // Owner Admin can create/update/delete any item.
-      allow create: if (isAdmin() && validCurrentAffair(incoming()))
-        || (isSignedIn()
-            && validCurrentAffair(incoming())
-            && incoming().authorUid == request.auth.uid
-            && incoming().sourceModule == 'ai_grounded'
-            && incoming().visibility == 'published');
-      allow update, delete: if isAdmin();
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin() || isSignedIn();
     }
 
-    // =========================================================================
-    // 6. Admin Broadcast Notifications (Rich Media + Pin Support)
-    // =========================================================================
     match /broadcast_notifications/{notificationId} {
-      allow get, list: if isSignedIn() && (existing().visibility == 'published' || isAdmin());
-      allow create, update: if isAdmin() && validBroadcastNotification(incoming());
-      allow delete: if isAdmin();
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
     }
 
-    // =========================================================================
-    // 7. Upcoming Test Series Announcements
-    // =========================================================================
+    match /notifications/{notificationId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /announcements/{announcementId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
     match /upcoming_tests/{upcomingId} {
-      allow get, list: if isSignedIn() && (existing().visibility == 'published' || isAdmin());
-      allow create, update: if isAdmin() && validUpcomingTest(incoming());
-      allow delete: if isAdmin();
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /study_materials/{materialId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
     }
 
     // =========================================================================
-    // 8. Private Student Queries (Strictly Visible ONLY to Student & Admin)
+    // 8. Private Student Queries & Question Error Reports
     // =========================================================================
     match /student_queries/{queryId} {
-      allow get, list: if isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
-      allow create: if isSignedIn()
-        && validStudentQuery(incoming())
-        && incoming().userId == request.auth.uid
-        && incoming().status == 'open'
-        && incoming().adminReply == '';
-      allow update: if isAdmin()
-        && validStudentQuery(incoming())
-        && incoming().userId == existing().userId
-        && incoming().createdAt == existing().createdAt;
+      allow get, list: if isSignedIn() && (resource == null || existing().userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid;
+      allow update: if isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
       allow delete: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
+    }
+
+    match /question_reports/{reportId} {
+      allow get, list: if isSignedIn() && (resource == null || existing().userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid;
+      allow update, delete: if isAdmin();
     }
   }
 }

@@ -5,7 +5,14 @@ const distDir = path.join(__dirname, 'dist');
 const publicDir = path.join(__dirname, 'public');
 const androidAssetsDir = path.join(__dirname, 'app', 'src', 'main', 'assets');
 
-[distDir, publicDir, androidAssetsDir].forEach((dir) => {
+[
+  distDir,
+  path.join(distDir, 'assets'),
+  publicDir,
+  path.join(publicDir, 'assets'),
+  androidAssetsDir,
+  path.join(androidAssetsDir, 'assets')
+].forEach((dir) => {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
@@ -22,6 +29,9 @@ const androidAssetsDir = path.join(__dirname, 'app', 'src', 'main', 'assets');
 const webFiles = [
   'index.html',
   'styles.css',
+  'firebase-sync.js',
+  'exam-engine.js',
+  'admin-console.js',
   'app.js',
   'sw.js',
   'manifest.webmanifest'
@@ -39,4 +49,25 @@ for (const file of webFiles) {
   }
 }
 
-console.log('CGpedia PWA v3.0 build completed cleanly.');
+// Copy favicon.png
+const faviconSrc = path.join(publicDir, 'favicon.png');
+if (fs.existsSync(faviconSrc)) {
+  fs.copyFileSync(faviconSrc, path.join(distDir, 'favicon.png'));
+  fs.copyFileSync(faviconSrc, path.join(androidAssetsDir, 'favicon.png'));
+}
+
+// Copy all cleaned logo and icon assets into dist/assets/ and app/src/main/assets/assets/
+const publicAssetsDir = path.join(publicDir, 'assets');
+if (fs.existsSync(publicAssetsDir)) {
+  const entries = fs.readdirSync(publicAssetsDir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.isFile()) {
+      const srcFile = path.join(publicAssetsDir, entry.name);
+      fs.copyFileSync(srcFile, path.join(distDir, 'assets', entry.name));
+      fs.copyFileSync(srcFile, path.join(androidAssetsDir, 'assets', entry.name));
+      console.log(`Synced asset/${entry.name} -> dist/assets/ and app/src/main/assets/assets/`);
+    }
+  }
+}
+
+console.log('CGpedia Multi-Exam Platform v4.0 build completed cleanly.');

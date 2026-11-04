@@ -34,7 +34,7 @@
   ],
   "rewrites": [
     {
-      "source": "/((?!styles\\.css|app\\.js|sw\\.js|manifest\\.webmanifest).*)",
+      "source": "/((?!styles\\.css|firebase-sync\\.js|exam-engine\\.js|admin-console\\.js|app\\.js|sw\\.js|manifest\\.webmanifest|favicon\\.png|assets/).*)",
       "destination": "/index.html"
     }
   ]

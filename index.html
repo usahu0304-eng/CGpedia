@@ -3,90 +3,165 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
-  <title>CGpedia — CGPSC &amp; CGSSB Bilingual Web App</title>
-  <meta name="description" content="CGpedia (CGPSC & CGSSB) Mobile-First Bilingual Web Application & Installable PWA. Live CBT Test Series, 24-Hour Current Affairs Stories & Instant Quizzes." />
+  <title>CGpedia — Competitive Exam &amp; Online Test Series Platform</title>
+  <meta name="description" content="CGpedia — Multi-Exam Competitive Examination & Online Test Series Platform for UPSC, State PSC, CGPSC, CGSSB, SSC, Banking, Railway, CTET, UGC NET, Police & Defence." />
   <meta name="theme-color" content="#0F2557" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="CGpedia" />
+  <link rel="icon" type="image/png" href="favicon.png" />
+  <link rel="apple-touch-icon" href="assets/icon-192.png" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
+  <!-- Firebase v10 SDK for Real-Time Cloud Sync across Web & Android -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" defer></script>
 </head>
 <body>
-  <!-- Security Blur Overlay when Screenshot Restriction is ON and Window Loses Focus -->
-  <div class="security-blur-overlay">
-    <div>
-      <div style="font-size:2.5rem;margin-bottom:10px;">🛡️</div>
-      <h2 style="font-size:1.3rem;font-weight:800;margin-bottom:6px;">Screen Capture &amp; Recording Restricted</h2>
-      <p style="font-size:0.9rem;color:#CBD5E1;">सुरक्षा कारणों से स्क्रीनशॉट और स्क्रीन रिकॉर्डिंग प्रतिबंधित है। वापस लौटने के लिए स्क्रीन पर टैप करें।</p>
+  <!-- Splash Screen with Cleaned Original CGpedia Logo -->
+  <div class="splash-overlay" id="splashOverlay">
+    <div class="splash-card">
+      <img src="assets/cgpedia-logo-clean.png" alt="CGpedia Official Logo" class="splash-logo-img" />
+      <h1 class="splash-title">CGpedia</h1>
+      <p class="splash-subtitle">Competitive Exam Preparation &amp; Online Test Series Platform</p>
+      <div class="splash-tags">
+        <span>UPSC</span>
+        <span>CGPSC &amp; State PSC</span>
+        <span>SSC &amp; Banking</span>
+        <span>Railway</span>
+        <span>CTET &amp; NET</span>
+        <span>Police &amp; Defence</span>
+      </div>
+      <div class="splash-progress-track">
+        <div class="splash-progress-bar"></div>
+      </div>
     </div>
   </div>
 
-  <!-- Installable PWA Banner (No APK Needed) -->
+  <!-- Security Blur Overlay when Screenshot Restriction is Active -->
+  <div class="security-blur-overlay" id="securityBlurOverlay">
+    <div class="security-blur-card">
+      <div style="font-size:2.6rem;margin-bottom:10px;">🛡️</div>
+      <h2 style="font-size:1.25rem;font-weight:800;margin-bottom:6px;">Screen Capture &amp; Recording Restricted</h2>
+      <p style="font-size:0.9rem;color:#CBD5E1;line-height:1.5;">
+        सुरक्षा कारणों से परीक्षा के दौरान स्क्रीनशॉट और स्क्रीन रिकॉर्डिंग प्रतिबंधित है। वापस लौटने के लिए स्क्रीन पर टैप करें।
+      </p>
+    </div>
+  </div>
+
+  <!-- Installable PWA Banner -->
   <div class="pwa-install-banner" id="pwaInstallBanner">
     <div class="pwa-install-inner">
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        <span class="badge badge-paid" style="background:#F59E0B;color:#09152E;border:none;">INSTALLABLE WEB APP</span>
-        <span id="pwaBannerText"><strong>CGpedia App:</strong> बिना किसी APK के सीधे अपने फोन की होम स्क्रीन पर इंस्टॉल करें (Instant Live Updates)</span>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <img src="assets/cgpedia-logo-clean.png" alt="CGpedia" style="width:28px;height:28px;border-radius:50%;object-fit:cover;border:1.5px solid #fff;" />
+        <span id="pwaBannerText"><strong>CGpedia App:</strong> इंस्टेंट लाइव अपडेट्स के लिए सीधे अपने फोन या डेस्कटॉप पर इंस्टॉल करें</span>
       </div>
       <div style="display:flex;align-items:center;gap:8px;">
-        <button class="pwa-install-btn" id="installPwaBtn">📲 Install CGpedia App</button>
+        <button class="pwa-install-btn" id="installPwaBtn">📲 Install CGpedia</button>
+        <button class="pwa-close-btn" id="dismissPwaBannerBtn" aria-label="Dismiss install banner">✕</button>
       </div>
     </div>
   </div>
 
   <!-- Sticky Application Header -->
-  <header class="app-header">
+  <header class="app-header" id="mainAppHeader">
     <div class="header-inner">
-      <div class="brand-identity" id="brandHomeTrigger">
-        <div class="brand-logo-box" id="headerBrandLogo">CG</div>
+      <div class="brand-identity" id="brandHomeTrigger" role="button" tabindex="0" aria-label="CGpedia Home">
+        <div class="brand-logo-box" id="headerBrandLogo">
+          <img src="assets/cgpedia-logo-clean.png" alt="CGpedia Logo" class="brand-logo-img" />
+        </div>
         <div>
           <div class="brand-title">
             <span id="headerBrandTitle">CGpedia</span>
-            <span class="badge badge-free" style="font-size:0.65rem;">Bilingual</span>
+            <span class="badge badge-cloud" id="cloudSyncStatusBadge" title="Firebase Cloud Sync Status">☁️ Live Sync</span>
           </div>
-          <div class="brand-subtitle" id="headerBrandSubtitle">CGPSC &amp; CGSSB</div>
+          <div class="brand-subtitle" id="headerBrandSubtitle">Competitive Exam &amp; CBT Test Portal</div>
         </div>
       </div>
 
       <div class="header-actions">
-        <button class="btn btn-outline btn-sm" id="anthemToggleBtn" style="display:inline-flex;">
+        <button class="btn btn-header-chip" id="activeExamSelectorBtn" title="Change Target Exam Category">
+          🎯 <span id="activeExamHeaderLabel">All Exams</span> ▾
+        </button>
+        <button class="btn btn-header-chip" id="langToggleBtn" title="Switch Language (Hindi / English)">
+          🌐 <span id="langToggleLabel">हिन्दी / EN</span>
+        </button>
+        <button class="btn btn-header-chip" id="anthemToggleBtn" style="display:none;" title="Play CGpedia Anthem">
           🎵 <span id="anthemBtnLabel">Anthem</span>
         </button>
-        <button class="btn btn-outline btn-sm" id="studentProfileBtn">
-          👤 <span id="activeUserLabel">Student Profile</span>
+        <button class="btn btn-header-chip" id="notifBellBtn" title="Notifications &amp; Announcements">
+          🔔 <span id="notifBadgeCount" class="notif-pill" style="display:none;">0</span>
         </button>
-        <button class="btn btn-outline btn-sm" id="themeSwitchBtn" title="Switch Dark / Light Mode">
-          🌙 Theme
+        <button class="btn btn-header-chip" id="themeSwitchBtn" title="Toggle Light / Dark Theme">
+          🌙 <span class="hide-on-xs" id="themeSwitchLabel">Theme</span>
+        </button>
+        <button class="btn btn-header-profile" id="studentProfileBtn">
+          👤 <span id="activeUserLabel">Sign In</span>
         </button>
       </div>
     </div>
 
-    <!-- Primary Navigation Bar -->
-    <nav class="nav-tabs" id="mainNavTabs">
-      <button class="nav-tab active" data-tab="dashboard">🏠 Exam Folders</button>
-      <button class="nav-tab" data-tab="current-affairs">⚡ Current Affairs &amp; Quiz</button>
-      <button class="nav-tab" data-tab="notifications">📢 Notifications &amp; Upcoming <span id="notifBadgeCount" class="badge badge-live" style="display:none;">0</span></button>
-      <button class="nav-tab" data-tab="support">💬 Ask Query / Support</button>
-      <button class="nav-tab" data-tab="admin">⚙️ Admin Panel</button>
+    <!-- Primary Top Navigation Tabs (Scrollable on Mobile, Full Bar on Desktop) -->
+    <nav class="nav-tabs" id="mainNavTabs" aria-label="Main Navigation">
+      <button class="nav-tab active" data-tab="dashboard">🏠 Home</button>
+      <button class="nav-tab" data-tab="test-series">📚 Test Series</button>
+      <button class="nav-tab" data-tab="practice">🎯 Practice &amp; PYQs</button>
+      <button class="nav-tab" data-tab="analytics">📊 Analytics</button>
+      <button class="nav-tab" data-tab="leaderboard">🏆 Leaderboard</button>
+      <button class="nav-tab" data-tab="current-affairs">⚡ Current Affairs</button>
+      <button class="nav-tab" data-tab="notifications">📢 Updates</button>
+      <button class="nav-tab" data-tab="profile">👤 Profile</button>
+      <button class="nav-tab admin-nav-tab" data-tab="admin" id="adminNavTabBtn" style="display:none;">🛡️ Admin Panel</button>
     </nav>
   </header>
 
-  <!-- Dynamic Application Container -->
+  <!-- Main Workspace Container -->
   <main class="main-container" id="appRoot"></main>
 
-  <!-- Fullscreen Story Modal Container -->
+  <!-- Mobile Bottom Navigation Bar (Sticky on Handheld Screens) -->
+  <nav class="mobile-bottom-nav" id="mobileBottomNav" aria-label="Bottom Navigation">
+    <button class="bottom-nav-item active" data-tab="dashboard">
+      <span class="bottom-nav-icon">🏠</span>
+      <span class="bottom-nav-label">Home</span>
+    </button>
+    <button class="bottom-nav-item" data-tab="test-series">
+      <span class="bottom-nav-icon">📚</span>
+      <span class="bottom-nav-label">Test Series</span>
+    </button>
+    <button class="bottom-nav-item" data-tab="practice">
+      <span class="bottom-nav-icon">🎯</span>
+      <span class="bottom-nav-label">Practice</span>
+    </button>
+    <button class="bottom-nav-item" data-tab="analytics">
+      <span class="bottom-nav-icon">📊</span>
+      <span class="bottom-nav-label">Analytics</span>
+    </button>
+    <button class="bottom-nav-item" data-tab="profile">
+      <span class="bottom-nav-icon">👤</span>
+      <span class="bottom-nav-label">Profile</span>
+    </button>
+  </nav>
+
+  <!-- Fullscreen CBT Examination Engine Container -->
+  <div id="cbtExamContainer"></div>
+
+  <!-- Fullscreen 24-Hour Current Affairs Story Modal Container -->
   <div id="storyModalContainer"></div>
 
-  <!-- Generic Modal Container (Payment, Safe Submit, Question Editor, PWA Guide) -->
+  <!-- Generic Modal Container (Onboarding, Payment, Coupons, Editors, Dialogs) -->
   <div id="genericModalContainer"></div>
 
-  <!-- Toast Container -->
+  <!-- Toast Notification Container -->
   <div class="toast-container" id="toastContainer"></div>
 
-  <script src="app.js"></script>
+  <!-- Modular Platform Scripts -->
+  <script src="firebase-sync.js" defer></script>
+  <script src="exam-engine.js" defer></script>
+  <script src="admin-console.js" defer></script>
+  <script src="app.js" defer></script>
 </body>
 </html>

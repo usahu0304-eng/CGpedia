@@ -1,2884 +1,2236 @@
+/**
+ * CGpedia — Complete Multi-Exam Competitive Examination & Online Test Series Platform
+ * Coordinates Student Portal, Onboarding, Test Series Library, Practice & Mistake Notebook,
+ * Analytics, Leaderboard, UPI QR + WhatsApp Checkout, and Role-Protected Admin Console.
+ */
 (function () {
   'use strict';
 
-  const STORAGE_KEY = 'cgpedia_clean_pwa_v3';
-  const ADMIN_EMAIL = 'usahu0304@gmail.com';
-  const STORY_DURATION_MS = 24 * 60 * 60 * 1000; // Strictly 24 Hours
-  const AUTO_SYNC_INTERVAL_MS = 60 * 60 * 1000;  // 60 Minutes
-  const AI_TIMEOUT_MS = 300000;                  // 5 Minutes (300,000 ms)
+  const STORAGE_KEY = 'cgpedia_platform_state_v4';
+  const OWNER_ADMIN_EMAIL = 'usahu0304@gmail.com';
 
-  // Default Clean SVG QR Code Placeholder (until Admin uploads custom QR from Gallery/URL)
-  const DEFAULT_QR_SVG = "data:image/svg+xml;utf8," + encodeURIComponent(`
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240">
-      <rect width="240" height="240" fill="#FFFFFF"/>
-      <rect x="16" y="16" width="64" height="64" fill="none" stroke="#0F2557" stroke-width="10"/>
-      <rect x="34" y="34" width="28" height="28" fill="#0F2557"/>
-      <rect x="160" y="16" width="64" height="64" fill="none" stroke="#0F2557" stroke-width="10"/>
-      <rect x="178" y="34" width="28" height="28" fill="#0F2557"/>
-      <rect x="16" y="160" width="64" height="64" fill="none" stroke="#0F2557" stroke-width="10"/>
-      <rect x="34" y="178" width="28" height="28" fill="#0F2557"/>
-      <rect x="96" y="32" width="16" height="16" fill="#0F2557"/>
-      <rect x="120" y="48" width="16" height="32" fill="#0F2557"/>
-      <rect x="96" y="96" width="48" height="48" rx="8" fill="#F59E0B"/>
-      <text x="120" y="126" font-family="sans-serif" font-size="20" font-weight="900" fill="#0F2557" text-anchor="middle">UPI</text>
-      <rect x="160" y="104" width="20" height="20" fill="#0F2557"/>
-      <rect x="196" y="124" width="24" height="20" fill="#0F2557"/>
-      <rect x="104" y="164" width="24" height="24" fill="#0F2557"/>
-      <rect x="144" y="180" width="32" height="36" fill="#0F2557"/>
-      <rect x="192" y="168" width="28" height="48" fill="#0F2557"/>
-    </svg>
-  `);
+  function esc(str) {
+    return String(str == null ? '' : str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
 
-  // CLEAN SLATE INITIAL STATE (Zero Dummy Test Series or Sample Questions)
-  const INITIAL_STATE = {
-    theme: 'light',
-    activeTab: 'dashboard',
-    adminSubTab: 'tests', // 'tests' | 'payments' | 'branding' | 'stories' | 'broadcast' | 'analytics'
-    selectedFolderId: null,
-    reviewingTestRef: null, // { folderId, testId }
-    currentUser: {
-      id: 'STU-' + Math.floor(1000 + Math.random() * 9000),
-      name: 'CGPSC Student',
-      email: 'student@cgpedia.in',
-      isAdmin: false
-    },
-    config: {
-      appTitle: 'CGpedia',
-      appSubtitle: 'CGPSC & CGSSB',
-      logoDataUrl: '',
-      anthemEnabled: true,
-      screenshotProtection: true,
-      aiEnabled: true,
-      geminiApiKey: '',
-      whatsappNumber: '9238810070',
-      upiId: '9238810070@upi',
-      upiQrDataUrl: DEFAULT_QR_SVG,
-      policyTitleHi: 'आधिकारिक सहायता एवं गोपनीयता नीति (CGPSC & CGSSB)',
-      policyTitleEn: 'Official Help, Support & Privacy Policy (CGPSC & CGSSB)',
-      policyBodyHi: '1. पेड टेस्ट सीरीज अनलॉक करने के लिए QR कोड स्कैन कर भुगतान करें और स्क्रीनशॉट WhatsApp (9238810070) पर भेजें।\n2. प्रत्येक छात्र की वैधता (Validity Countdown) एडमिन द्वारा अकाउंट Activate करने की सटीक तिथि और समय से शुरू होती है।\n3. सभी टेस्ट द्विभाषी (1st हिंदी, 2nd English) माध्यम में उपलब्ध हैं।',
-      policyBodyEn: '1. Scan the official UPI QR to pay for Paid Test Series and send the payment screenshot on WhatsApp (9238810070) for instant activation.\n2. Student validity countdown starts strictly from the exact date & time the Admin activates access for your account.\n3. All tests are provided in Bilingual (1st Hindi, 2nd English) format.',
-      policyUpdatedAt: Date.now()
-    },
-    analyticsBase: {
-      registeredFreeUsers: 0
-    },
-    // ZERO INITIAL CONTENT (Clean Slate Requirement #2)
-    folders: [],
-    stories: [],
-    notifications: [],
-    upcomingSeries: [],
-    queries: [],
-    // key = `${folderId}__${normalizedUserKey}`
-    studentActivations: {},
-    lastAutoSyncAt: Date.now()
-  };
+  function createDefaultState() {
+    return {
+      activeTab: 'dashboard',
+      adminSection: 'overview',
+      adminUnlocked: false,
+      selectedExamFilter: 'ALL',
+      testSeriesFilter: 'ALL',
+      testSeriesSort: 'latest',
+      searchQuery: '',
+      selectedFolderId: null,
+      activeResultId: null,
+      solutionFilter: 'ALL',
+      theme: 'light',
+      lang: 'bilingual',
+      onboarded: false,
+      config: {
+        appTitle: 'CGpedia',
+        appSubtitle: 'Competitive Exam & CBT Test Portal',
+        logoImage: 'assets/cgpedia-logo-clean.png',
+        upiId: '9238810070@upi',
+        upiQrImage: '',
+        whatsappNumber: '9238810070',
+        anthemEnabled: false,
+        screenshotRestriction: true
+      },
+      student: {
+        uid: 'STU-' + Math.floor(100000 + Math.random() * 900000),
+        name: 'Aspirant',
+        email: '',
+        phone: '',
+        targetExams: ['CGPSC', 'UPSC', 'SSC'],
+        preferredLang: 'bilingual',
+        leaderboardPublic: true
+      },
+      // Clean Slate: ZERO hardcoded dummy test series or sample tests
+      folders: [],
+      tests: [],
+      questionBank: [],
+      stories: [],
+      notifications: [],
+      upcomingTests: [],
+      coupons: [],
+      activations: [],
+      orders: [],
+      attempts: [],
+      bookmarks: [],
+      mistakes: [],
+      leaderboard: [],
+      queries: [],
+      questionReports: [],
+      adminStaff: []
+    };
+  }
 
   let state = loadState();
-  let activeExamSession = null;
-  let storyPlayerState = null;
   let deferredPwaPrompt = null;
-  let audioCtx = null;
-  let isAnthemPlaying = false;
+  let anthemAudioCtx = null;
 
   function loadState() {
+    const def = createDefaultState();
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return structuredClone(INITIAL_STATE);
+      if (!raw) return def;
       const parsed = JSON.parse(raw);
-      const merged = Object.assign({}, structuredClone(INITIAL_STATE), parsed);
-      merged.config = Object.assign({}, structuredClone(INITIAL_STATE.config), parsed.config || {});
-      return merged;
+      return Object.assign({}, def, parsed, {
+        config: Object.assign({}, def.config, parsed.config || {}),
+        student: Object.assign({}, def.student, parsed.student || {})
+      });
     } catch (_) {
-      return structuredClone(INITIAL_STATE);
+      return def;
     }
   }
 
   function saveState() {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch (e) {
-      showToast('⚠️ Storage limit reached. Please use smaller images.');
-    }
-  }
-
-  function escapeHtml(val) {
-    return String(val ?? '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-  }
-
-  function showToast(msg) {
-    const container = document.getElementById('toastContainer');
-    if (!container) return;
-    const item = document.createElement('div');
-    item.className = 'toast-msg';
-    item.textContent = msg;
-    container.appendChild(item);
-    setTimeout(() => item.remove(), 4000);
-  }
-
-  // Convert File Input (<input type="file">) to compressed Base64 Data URL for permanent localStorage persistence
-  function readFileAsDataURL(file, maxWidth = 900) {
-    return new Promise((resolve, reject) => {
-      if (!file) return resolve('');
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const result = e.target.result;
-        if (!file.type.startsWith('image/')) {
-          resolve(result);
-          return;
-        }
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let w = img.width;
-          let h = img.height;
-          if (w > maxWidth) {
-            h = Math.round((h * maxWidth) / w);
-            w = maxWidth;
-          }
-          canvas.width = w;
-          canvas.height = h;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, w, h);
-          resolve(canvas.toDataURL('image/jpeg', 0.84));
-        };
-        img.onerror = () => resolve(result);
-        img.src = result;
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-  }
-
-  // Register Service Worker & Handle PWA Install Prompt
-  function initPwaSupport() {
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(() => {});
-    }
-
-    window.addEventListener('beforeinstallprompt', (e) => {
-      e.preventDefault();
-      deferredPwaPrompt = e;
-    });
-
-    const installBtn = document.getElementById('installPwaBtn');
-    if (installBtn) {
-      installBtn.onclick = async () => {
-        if (deferredPwaPrompt) {
-          deferredPwaPrompt.prompt();
-          const choice = await deferredPwaPrompt.userChoice;
-          if (choice && choice.outcome === 'accepted') {
-            showToast('✅ CGpedia App installed on your Home Screen!');
-          }
-          deferredPwaPrompt = null;
-        } else {
-          openPwaInstallGuideModal();
-        }
-      };
-    }
-  }
-
-  function openPwaInstallGuideModal() {
-    const modal = document.getElementById('genericModalContainer');
-    modal.innerHTML = `
-      <div class="modal-overlay">
-        <div class="modal-card" style="max-width:500px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-            <h3 style="font-size:1.15rem;font-weight:800;">📲 Install ${escapeHtml(state.config.appTitle)} Web App</h3>
-            <button class="btn btn-outline btn-sm" id="closePwaGuideBtn">✕</button>
-          </div>
-          <p style="font-size:0.88rem;color:var(--text-secondary);margin-bottom:14px;">
-            बिना किसी APK फाइल के <strong>${escapeHtml(state.config.appTitle)} (${escapeHtml(state.config.appSubtitle)})</strong> को अपने फोन की होम स्क्रीन पर नेटिव ऐप की तरह जोड़ें:
-          </p>
-          <div style="background:var(--bg-elevated);padding:14px;border-radius:12px;margin-bottom:12px;font-size:0.85rem;">
-            <div style="font-weight:800;color:var(--brand-blue);margin-bottom:6px;">🤖 Android (Chrome / Edge / Brave):</div>
-            <div>1. ब्राउज़र के ऊपर दाईं ओर <strong>⋮ (Three Dots Menu)</strong> पर टैप करें।</div>
-            <div>2. <strong>"Add to Home screen"</strong> या <strong>"Install app"</strong> चुनें।</div>
-          </div>
-          <div style="background:var(--bg-elevated);padding:14px;border-radius:12px;margin-bottom:14px;font-size:0.85rem;">
-            <div style="font-weight:800;color:var(--brand-gold);margin-bottom:6px;">🍎 iPhone / iOS (Safari):</div>
-            <div>1. नीचे <strong>Share (⬆️)</strong> आइकन पर टैप करें।</div>
-            <div>2. <strong>"Add to Home Screen"</strong> पर टैप करें।</div>
-          </div>
-          <button class="btn btn-primary" id="okPwaGuideBtn" style="width:100%;">Got It / समझ गया</button>
-        </div>
-      </div>
-    `;
-    document.getElementById('closePwaGuideBtn').onclick = () => { modal.innerHTML = ''; };
-    document.getElementById('okPwaGuideBtn').onclick = () => { modal.innerHTML = ''; };
-  }
-
-  // Official Anthem Audio Player
-  function toggleAnthem() {
-    if (!state.config.anthemEnabled) return;
-    const label = document.getElementById('anthemBtnLabel');
-    if (isAnthemPlaying && audioCtx) {
-      audioCtx.close();
-      audioCtx = null;
-      isAnthemPlaying = false;
-      if (label) label.textContent = 'Anthem';
-      showToast('🔇 Anthem Paused');
-      return;
-    }
-    try {
-      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-      audioCtx = new AudioContextClass();
-      isAnthemPlaying = true;
-      if (label) label.textContent = 'Stop';
-      showToast(`🎵 Playing ${state.config.appTitle} Anthem`);
-
-      const notes = [261.63, 329.63, 392.00, 523.25, 392.00, 440.00, 523.25, 659.25];
-      notes.forEach((freq, idx) => {
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(freq, audioCtx.currentTime + idx * 0.34);
-        gain.gain.setValueAtTime(0.14, audioCtx.currentTime + idx * 0.34);
-        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + (idx + 0.9) * 0.34);
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.start(audioCtx.currentTime + idx * 0.34);
-        osc.stop(audioCtx.currentTime + (idx + 1) * 0.34);
-      });
-      setTimeout(() => {
-        if (isAnthemPlaying) {
-          isAnthemPlaying = false;
-          if (label) label.textContent = 'Anthem';
-        }
-      }, notes.length * 350 + 200);
     } catch (_) {}
   }
 
-  // Strictly Active 24-Hour Stories Filter
-  function getActive24hStories() {
-    const nowMs = Date.now();
-    return (state.stories || []).filter((st) => {
-      const age = nowMs - (st.postedAt || 0);
-      return age >= 0 && age <= STORY_DURATION_MS;
-    });
+  function toast(msg) {
+    const container = document.getElementById('toastContainer');
+    if (!container) return;
+    const el = document.createElement('div');
+    el.className = 'toast';
+    el.textContent = msg;
+    container.appendChild(el);
+    setTimeout(() => {
+      try { container.removeChild(el); } catch (_) {}
+    }, 3600);
   }
 
-  function formatStoryTimeRemaining(postedAt) {
-    const rem = Math.max(0, (postedAt + STORY_DURATION_MS) - Date.now());
-    const hrs = Math.floor(rem / 3600000);
-    const mins = Math.floor((rem % 3600000) / 60000);
-    return hrs > 0 ? `${hrs}h ${mins}m left` : `${mins}m left`;
+  function isCurrentUserAdmin() {
+    const email = String(state.student.email || '').trim().toLowerCase();
+    if (email === OWNER_ADMIN_EMAIL) return true;
+    return (state.adminStaff || []).some((s) => String(s.email || '').toLowerCase() === email);
   }
 
-  // Strict Activation-Based Validity Check for Paid Exam Folders
-  function getFolderAccessStatus(folder) {
-    if (!folder.isPaid) {
-      return { unlocked: true, badgeText: 'Free Access', daysLeft: null };
-    }
-    if (state.currentUser.isAdmin || state.currentUser.email.toLowerCase() === ADMIN_EMAIL) {
-      return { unlocked: true, badgeText: 'Admin Master Access', daysLeft: null };
-    }
-    const idKey = `${folder.id}__${state.currentUser.id.trim().toLowerCase()}`;
-    const emailKey = `${folder.id}__${state.currentUser.email.trim().toLowerCase()}`;
-    const record = state.studentActivations[idKey] || state.studentActivations[emailKey];
-
-    if (!record) {
-      return { unlocked: false, badgeText: `Locked • ₹${folder.priceINR}`, daysLeft: 0 };
-    }
-    const nowMs = Date.now();
-    if (nowMs > record.expiresAt) {
-      // Automatically revoke expired access
-      return { unlocked: false, badgeText: 'Validity Expired', expired: true, expiredAt: record.expiresAt };
-    }
-    const remMs = record.expiresAt - nowMs;
-    const daysLeft = Math.ceil(remMs / 86400000);
-    return {
-      unlocked: true,
-      badgeText: `Active (${daysLeft}d left)`,
-      daysLeft,
-      activatedAt: record.activatedAt,
-      expiresAt: record.expiresAt
-    };
+  function getActiveActivation(targetId) {
+    const email = String(state.student.email || '').trim().toLowerCase();
+    const uid = String(state.student.uid || '').trim().toLowerCase();
+    const now = Date.now();
+    return (state.activations || []).find((a) => {
+      const idMatch = String(a.studentIdentifier || '').toLowerCase();
+      return (idMatch === email || idMatch === uid) && a.targetId === targetId && Number(a.expiresAtMs || 0) > now;
+    }) || null;
   }
 
-  // Student Payment Modal (UPI QR + Download QR + Copy UPI + Auto-Typed WhatsApp 9238810070)
-  function openStudentPaymentModal(folder) {
-    const modal = document.getElementById('genericModalContainer');
-    const waNumber = (state.config.whatsappNumber || '9238810070').replace(/\D/g, '');
-    const waFullPhone = waNumber.length === 10 ? '91' + waNumber : waNumber;
-    const upiId = state.config.upiId || '9238810070@upi';
-    const qrSrc = state.config.upiQrDataUrl || DEFAULT_QR_SVG;
-
-    const autoTypedMessage =
-      `Hello ${state.config.appTitle} Admin,\n` +
-      `I have paid ₹${folder.priceINR} for the Paid Test Series.\n` +
-      `• Package Name: ${folder.titleHi} (${folder.titleEn})\n` +
-      `• Student Name: ${state.currentUser.name}\n` +
-      `• Registered Email ID: ${state.currentUser.email}\n` +
-      `• User ID: ${state.currentUser.id}\n` +
-      `Please find my payment screenshot attached and activate my ${folder.validityDays}-day validity.`;
-
-    const waUrl = `https://wa.me/${waFullPhone}?text=${encodeURIComponent(autoTypedMessage)}`;
-
-    modal.innerHTML = `
-      <div class="modal-overlay">
-        <div class="modal-card" style="max-width:520px;text-align:center;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-            <span class="badge badge-paid">💎 INSTANT PACKAGE ACTIVATION</span>
-            <button class="btn btn-outline btn-sm" id="closePayModalBtn">✕ Close</button>
-          </div>
-
-          <h3 style="font-size:1.18rem;font-weight:800;margin-bottom:4px;">${escapeHtml(folder.titleHi)}</h3>
-          <div style="font-size:0.86rem;color:var(--text-secondary);margin-bottom:12px;">${escapeHtml(folder.titleEn)}</div>
-
-          <div style="display:flex;justify-content:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
-            <span class="badge badge-paid" style="font-size:0.85rem;padding:6px 14px;">Price: ₹${folder.priceINR}</span>
-            <span class="badge badge-free" style="font-size:0.85rem;padding:6px 14px;">Validity: ${folder.validityDays} Days (from Activation)</span>
-          </div>
-
-          <div class="qr-preview-box">
-            <img src="${qrSrc}" alt="Official UPI QR Code" id="paymentModalQrImg" />
-          </div>
-
-          <div style="display:flex;justify-content:center;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
-            <a href="${qrSrc}" download="CGpedia_UPI_QR.png" class="btn btn-outline btn-sm">⬇ Download QR</a>
-            <button class="btn btn-outline btn-sm" id="copyUpiIdBtn">📋 Copy UPI ID: ${escapeHtml(upiId)}</button>
-          </div>
-
-          <div style="background:var(--bg-elevated);padding:12px;border-radius:12px;text-align:left;font-size:0.82rem;margin-bottom:16px;border-left:4px solid var(--brand-amber);">
-            <div style="font-weight:800;margin-bottom:4px;">📌 निर्देश / Instructions:</div>
-            <div style="margin-bottom:4px;">• भुगतान करने के लिए QR कोड स्कैन करें, पेमेंट का स्क्रीनशॉट लें, और तुरंत एक्टिवेशन के लिए नीचे दिए गए WhatsApp बटन पर क्लिक करके स्क्रीनशॉट भेजें।</div>
-            <div style="color:var(--text-secondary);">• Scan the QR to pay, take a payment screenshot, and click the WhatsApp button below to send the screenshot for instant activation.</div>
-          </div>
-
-          <a href="${waUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-emerald" style="width:100%;padding:12px;font-size:0.94rem;">
-            💬 Send Payment Screenshot on WhatsApp (${escapeHtml(state.config.whatsappNumber)})
-          </a>
-        </div>
-      </div>
-    `;
-
-    document.getElementById('closePayModalBtn').onclick = () => { modal.innerHTML = ''; };
-    document.getElementById('copyUpiIdBtn').onclick = () => {
-      if (navigator.clipboard) {
-        navigator.clipboard.writeText(upiId).catch(() => {});
-      }
-      showToast(`✅ Copied UPI ID: ${upiId}`);
-    };
+  function isTestUnlocked(testObj) {
+    if (!testObj.isPaid) return true;
+    if (isCurrentUserAdmin()) return true;
+    if (getActiveActivation(testObj.id)) return true;
+    if (testObj.folderId && getActiveActivation(testObj.folderId)) return true;
+    return false;
   }
 
-  // 60-Minute Silent Background Sync for Current Affairs (Never shows raw API quota errors to students)
-  async function runSilentCurrentAffairsSync() {
-    if (!state.config.aiEnabled || !state.config.geminiApiKey) return;
-    try {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(state.config.geminiApiKey)}`;
-      const prompt = 'Return 1 current affairs update for Chhattisgarh CGPSC & National exam in strict JSON format: {"category":"CG Current","titleHi":"...","titleEn":"...","bodyHi":"...","bodyEn":"...","qHi":"...","qEn":"...","optionsHi":["A","B","C","D"],"optionsEn":["A","B","C","D"],"correctIndex":0}';
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }]
-        })
-      });
-      if (!res.ok) return; // Silently ignore quota or key errors for students
-      const data = await res.json();
-      const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) return;
-      const parsed = JSON.parse(jsonMatch[0]);
-      if (parsed.titleHi && parsed.bodyHi) {
-        state.stories.unshift({
-          id: 'st-' + Date.now(),
-          category: parsed.category || 'Current Affairs',
-          imageUrl: '',
-          titleHi: parsed.titleHi,
-          titleEn: parsed.titleEn || parsed.titleHi,
-          bodyHi: parsed.bodyHi,
-          bodyEn: parsed.bodyEn || parsed.bodyHi,
-          quizQuestion: parsed.qHi ? {
-            qHi: parsed.qHi,
-            qEn: parsed.qEn || parsed.qHi,
-            optionsHi: parsed.optionsHi || ['विकल्प A', 'विकल्प B', 'विकल्प C', 'विकल्प D'],
-            optionsEn: parsed.optionsEn || ['Option A', 'Option B', 'Option C', 'Option D'],
-            correctIndex: Number(parsed.correctIndex || 0)
-          } : null,
-          postedAt: Date.now(),
-          seen: false
-        });
-        state.lastAutoSyncAt = Date.now();
-        saveState();
-        renderApp();
-        if ('Notification' in window && Notification.permission === 'granted') {
-          new Notification(`${state.config.appTitle} — New Current Affairs`, { body: parsed.titleHi });
-        }
-      }
-    } catch (_) {
-      // Silently swallow any quota/network error so students never see raw API errors
-    }
-  }
-
-  setInterval(runSilentCurrentAffairsSync, AUTO_SYNC_INTERVAL_MS);
-
-  // Instagram-Style Story Viewer (Sequential, No Loop, Hold to Pause, Left/Right Tap)
-  function openStoryViewer(startIdx) {
-    const activeStories = getActive24hStories();
-    if (!activeStories.length) return;
-
-    storyPlayerState = {
-      stories: activeStories,
-      currentIndex: Math.max(0, Math.min(startIdx, activeStories.length - 1)),
-      progress: 0,
-      paused: false,
-      timerId: null
-    };
-
-    markCurrentStorySeen();
-    renderStoryModalDOM();
-
-    storyPlayerState.timerId = setInterval(() => {
-      if (!storyPlayerState || storyPlayerState.paused) return;
-      storyPlayerState.progress += 2;
-      const fillEl = document.getElementById('activeStoryFillBar');
-      if (fillEl) fillEl.style.width = `${Math.min(100, storyPlayerState.progress)}%`;
-      if (storyPlayerState.progress >= 100) {
-        advanceNextStory();
-      }
-    }, 100);
-  }
-
-  function markCurrentStorySeen() {
-    if (!storyPlayerState) return;
-    const st = storyPlayerState.stories[storyPlayerState.currentIndex];
-    if (!st) return;
-    const found = state.stories.find((item) => item.id === st.id);
-    if (found) {
-      found.seen = true;
-      saveState();
-    }
-  }
-
-  function advanceNextStory() {
-    if (!storyPlayerState) return;
-    // Sequential non-repeating playback: stop once finished
-    if (storyPlayerState.currentIndex < storyPlayerState.stories.length - 1) {
-      storyPlayerState.currentIndex += 1;
-      storyPlayerState.progress = 0;
-      markCurrentStorySeen();
-      renderStoryModalDOM();
-    } else {
-      closeStoryViewer();
-    }
-  }
-
-  function goPrevStory() {
-    if (!storyPlayerState) return;
-    if (storyPlayerState.currentIndex > 0) {
-      storyPlayerState.currentIndex -= 1;
-      storyPlayerState.progress = 0;
-      markCurrentStorySeen();
-      renderStoryModalDOM();
-    } else {
-      storyPlayerState.progress = 0;
-    }
-  }
-
-  function closeStoryViewer() {
-    if (storyPlayerState && storyPlayerState.timerId) {
-      clearInterval(storyPlayerState.timerId);
-    }
-    storyPlayerState = null;
-    const container = document.getElementById('storyModalContainer');
-    if (container) container.innerHTML = '';
-    renderApp();
-  }
-
-  function renderStoryModalDOM() {
-    const container = document.getElementById('storyModalContainer');
-    if (!container || !storyPlayerState) return;
-    const { stories, currentIndex, progress, paused } = storyPlayerState;
-    const st = stories[currentIndex];
-
-    const segsHtml = stories.map((_, idx) => {
-      const w = idx < currentIndex ? '100%' : idx === currentIndex ? `${progress}%` : '0%';
-      return `
-        <div class="story-progress-seg">
-          <div class="story-progress-fill" ${idx === currentIndex ? 'id="activeStoryFillBar"' : ''} style="width:${w}"></div>
-        </div>
-      `;
-    }).join('');
-
-    container.innerHTML = `
-      <div class="story-modal-backdrop">
-        <div class="story-player-frame" id="storyTouchSurface">
-          <div>
-            <div class="story-progress-row">${segsHtml}</div>
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-              <div>
-                <div style="font-weight:800;font-size:0.86rem;">${escapeHtml(st.category || 'Current Affairs')} (${currentIndex + 1}/${stories.length})</div>
-                <div style="font-size:0.72rem;color:#FBBF24;">⏳ ${formatStoryTimeRemaining(st.postedAt)}</div>
-              </div>
-              <button class="btn btn-outline btn-sm" id="closeStoryModalBtn" style="background:rgba(255,255,255,0.14);color:#FFF;border:none;">✕</button>
-            </div>
-
-            ${st.imageUrl ? `
-              <div style="width:100%;height:170px;border-radius:14px;overflow:hidden;margin-bottom:12px;background:#000;">
-                <img src="${st.imageUrl}" alt="Story Visual" style="width:100%;height:100%;object-fit:cover;" />
-              </div>
-            ` : ''}
-
-            <div style="background:rgba(255,255,255,0.09);border-radius:14px;padding:14px;border-left:4px solid #F59E0B;margin-bottom:10px;">
-              <div style="font-size:0.68rem;font-weight:800;color:#FBBF24;text-transform:uppercase;margin-bottom:4px;">हिंदी (Hindi)</div>
-              <h3 style="font-size:1.05rem;font-weight:800;margin-bottom:6px;">${escapeHtml(st.titleHi)}</h3>
-              <p style="font-size:0.88rem;color:#E2E8F0;line-height:1.5;">${escapeHtml(st.bodyHi)}</p>
-            </div>
-
-            <div style="background:rgba(255,255,255,0.06);border-radius:14px;padding:14px;border-left:4px solid #60A5FA;">
-              <div style="font-size:0.68rem;font-weight:800;color:#93C5FD;text-transform:uppercase;margin-bottom:4px;">English</div>
-              <h4 style="font-size:0.96rem;font-weight:800;margin-bottom:6px;">${escapeHtml(st.titleEn)}</h4>
-              <p style="font-size:0.84rem;color:#CBD5E1;line-height:1.5;">${escapeHtml(st.bodyEn)}</p>
-            </div>
-          </div>
-
-          <div style="margin-top:14px;">
-            <div style="display:flex;justify-content:space-between;font-size:0.74rem;color:#94A3B8;margin-bottom:6px;">
-              <span>24-Hour Auto-Expiry Story</span>
-              <span id="storyStateIndicator">${paused ? '⏸ PAUSED' : '▶ PLAYING'}</span>
-            </div>
-            <div style="background:rgba(0,0,0,0.35);padding:8px;border-radius:10px;font-size:0.72rem;text-align:center;color:#CBD5E1;">
-              👈 Tap Left: Prev • ✋ Hold: Pause • Tap Right: Next 👉
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-
-    document.getElementById('closeStoryModalBtn').onclick = (e) => {
-      e.stopPropagation();
-      closeStoryViewer();
-    };
-
-    const surface = document.getElementById('storyTouchSurface');
-    if (surface) {
-      let downAt = 0;
-      const onDown = (e) => {
-        if (e.target.closest('#closeStoryModalBtn')) return;
-        downAt = Date.now();
-        if (storyPlayerState) {
-          storyPlayerState.paused = true;
-          const ind = document.getElementById('storyStateIndicator');
-          if (ind) ind.textContent = '⏸ PAUSED';
-        }
-      };
-      const onUp = (e) => {
-        if (e.target.closest('#closeStoryModalBtn')) return;
-        const heldMs = Date.now() - downAt;
-        if (storyPlayerState) {
-          storyPlayerState.paused = false;
-          const ind = document.getElementById('storyStateIndicator');
-          if (ind) ind.textContent = '▶ PLAYING';
-        }
-        if (heldMs > 250) return;
-        const rect = surface.getBoundingClientRect();
-        const clientX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
-        if (clientX - rect.left < rect.width * 0.38) {
-          goPrevStory();
-        } else {
-          advanceNextStory();
-        }
-      };
-      surface.addEventListener('mousedown', onDown);
-      surface.addEventListener('mouseup', onUp);
-      surface.addEventListener('touchstart', onDown, { passive: true });
-      surface.addEventListener('touchend', onUp);
-    }
-  }
-
-  // Launch Instant Current Affairs Quiz for Students
-  function launchCurrentAffairsQuiz() {
-    const activeStories = getActive24hStories();
-    const questions = activeStories
-      .map((st, idx) => {
-        if (st.quizQuestion && st.quizQuestion.qHi) {
-          return {
-            id: 'caq-' + idx,
-            qHi: st.quizQuestion.qHi,
-            qEn: st.quizQuestion.qEn || st.quizQuestion.qHi,
-            optionsHi: st.quizQuestion.optionsHi,
-            optionsEn: st.quizQuestion.optionsEn || st.quizQuestion.optionsHi,
-            correctIndex: Number(st.quizQuestion.correctIndex || 0),
-            expHi: st.bodyHi,
-            expEn: st.bodyEn
-          };
-        }
-        return {
-          id: 'caq-auto-' + idx,
-          qHi: `समसामयिकी प्रश्न: "${st.titleHi}" किस श्रेणी से संबंधित है?`,
-          qEn: `Current Affairs Question: Which category does "${st.titleEn}" belong to?`,
-          optionsHi: [st.category || 'छत्तीसगढ़ समसामयिकी', 'प्राचीन इतिहास', 'विश्व भूगोल', 'इनमें से कोई नहीं'],
-          optionsEn: [st.category || 'Chhattisgarh Current Affairs', 'Ancient History', 'World Geography', 'None of these'],
-          correctIndex: 0,
-          expHi: st.bodyHi,
-          expEn: st.bodyEn
-        };
-      });
-
-    if (!questions.length) {
-      showToast('अभी कोई सक्रिय करेंट अफेयर्स क्विज़ उपलब्ध नहीं है। एडमिन द्वारा स्टोरी पोस्ट करने पर क्विज़ उपलब्ध होगा।');
-      return;
-    }
-
-    startExamSession({
-      id: 'ca-live-quiz',
-      titleHi: 'त्वरित समसामयिकी क्विज़ (Current Affairs Quiz)',
-      titleEn: 'Instant Current Affairs MCQ Quiz',
-      durationMinutes: Math.max(5, questions.length * 2),
-      marksPerQuestion: 2.0,
-      negativeMarking: 0.66,
-      questions
-    });
-  }
-
-  // Start Safe CBT Exam Session
-  function startExamSession(testObj) {
-    if (!testObj.questions || !testObj.questions.length) {
-      showToast('इस टेस्ट में अभी कोई प्रश्न नहीं हैं।');
-      return;
-    }
-    if (activeExamSession && activeExamSession.timerId) {
-      clearInterval(activeExamSession.timerId);
-    }
-    activeExamSession = {
-      test: testObj,
-      currentIndex: 0,
-      remainingSeconds: Math.max(1, Number(testObj.durationMinutes || 60)) * 60,
-      answers: {},
-      review: {},
-      visited: { 0: true },
-      submitted: false,
-      timerId: null
-    };
-
-    activeExamSession.timerId = setInterval(() => {
-      if (!activeExamSession || activeExamSession.submitted) return;
-      activeExamSession.remainingSeconds -= 1;
-      const el = document.getElementById('liveExamTimer');
-      if (el) el.textContent = formatTimerMMSS(activeExamSession.remainingSeconds);
-      if (activeExamSession.remainingSeconds <= 0) {
-        completeExamSubmission();
-      }
-    }, 1000);
-
-    renderApp();
-  }
-
-  function formatTimerMMSS(sec) {
-    const s = Math.max(0, sec);
-    const m = Math.floor(s / 60);
-    const r = s % 60;
-    return `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`;
-  }
-
-  // Safe Top-Right Final Submit Confirmation Popup
-  function openFinalSubmitConfirmPopup() {
-    if (!activeExamSession) return;
-    const total = activeExamSession.test.questions.length;
-    const answered = Object.keys(activeExamSession.answers).length;
-    const marked = Object.keys(activeExamSession.review).filter((k) => activeExamSession.review[k]).length;
-    const skipped = total - answered;
-
-    const modal = document.getElementById('genericModalContainer');
-    modal.innerHTML = `
-      <div class="modal-overlay">
-        <div class="modal-card" style="max-width:480px;">
-          <h3 style="font-size:1.18rem;font-weight:800;margin-bottom:8px;">Are you sure you want to submit?</h3>
-          <p style="font-size:0.86rem;color:var(--text-secondary);margin-bottom:16px;">
-            क्या आप वाकई अपना टेस्ट फाइनल सबमिट करना चाहते हैं? सबमिट करने के बाद उत्तर बदले नहीं जा सकेंगे।
-          </p>
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;text-align:center;margin-bottom:18px;">
-            <div style="background:var(--bg-elevated);padding:12px;border-radius:10px;">
-              <div style="font-size:1.25rem;font-weight:900;color:#059669;">${answered}</div>
-              <div style="font-size:0.74rem;font-weight:700;">Answered</div>
-            </div>
-            <div style="background:var(--bg-elevated);padding:12px;border-radius:10px;">
-              <div style="font-size:1.25rem;font-weight:900;color:#DC2626;">${skipped}</div>
-              <div style="font-size:0.74rem;font-weight:700;">Unanswered</div>
-            </div>
-            <div style="background:var(--bg-elevated);padding:12px;border-radius:10px;">
-              <div style="font-size:1.25rem;font-weight:900;color:#7C3AED;">${marked}</div>
-              <div style="font-size:0.74rem;font-weight:700;">Review</div>
-            </div>
-          </div>
-          <div style="display:flex;justify-content:flex-end;gap:10px;">
-            <button class="btn btn-outline" id="cancelFinalSubmitBtn">No, Resume Test</button>
-            <button class="btn btn-emerald" id="confirmFinalSubmitBtn">✅ Yes, Final Submit</button>
-          </div>
-        </div>
-      </div>
-    `;
-    document.getElementById('cancelFinalSubmitBtn').onclick = () => { modal.innerHTML = ''; };
-    document.getElementById('confirmFinalSubmitBtn').onclick = () => {
-      modal.innerHTML = '';
-      completeExamSubmission();
-    };
-  }
-
-  function completeExamSubmission() {
-    if (!activeExamSession) return;
-    if (activeExamSession.timerId) clearInterval(activeExamSession.timerId);
-    activeExamSession.submitted = true;
-    renderApp();
-  }
-
-  // Render Safe Exam Room (Final Submit in Top-Right Header, Previous & Next at Bottom)
-  function renderExamSessionHTML() {
-    const { test, currentIndex, remainingSeconds, answers, review, visited, submitted } = activeExamSession;
-    const questions = test.questions;
-    const posMarks = Number(test.marksPerQuestion || 2.0);
-    const negMarks = Number(test.negativeMarking || 0.66);
-
-    if (submitted) {
-      let correct = 0;
-      let wrong = 0;
-      let skipped = 0;
-      questions.forEach((q, idx) => {
-        if (answers[idx] === undefined) skipped++;
-        else if (answers[idx] === Number(q.correctIndex)) correct++;
-        else wrong++;
-      });
-      const score = (correct * posMarks) - (wrong * negMarks);
-      const maxScore = questions.length * posMarks;
-      const accuracy = (correct + wrong) > 0 ? Math.round((correct / (correct + wrong)) * 100) : 0;
-
-      const solutionsHtml = questions.map((q, idx) => {
-        const uAns = answers[idx];
-        const isRight = uAns === Number(q.correctIndex);
-        return `
-          <div class="folder-card" style="margin-bottom:14px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-              <strong>Question ${idx + 1}</strong>
-              <span class="badge ${uAns === undefined ? 'badge-draft' : isRight ? 'badge-free' : 'badge-live'}">
-                ${uAns === undefined ? 'Unattempted' : isRight ? '✓ Correct (+' + posMarks + ')' : '✗ Wrong (-' + negMarks + ')'}
-              </span>
-            </div>
-            <div class="bilingual-q-box">
-              <div class="q-hi">${escapeHtml(q.qHi)}</div>
-              <div class="q-en">${escapeHtml(q.qEn)}</div>
-            </div>
-            <div style="font-size:0.85rem;font-weight:700;color:var(--brand-emerald);">
-              ✓ Correct Option (${String.fromCharCode(65 + Number(q.correctIndex))}):
-              ${escapeHtml((q.optionsHi || [])[q.correctIndex] || '')} / ${escapeHtml((q.optionsEn || [])[q.correctIndex] || '')}
-            </div>
-            <div style="background:var(--bg-elevated);padding:12px;border-radius:10px;font-size:0.83rem;">
-              <div style="font-weight:800;color:var(--brand-blue);margin-bottom:4px;">📘 Solution / व्याख्या:</div>
-              <div>${escapeHtml(q.expHi || 'विस्तृत समाधान उपलब्ध।')}</div>
-              <div style="color:var(--text-secondary);margin-top:4px;">${escapeHtml(q.expEn || '')}</div>
-            </div>
-          </div>
-        `;
-      }).join('');
-
-      return `
-        <div>
-          <div class="cbt-top-bar">
-            <div>
-              <div style="font-size:0.75rem;color:#93C5FD;">RESULT &amp; DETAILED SOLUTIONS</div>
-              <h2 style="font-size:1.15rem;font-weight:800;">${escapeHtml(test.titleHi)}</h2>
-            </div>
-            <button class="btn btn-gold btn-sm" id="exitExamRoomBtn">🏠 Back to Folder</button>
-          </div>
-
-          <div class="admin-stats-grid">
-            <div class="stat-card">
-              <div style="font-size:0.78rem;color:var(--text-secondary);font-weight:700;">Total Score</div>
-              <div class="stat-value">${score.toFixed(2)} / ${maxScore}</div>
-            </div>
-            <div class="stat-card">
-              <div style="font-size:0.78rem;color:var(--text-secondary);font-weight:700;">Accuracy</div>
-              <div class="stat-value" style="color:#059669;">${accuracy}%</div>
-            </div>
-            <div class="stat-card">
-              <div style="font-size:0.78rem;color:var(--text-secondary);font-weight:700;">Correct / Wrong</div>
-              <div class="stat-value">${correct} ✓ / ${wrong} ✗</div>
-            </div>
-            <div class="stat-card">
-              <div style="font-size:0.78rem;color:var(--text-secondary);font-weight:700;">Unattempted</div>
-              <div class="stat-value" style="color:#64748B;">${skipped}</div>
-            </div>
-          </div>
-
-          <h3 style="margin:16px 0 12px;font-weight:800;">Detailed Bilingual Solutions</h3>
-          ${solutionsHtml}
-        </div>
-      `;
-    }
-
-    const q = questions[currentIndex];
-    const selectedOpt = answers[currentIndex];
-
-    const optsHtml = (q.optionsHi || []).map((optHi, idx) => {
-      const optEn = (q.optionsEn && q.optionsEn[idx]) || '';
-      return `
-        <button class="option-item ${selectedOpt === idx ? 'selected' : ''}" data-opt-idx="${idx}">
-          <span class="option-circle">${String.fromCharCode(65 + idx)}</span>
-          <div>
-            <div style="font-weight:700;font-size:0.95rem;">${escapeHtml(optHi)}</div>
-            ${optEn ? `<div style="font-size:0.83rem;color:var(--text-secondary);">${escapeHtml(optEn)}</div>` : ''}
-          </div>
-        </button>
-      `;
-    }).join('');
-
-    const paletteBtns = questions.map((_, idx) => {
-      let cls = 'palette-btn';
-      if (review[idx]) cls += ' review';
-      else if (answers[idx] !== undefined) cls += ' answered';
-      else if (visited[idx]) cls += ' visited';
-      if (idx === currentIndex) cls += ' current';
-      return `<button class="${cls}" data-palette-idx="${idx}">${idx + 1}</button>`;
-    }).join('');
-
-    return `
-      <div>
-        <!-- Top Header with Safe Final Submit Test Button in Top-Right -->
-        <div class="cbt-top-bar">
-          <div>
-            <div style="font-size:0.74rem;color:#FBBF24;font-weight:700;">LIVE CBT EXAM • ${escapeHtml(state.config.appSubtitle)}</div>
-            <h2 style="font-size:1.08rem;font-weight:800;">${escapeHtml(test.titleHi)}</h2>
-          </div>
-          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-            <div class="timer-pill" id="liveExamTimer">⏱ ${formatTimerMMSS(remainingSeconds)}</div>
-            <button class="btn btn-emerald btn-sm" id="topRightFinalSubmitBtn">✅ Final Submit Test</button>
-            <button class="btn btn-outline btn-sm" id="exitExamRoomBtn" style="background:rgba(255,255,255,0.12);color:#FFF;border:none;">✕ Exit</button>
-          </div>
-        </div>
-
-        <div class="cbt-layout">
-          <div class="cbt-question-card">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
-              <strong style="color:var(--brand-blue);">Question ${currentIndex + 1} of ${questions.length}</strong>
-              <div style="display:flex;gap:8px;">
-                <span class="badge badge-free">+${posMarks} Marks</span>
-                <span class="badge badge-live">-${negMarks} Negative</span>
-              </div>
-            </div>
-
-            <div class="bilingual-q-box">
-              <div class="q-hi">${escapeHtml(q.qHi)}</div>
-              ${q.qEn ? `<div class="q-en">${escapeHtml(q.qEn)}</div>` : ''}
-            </div>
-
-            <div>${optsHtml}</div>
-
-            <!-- Bottom Navigation strictly has Previous, Clear/Review, and Next Question (Submit is safely in top-right header) -->
-            <div class="cbt-bottom-nav">
-              <button class="btn btn-outline" id="cbtPrevBtn" ${currentIndex === 0 ? 'disabled' : ''}>⬅ Previous</button>
-              <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                <button class="btn btn-outline btn-sm" id="cbtClearBtn">Clear</button>
-                <button class="btn btn-outline btn-sm" id="cbtReviewBtn">
-                  ${review[currentIndex] ? '🟣 Unmark Review' : '🔖 Mark Review'}
-                </button>
-              </div>
-              <button class="btn btn-primary" id="cbtNextBtn" ${currentIndex >= questions.length - 1 ? 'disabled' : ''}>
-                Next Question ➡
-              </button>
-            </div>
-          </div>
-
-          <div class="palette-card">
-            <h4 style="font-size:0.92rem;font-weight:800;">Question Palette</h4>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:0.74rem;margin-top:8px;">
-              <div>🟢 Answered (${Object.keys(answers).length})</div>
-              <div>🟣 Review (${Object.keys(review).filter((k) => review[k]).length})</div>
-              <div>🟠 Visited</div>
-              <div>⚪ Not Visited</div>
-            </div>
-            <div class="palette-grid">${paletteBtns}</div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  // Render Instagram Stories Bar at Top of Student View
-  function renderInstagramStoriesBarHTML() {
-    const activeStories = getActive24hStories();
-    if (!activeStories.length) {
-      return '';
-    }
-    const bubbles = activeStories.map((st, idx) => `
-      <div class="story-bubble" data-story-idx="${idx}">
-        <div class="story-ring ${st.seen ? 'seen' : ''}">
-          <div class="story-avatar">
-            ${st.imageUrl ? `<img src="${st.imageUrl}" alt="Story" />` : `<span>📰</span>`}
-          </div>
-        </div>
-        <div class="story-label">${escapeHtml(st.titleHi)}</div>
-        <div class="story-time-left">${formatStoryTimeRemaining(st.postedAt)}</div>
-      </div>
-    `).join('');
-
-    return `
-      <section class="stories-card">
-        <div class="stories-header">
-          <div style="display:flex;align-items:center;gap:8px;">
-            <span style="width:9px;height:9px;border-radius:50%;background:#EF4444;display:inline-block;"></span>
-            <strong style="font-size:0.92rem;">Current Affairs Stories (24h Bilingual)</strong>
-          </div>
-          <button class="btn btn-gold btn-sm" id="topBarQuizBtn">⚡ Quiz</button>
-        </div>
-        <div class="stories-strip">${bubbles}</div>
-      </section>
-    `;
-  }
-
-  // 1. Student Dashboard (Published Exam Folders Only — Clean Slate when Empty)
-  function renderStudentDashboardHTML() {
-    const publishedFolders = (state.folders || []).filter((f) => f.status === 'published');
-
-    // Inside a specific Published Exam Folder
-    if (state.selectedFolderId) {
-      const folder = publishedFolders.find((f) => f.id === state.selectedFolderId);
-      if (!folder) {
-        state.selectedFolderId = null;
-        return renderStudentDashboardHTML();
-      }
-      const access = getFolderAccessStatus(folder);
-      const publishedTests = (folder.tests || []).filter((t) => t.status === 'published');
-
-      const testsHtml = publishedTests.map((t) => {
-        const isLocked = folder.isPaid && t.isPaid && !access.unlocked;
-        return `
-          <div class="folder-card">
-            <div>
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                <span class="badge ${t.isPaid ? 'badge-paid' : 'badge-free'}">
-                  ${t.isPaid ? (isLocked ? '🔒 Paid Test' : '🔓 Unlocked') : '🆓 Free Test'}
-                </span>
-                <span style="font-size:0.75rem;color:var(--text-muted);">⏱ ${t.durationMinutes} Mins</span>
-              </div>
-              <h4 style="font-size:1.02rem;font-weight:800;margin-bottom:4px;">${escapeHtml(t.titleHi)}</h4>
-              <div style="font-size:0.84rem;color:var(--text-secondary);margin-bottom:10px;">${escapeHtml(t.titleEn)}</div>
-              <div class="folder-meta">
-                <span>📝 ${(t.questions || []).length} Questions</span>
-                <span>➕ +${t.marksPerQuestion} / -${t.negativeMarking}</span>
-              </div>
-            </div>
-            ${isLocked
-              ? `<button class="btn btn-gold btn-sm trigger-pay-modal-btn" data-folder-id="${folder.id}" style="width:100%;">🔒 Unlock Package (₹${folder.priceINR})</button>`
-              : `<button class="btn btn-primary btn-sm launch-test-btn" data-folder-id="${folder.id}" data-test-id="${t.id}" style="width:100%;">▶ Attempt Test</button>`
-            }
-          </div>
-        `;
-      }).join('');
-
-      return `
-        <div>
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
-            <button class="btn btn-outline btn-sm" id="backToMainFoldersBtn">⬅ Back to Exam Folders</button>
-            <span class="badge ${access.unlocked ? 'badge-free' : 'badge-paid'}">${escapeHtml(access.badgeText)}</span>
-          </div>
-
-          <div class="folder-card" style="margin-bottom:18px;border-left:4px solid var(--brand-blue);">
-            <div>
-              <h2 style="font-size:1.2rem;font-weight:800;margin-bottom:4px;">📁 ${escapeHtml(folder.titleHi)}</h2>
-              <div style="font-size:0.88rem;color:var(--text-secondary);margin-bottom:8px;">${escapeHtml(folder.titleEn)}</div>
-              <p style="font-size:0.84rem;color:var(--text-secondary);">${escapeHtml(folder.description || '')}</p>
-            </div>
-            ${folder.isPaid && !access.unlocked ? `
-              <button class="btn btn-gold trigger-pay-modal-btn" data-folder-id="${folder.id}">
-                💳 Buy / Unlock Test Series — ₹${folder.priceINR} (${folder.validityDays} Days Validity)
-              </button>
-            ` : ''}
-          </div>
-
-          ${publishedTests.length
-            ? `<div class="cards-grid">${testsHtml}</div>`
-            : `<div class="empty-state-card">
-                <div class="empty-state-icon">📝</div>
-                <h3 style="font-size:1.1rem;font-weight:800;margin-bottom:6px;">No Published Tests in This Folder Yet</h3>
-                <p style="font-size:0.86rem;color:var(--text-secondary);">इस परीक्षा फोल्डर में जल्द ही नए टेस्ट पब्लिश किए जाएंगे।</p>
-               </div>`
-          }
-        </div>
-      `;
-    }
-
-    // Main Folder View
-    const folderCardsHtml = publishedFolders.map((folder) => {
-      const access = getFolderAccessStatus(folder);
-      const pubTestCount = (folder.tests || []).filter((t) => t.status === 'published').length;
-      return `
-        <div class="folder-card">
-          <div>
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-              <span class="badge ${folder.isPaid ? 'badge-paid' : 'badge-free'}">
-                ${folder.isPaid ? `💎 Paid • ₹${folder.priceINR}` : '🆓 Free Series'}
-              </span>
-              <span class="badge ${access.unlocked ? 'badge-free' : 'badge-live'}">${escapeHtml(access.badgeText)}</span>
-            </div>
-            <h3 style="font-size:1.1rem;font-weight:800;margin-bottom:4px;">📁 ${escapeHtml(folder.titleHi)}</h3>
-            <div style="font-size:0.86rem;color:var(--text-secondary);margin-bottom:8px;">${escapeHtml(folder.titleEn)}</div>
-            <p style="font-size:0.83rem;color:var(--text-secondary);margin-bottom:10px;">${escapeHtml(folder.description || '')}</p>
-            <div class="folder-meta">
-              <span>📚 ${pubTestCount} Published Tests</span>
-              <span>⏳ Validity: ${folder.validityDays} Days</span>
-            </div>
-          </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button class="btn btn-primary btn-sm open-exam-folder-btn" data-folder-id="${folder.id}" style="flex:1;">
-              📂 Open Folder (${pubTestCount})
-            </button>
-            ${folder.isPaid && !access.unlocked ? `
-              <button class="btn btn-gold btn-sm trigger-pay-modal-btn" data-folder-id="${folder.id}">
-                💳 Pay ₹${folder.priceINR}
-              </button>
-            ` : ''}
-          </div>
-        </div>
-      `;
-    }).join('');
-
-    return `
-      ${renderInstagramStoriesBarHTML()}
-
-      ${publishedFolders.length > 0
-        ? `
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-            <h2 style="font-size:1.15rem;font-weight:800;">📁 Exam-Wise Test Series Folders</h2>
-          </div>
-          <div class="cards-grid">${folderCardsHtml}</div>
-        `
-        : `
-          <div class="empty-state-card">
-            <div class="empty-state-icon">📚</div>
-            <h2 style="font-size:1.22rem;font-weight:800;margin-bottom:8px;">No Test Series Available Yet</h2>
-            <p style="font-size:0.9rem;color:var(--text-secondary);margin-bottom:16px;">
-              अभी कोई टेस्ट सीरीज उपलब्ध नहीं है। जब एडमिन द्वारा नई टेस्ट सीरीज बनाकर <strong>Publish</strong> की जाएगी, तो वह यहाँ दिखाई देगी।
-            </p>
-            <button class="btn btn-outline btn-sm" id="emptyStateGoAdminBtn">⚙️ Open Admin Panel to Create &amp; Publish Tests</button>
-          </div>
-        `
-      }
-    `;
-  }
-
-  // 2. Current Affairs Tab (With Top-Right Quiz Button & 24h Auto-Expiry)
-  function renderCurrentAffairsTabHTML() {
-    const activeStories = getActive24hStories();
-    const listHtml = activeStories.map((st, idx) => `
-      <div class="folder-card">
-        <div>
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-            <span class="badge badge-free">${escapeHtml(st.category || 'Current Affairs')}</span>
-            <span style="font-size:0.74rem;color:var(--brand-gold);font-weight:700;">⏳ ${formatStoryTimeRemaining(st.postedAt)}</span>
-          </div>
-          ${st.imageUrl ? `
-            <div style="width:100%;height:160px;border-radius:12px;overflow:hidden;margin-bottom:10px;">
-              <img src="${st.imageUrl}" alt="Current Affairs" style="width:100%;height:100%;object-fit:cover;" />
-            </div>
-          ` : ''}
-          <h3 style="font-size:1.02rem;font-weight:800;margin-bottom:6px;">${escapeHtml(st.titleHi)}</h3>
-          <p style="font-size:0.86rem;margin-bottom:8px;">${escapeHtml(st.bodyHi)}</p>
-          <hr style="border:none;border-top:1px dashed var(--border-color);margin:8px 0;" />
-          <h4 style="font-size:0.92rem;font-weight:700;color:var(--text-secondary);margin-bottom:4px;">${escapeHtml(st.titleEn)}</h4>
-          <p style="font-size:0.82rem;color:var(--text-secondary);">${escapeHtml(st.bodyEn)}</p>
-        </div>
-        <button class="btn btn-outline btn-sm story-card-open-btn" data-story-idx="${idx}">▶ View Fullscreen Story</button>
-      </div>
-    `).join('');
-
-    return `
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
-        <div>
-          <h2 style="font-size:1.18rem;font-weight:800;">⚡ Daily Current Affairs (24-Hour Stories)</h2>
-          <div style="font-size:0.8rem;color:var(--text-secondary);">द्विभाषी समसामयिकी (हिंदी &amp; English) • 24 घंटे बाद स्वतः समाप्त</div>
-        </div>
-        <button class="btn btn-gold" id="caTabTopRightQuizBtn">⚡ Quiz</button>
-      </div>
-
-      ${renderInstagramStoriesBarHTML()}
-
-      ${activeStories.length
-        ? `<div class="cards-grid">${listHtml}</div>`
-        : `<div class="empty-state-card">
-            <div class="empty-state-icon">📰</div>
-            <h3 style="font-size:1.12rem;font-weight:800;margin-bottom:6px;">No Active Current Affairs Stories (Last 24 Hours)</h3>
-            <p style="font-size:0.86rem;color:var(--text-secondary);">पिछले 24 घंटों में कोई स्टोरी उपलब्ध नहीं है।</p>
-           </div>`
-      }
-    `;
-  }
-
-  // 3. Notifications Hub & Upcoming Test Series Tab
-  function renderNotificationsTabHTML() {
-    const sortedNotifs = [...(state.notifications || [])].sort(
-      (a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.createdAt - a.createdAt
-    );
-
-    const notifsHtml = sortedNotifs.map((n) => `
-      <div class="folder-card" style="margin-bottom:12px;${n.pinned ? 'border-left:4px solid #F59E0B;' : ''}">
-        <div>
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-            <span class="badge ${n.pinned ? 'badge-paid' : 'badge-free'}">${n.pinned ? '📌 Pinned Broadcast' : '📢 Broadcast'}</span>
-            <span style="font-size:0.74rem;color:var(--text-muted);">${new Date(n.createdAt).toLocaleString()}</span>
-          </div>
-          <h4 style="font-size:1.02rem;font-weight:800;margin-bottom:6px;">${escapeHtml(n.title)}</h4>
-          <p style="font-size:0.88rem;white-space:pre-wrap;margin-bottom:10px;">${escapeHtml(n.message)}</p>
-
-          ${n.mediaDataUrl && n.mediaType === 'image' ? `
-            <div style="max-width:420px;border-radius:12px;overflow:hidden;margin-bottom:8px;">
-              <img src="${n.mediaDataUrl}" alt="Attachment" style="width:100%;display:block;" />
-            </div>
-          ` : ''}
-
-          ${n.mediaDataUrl && n.mediaType === 'audio' ? `
-            <audio controls src="${n.mediaDataUrl}" style="width:100%;margin-top:6px;"></audio>
-          ` : ''}
-
-          ${n.mediaDataUrl && n.mediaType === 'video' ? `
-            <video controls src="${n.mediaDataUrl}" style="width:100%;max-height:280px;border-radius:12px;margin-top:6px;"></video>
-          ` : ''}
-
-          ${n.mediaDataUrl && n.mediaType === 'pdf' ? `
-            <a href="${n.mediaDataUrl}" download="${escapeHtml(n.mediaName || 'Document.pdf')}" class="btn btn-outline btn-sm">📄 Download Attached File (${escapeHtml(n.mediaName || 'PDF/Doc')})</a>
-          ` : ''}
-        </div>
-      </div>
-    `).join('');
-
-    const upcomingHtml = (state.upcomingSeries || []).map((up) => `
-      <div class="folder-card">
-        <div>
-          ${up.bannerDataUrl ? `
-            <div style="width:100%;height:150px;border-radius:12px;overflow:hidden;margin-bottom:10px;">
-              <img src="${up.bannerDataUrl}" alt="Upcoming Banner" style="width:100%;height:100%;object-fit:cover;" />
-            </div>
-          ` : ''}
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-            <span class="badge badge-paid">📅 ${escapeHtml(up.startDate)}</span>
-            <strong style="color:var(--brand-blue);">${escapeHtml(up.priceLabel)}</strong>
-          </div>
-          <h4 style="font-size:1.02rem;font-weight:800;margin-bottom:4px;">${escapeHtml(up.title)}</h4>
-          <p style="font-size:0.84rem;color:var(--text-secondary);">${escapeHtml(up.scheduleDetails)}</p>
-        </div>
-      </div>
-    `).join('');
-
-    return `
-      <h2 style="font-size:1.15rem;font-weight:800;margin-bottom:12px;">📢 Official Broadcast Notifications</h2>
-      ${sortedNotifs.length
-        ? `<div>${notifsHtml}</div>`
-        : `<div class="empty-state-card" style="padding:28px;">
-            <p style="font-size:0.88rem;color:var(--text-secondary);">No broadcast notifications posted yet.</p>
-           </div>`
-      }
-
-      <h2 style="font-size:1.15rem;font-weight:800;margin:24px 0 12px;">🚀 Upcoming Test Series Schedule</h2>
-      ${(state.upcomingSeries || []).length
-        ? `<div class="cards-grid">${upcomingHtml}</div>`
-        : `<div class="empty-state-card" style="padding:28px;">
-            <p style="font-size:0.88rem;color:var(--text-secondary);">No upcoming test series schedules posted yet.</p>
-           </div>`
-      }
-    `;
-  }
-
-  // 4. Private Student Query / Support Section (With Gallery Screenshot Upload & Live Policy)
-  function renderSupportTabHTML() {
-    // Strictly visible only to the Admin and the specific Student who submitted it
-    const myQueries = state.currentUser.isAdmin
-      ? state.queries
-      : (state.queries || []).filter((q) =>
-          q.studentId.toLowerCase() === state.currentUser.id.toLowerCase() ||
-          q.studentEmail.toLowerCase() === state.currentUser.email.toLowerCase()
-        );
-
-    const queriesHtml = myQueries.map((q) => `
-      <div class="folder-card" style="margin-bottom:12px;">
-        <div>
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-            <span class="badge badge-paid">🔒 Private Ticket • ${escapeHtml(q.subject)}</span>
-            <span style="font-size:0.74rem;color:var(--text-muted);">${new Date(q.createdAt).toLocaleString()}</span>
-          </div>
-          <p style="font-size:0.9rem;font-weight:700;margin-bottom:8px;">${escapeHtml(q.message)}</p>
-          ${q.screenshotDataUrl ? `
-            <div style="max-width:260px;border-radius:10px;overflow:hidden;border:1px solid var(--border-color);margin-bottom:8px;">
-              <img src="${q.screenshotDataUrl}" alt="Query Screenshot" style="width:100%;display:block;" />
-            </div>
-          ` : ''}
-          ${q.adminReply
-            ? `<div style="background:rgba(5,150,105,0.12);border-left:4px solid #059669;padding:10px;border-radius:8px;font-size:0.85rem;">
-                <strong>✅ Admin Reply:</strong> ${escapeHtml(q.adminReply)}
-               </div>`
-            : `<div style="font-size:0.78rem;color:var(--text-muted);">⏳ Visible strictly to you (${escapeHtml(q.studentId)}) and Admin. Awaiting reply.</div>`
-          }
-        </div>
-      </div>
-    `).join('');
-
-    return `
-      <div class="two-col-grid">
-        <div class="folder-card">
-          <div>
-            <span class="badge badge-paid" style="margin-bottom:8px;">🔒 100% PRIVATE STUDENT QUERY DESK</span>
-            <h3 style="font-size:1.08rem;font-weight:800;margin-bottom:6px;">Ask Query / Support (निजी सहायता एवं डाउट बॉक्स)</h3>
-            <p style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:12px;">
-              आपकी क्वेरी और स्क्रीनशॉट 100% गोपनीय हैं — केवल आप (<strong>${escapeHtml(state.currentUser.id)}</strong>) और एडमिन ही इसे देख सकते हैं।
-            </p>
-            <label style="font-size:0.78rem;font-weight:700;">Topic / Subject</label>
-            <input type="text" id="studentQuerySubject" class="input-field" placeholder="e.g. Payment Activation / Question Doubt / Technical Issue" />
-            <label style="font-size:0.78rem;font-weight:700;">Describe Your Issue (अपना संदेश लिखें)</label>
-            <textarea id="studentQueryMessage" rows="3" class="textarea-field" placeholder="Write your query here..."></textarea>
-            <label style="font-size:0.78rem;font-weight:700;">Optional Screenshot Upload from Gallery (<input type="file" id="studentQueryFile" accept="image/*" style="margin-top:4px;" />)</label>
-          </div>
-          <button class="btn btn-primary" id="sendPrivateQueryBtn" style="margin-top:10px;">🔒 Send Private Query to Admin</button>
-        </div>
-
-        <div class="folder-card">
-          <div>
-            <span class="badge badge-free" style="margin-bottom:8px;">OFFICIAL LIVE POLICY</span>
-            <h3 style="font-size:1.08rem;font-weight:800;margin-bottom:4px;">${escapeHtml(state.config.policyTitleHi)}</h3>
-            <div style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:10px;">${escapeHtml(state.config.policyTitleEn)}</div>
-            <div style="background:var(--bg-elevated);padding:12px;border-radius:10px;font-size:0.85rem;white-space:pre-wrap;margin-bottom:10px;">${escapeHtml(state.config.policyBodyHi)}</div>
-            <div style="background:var(--bg-elevated);padding:12px;border-radius:10px;font-size:0.82rem;color:var(--text-secondary);white-space:pre-wrap;">${escapeHtml(state.config.policyBodyEn)}</div>
-          </div>
-          <div style="font-size:0.75rem;color:var(--text-muted);">
-            WhatsApp Support: <strong>${escapeHtml(state.config.whatsappNumber)}</strong> • Updated: ${new Date(state.config.policyUpdatedAt).toLocaleString()}
-          </div>
-        </div>
-      </div>
-
-      <h3 style="font-size:1.08rem;font-weight:800;margin:22px 0 12px;">🗂️ My Private Queries (${myQueries.length})</h3>
-      ${myQueries.length ? `<div>${queriesHtml}</div>` : `<div class="folder-card">No private queries submitted from your account yet.</div>`}
-    `;
-  }
-
-  // 5. Master Admin Control Panel (All 6 Sub-Modules)
-  function renderAdminPanelHTML() {
-    const subTab = state.adminSubTab || 'tests';
-
-    // If Admin is currently reviewing/editing a specific Test's questions (Draft or Published)
-    if (state.reviewingTestRef) {
-      return renderAdminTestQuestionEditorHTML();
-    }
-
-    return `
-      <div class="cbt-top-bar" style="margin-bottom:16px;">
-        <div>
-          <div style="font-size:0.74rem;color:#FBBF24;font-weight:800;">MASTER ADMIN CONTROL PANEL • 100% DYNAMIC</div>
-          <h2 style="font-size:1.15rem;font-weight:800;">${escapeHtml(state.config.appTitle)} (${escapeHtml(state.config.appSubtitle)}) Admin</h2>
-        </div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-          <span class="badge ${state.config.screenshotProtection ? 'badge-live' : 'badge-free'}">
-            Screenshot Lock: ${state.config.screenshotProtection ? 'ON' : 'OFF'}
-          </span>
-        </div>
-      </div>
-
-      <div class="admin-subnav">
-        <button class="btn ${subTab === 'tests' ? 'btn-primary' : 'btn-outline'} btn-sm admin-subtab-btn" data-sub="tests">📚 1. Folders &amp; Tests (Draft/Publish + AI)</button>
-        <button class="btn ${subTab === 'payments' ? 'btn-primary' : 'btn-outline'} btn-sm admin-subtab-btn" data-sub="payments">💳 2. UPI QR Upload &amp; Student Validity</button>
-        <button class="btn ${subTab === 'branding' ? 'btn-primary' : 'btn-outline'} btn-sm admin-subtab-btn" data-sub="branding">🎨 3. Branding, Security &amp; API Key</button>
-        <button class="btn ${subTab === 'stories' ? 'btn-primary' : 'btn-outline'} btn-sm admin-subtab-btn" data-sub="stories">⚡ 4. Current Affairs Stories (24h)</button>
-        <button class="btn ${subTab === 'broadcast' ? 'btn-primary' : 'btn-outline'} btn-sm admin-subtab-btn" data-sub="broadcast">📢 5. Broadcast, Upcoming &amp; Queries</button>
-        <button class="btn ${subTab === 'analytics' ? 'btn-primary' : 'btn-outline'} btn-sm admin-subtab-btn" data-sub="analytics">📊 6. User Analytics Charts</button>
-      </div>
-
-      ${subTab === 'tests' ? renderAdminTestsSubTab() : ''}
-      ${subTab === 'payments' ? renderAdminPaymentsSubTab() : ''}
-      ${subTab === 'branding' ? renderAdminBrandingSubTab() : ''}
-      ${subTab === 'stories' ? renderAdminStoriesSubTab() : ''}
-      ${subTab === 'broadcast' ? renderAdminBroadcastSubTab() : ''}
-      ${subTab === 'analytics' ? renderAdminAnalyticsSubTab() : ''}
-    `;
-  }
-
-  // Admin Sub-Tab 1: Exam Folders & 3-Stage Draft-Review-Publish Test Engine (Manual + AI)
-  function renderAdminTestsSubTab() {
-    const folderOptions = state.folders.map((f) =>
-      `<option value="${f.id}">${escapeHtml(f.titleHi)} [${f.status.toUpperCase()}]</option>`
-    ).join('');
-
-    const foldersManageHtml = state.folders.map((folder) => {
-      const isPub = folder.status === 'published';
-      const testsRows = (folder.tests || []).map((test) => {
-        const tPub = test.status === 'published';
-        return `
-          <div style="background:var(--bg-primary);border:1px solid var(--border-color);padding:12px;border-radius:10px;margin-top:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-            <div>
-              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                <span class="badge ${tPub ? 'badge-free' : 'badge-draft'}">${tPub ? '🟢 PUBLISHED' : '📝 DRAFT'}</span>
-                <span class="badge ${test.isPaid ? 'badge-paid' : 'badge-free'}">${test.isPaid ? 'Paid' : 'Free'}</span>
-                <strong>${escapeHtml(test.titleHi)}</strong>
-              </div>
-              <div style="font-size:0.76rem;color:var(--text-secondary);margin-top:3px;">
-                ${(test.questions || []).length} Questions • ${test.durationMinutes}m • +${test.marksPerQuestion} / -${test.negativeMarking}
-              </div>
-            </div>
-            <div style="display:flex;gap:6px;flex-wrap:wrap;">
-              <button class="btn btn-outline btn-sm review-edit-test-btn" data-folder-id="${folder.id}" data-test-id="${test.id}">
-                ✏️ Review / Edit Questions (${(test.questions || []).length})
-              </button>
-              <button class="btn btn-outline btn-sm toggle-test-paid-btn" data-folder-id="${folder.id}" data-test-id="${test.id}">
-                ${test.isPaid ? 'Make Free' : 'Make Paid'}
-              </button>
-              <button class="btn ${tPub ? 'btn-gold' : 'btn-emerald'} btn-sm toggle-test-publish-btn" data-folder-id="${folder.id}" data-test-id="${test.id}">
-                ${tPub ? '↩ Unpublish to Draft' : '🚀 Publish Test'}
-              </button>
-              <button class="btn btn-danger btn-sm delete-test-btn" data-folder-id="${folder.id}" data-test-id="${test.id}">🗑️</button>
-            </div>
-          </div>
-        `;
-      }).join('');
-
-      return `
-        <div class="folder-card" style="margin-bottom:14px;">
-          <div>
-            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
-              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                <span class="badge ${isPub ? 'badge-free' : 'badge-draft'}">${isPub ? '🟢 PUBLISHED FOLDER' : '📝 DRAFT FOLDER'}</span>
-                <span class="badge ${folder.isPaid ? 'badge-paid' : 'badge-free'}">${folder.isPaid ? 'Paid ₹' + folder.priceINR : 'Free Folder'}</span>
-                <span class="badge badge-outline">Validity: ${folder.validityDays} Days</span>
-              </div>
-              <div style="display:flex;gap:6px;flex-wrap:wrap;">
-                <button class="btn btn-outline btn-sm toggle-folder-paid-btn" data-folder-id="${folder.id}">
-                  ${folder.isPaid ? 'Switch to Free' : 'Switch to Paid'}
-                </button>
-                <button class="btn ${isPub ? 'btn-gold' : 'btn-emerald'} btn-sm toggle-folder-publish-btn" data-folder-id="${folder.id}">
-                  ${isPub ? '↩ Unpublish Folder (Back to Draft)' : '🚀 Publish Folder Live'}
-                </button>
-                <button class="btn btn-danger btn-sm delete-folder-btn" data-folder-id="${folder.id}">🗑️ Delete</button>
-              </div>
-            </div>
-            <h4 style="font-size:1.05rem;font-weight:800;">📁 ${escapeHtml(folder.titleHi)} (${escapeHtml(folder.titleEn)})</h4>
-            <div style="margin-top:8px;">
-              ${testsRows || '<div style="font-size:0.8rem;color:var(--text-muted);margin-top:6px;">No tests inside this folder yet. Create a Manual or AI test above.</div>'}
-            </div>
-          </div>
-        </div>
-      `;
-    }).join('');
-
-    return `
-      <div class="two-col-grid" style="margin-bottom:20px;">
-        <!-- Step 1: Create Exam Folder (Saved as Draft First) -->
-        <div class="folder-card">
-          <div>
-            <span class="badge badge-draft" style="margin-bottom:6px;">STAGE 1: SAVES AS DRAFT FIRST</span>
-            <h3 style="font-size:1.05rem;font-weight:800;margin-bottom:8px;">📁 Create Exam-Wise Folder</h3>
-            <label style="font-size:0.78rem;font-weight:700;">Folder Name (Hindi)</label>
-            <input type="text" id="admFolderHi" class="input-field" placeholder="e.g. सीजीपीएससी प्री 2026 टेस्ट सीरीज" />
-            <label style="font-size:0.78rem;font-weight:700;">Folder Name (English)</label>
-            <input type="text" id="admFolderEn" class="input-field" placeholder="e.g. CGPSC Pre 2026 Test Series" />
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
-              <div>
-                <label style="font-size:0.75rem;font-weight:700;">Type</label>
-                <select id="admFolderPaid" class="select-field">
-                  <option value="true">Paid</option>
-                  <option value="false">Free</option>
-                </select>
-              </div>
-              <div>
-                <label style="font-size:0.75rem;font-weight:700;">Price (₹)</label>
-                <input type="number" id="admFolderPrice" class="input-field" value="99" />
-              </div>
-              <div>
-                <label style="font-size:0.75rem;font-weight:700;">Validity (Days)</label>
-                <input type="number" id="admFolderDays" class="input-field" value="180" />
-              </div>
-            </div>
-            <label style="font-size:0.78rem;font-weight:700;">Folder Description</label>
-            <input type="text" id="admFolderDesc" class="input-field" placeholder="Bilingual Test Series description..." />
-          </div>
-          <button class="btn btn-primary" id="admCreateFolderDraftBtn">📝 Save Folder as Draft</button>
-        </div>
-
-        <!-- Step 2: Create Test Inside Folder (Manual or AI with 300,000 ms Timeout -> Opens Draft Review) -->
-        <div class="folder-card">
-          <div>
-            <span class="badge badge-draft" style="margin-bottom:6px;">MANUAL + AI TEST BUILDER (DRAFT REVIEW STAGE)</span>
-            <h3 style="font-size:1.05rem;font-weight:800;margin-bottom:8px;">📝 Create Test Inside Exam Folder</h3>
-            <label style="font-size:0.78rem;font-weight:700;">Select Parent Exam Folder</label>
-            <select id="admTestFolderSelect" class="select-field">
-              ${folderOptions || '<option value="">-- Create an Exam Folder First --</option>'}
-            </select>
-            <label style="font-size:0.78rem;font-weight:700;">Test Title (Hindi / Bilingual)</label>
-            <input type="text" id="admTestTitleHi" class="input-field" placeholder="e.g. टेस्ट 01: छत्तीसगढ़ का इतिहास एवं संस्कृति" />
-            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
-              <div>
-                <label style="font-size:0.72rem;font-weight:700;">Timer (Min)</label>
-                <input type="number" id="admTestTimer" class="input-field" value="60" />
-              </div>
-              <div>
-                <label style="font-size:0.72rem;font-weight:700;">Marks (+)</label>
-                <input type="number" step="0.5" id="admTestPos" class="input-field" value="2.0" />
-              </div>
-              <div>
-                <label style="font-size:0.72rem;font-weight:700;">Neg (-)</label>
-                <input type="number" step="0.01" id="admTestNeg" class="input-field" value="0.66" />
-              </div>
-              <div>
-                <label style="font-size:0.72rem;font-weight:700;">Access</label>
-                <select id="admTestPaid" class="select-field">
-                  <option value="true">Paid</option>
-                  <option value="false">Free</option>
-                </select>
-              </div>
-            </div>
-
-            <div style="background:var(--bg-elevated);padding:10px;border-radius:10px;margin-bottom:10px;">
-              <div style="font-size:0.76rem;font-weight:800;color:var(--brand-blue);margin-bottom:4px;">🤖 AI Generator Settings (Optional • 300,000 ms Timeout)</div>
-              <div style="display:grid;grid-template-columns:2fr 1fr;gap:8px;">
-                <input type="text" id="admAiTopic" class="input-field" placeholder="Subject/Topic (e.g. CG Panchayati Raj)" style="margin:0;" />
-                <input type="number" id="admAiCount" class="input-field" value="5" min="1" max="100" placeholder="Q Count" style="margin:0;" />
-              </div>
-              <textarea id="admAiPrompt" rows="2" class="textarea-field" placeholder="Custom prompt instructions for Bilingual CGPSC/CGSSB questions..." style="margin-top:6px;margin-bottom:0;"></textarea>
-            </div>
-
-            <div id="admAiProgressWrap" style="display:none;background:var(--bg-elevated);padding:12px;border-radius:10px;margin-bottom:10px;">
-              <div style="font-size:0.8rem;font-weight:800;color:var(--brand-blue);margin-bottom:6px;">
-                ⏳ Generating questions, please wait... (5-Min / 300,000 ms Timeout Active)
-              </div>
-              <div class="bar-track">
-                <div class="bar-fill" id="admAiProgressBar" style="width:15%;background:linear-gradient(90deg,#2563EB,#F59E0B);transition:width 0.3s ease;"></div>
-              </div>
-            </div>
-          </div>
-
-          <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button class="btn btn-outline btn-sm" id="admCreateEmptyManualTestBtn" style="flex:1;">✍️ Create Manual Draft &amp; Add Questions</button>
-            <button class="btn btn-gold btn-sm" id="admGenerateAiDraftBtn" style="flex:1;">🤖 Generate via AI into Draft Review</button>
-          </div>
-        </div>
-      </div>
-
-      <h3 style="font-size:1.08rem;font-weight:800;margin-bottom:12px;">🗂️ Draft &amp; Published Exam Folders (${state.folders.length})</h3>
-      ${foldersManageHtml || '<div class="folder-card">No folders created yet. Use the form above to create your first Exam Folder in Draft mode.</div>'}
-    `;
-  }
-
-  // Admin Stage 2: Question Review & Manual Question Editor Screen
-  function renderAdminTestQuestionEditorHTML() {
-    const { folderId, testId } = state.reviewingTestRef;
-    const folder = state.folders.find((f) => f.id === folderId);
-    const test = folder ? (folder.tests || []).find((t) => t.id === testId) : null;
-    if (!folder || !test) {
-      state.reviewingTestRef = null;
-      return renderAdminPanelHTML();
-    }
-
-    const qListHtml = (test.questions || []).map((q, idx) => `
-      <div class="folder-card" style="margin-bottom:12px;">
-        <div>
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-            <strong>Question #${idx + 1}</strong>
-            <button class="btn btn-danger btn-sm delete-single-q-btn" data-q-idx="${idx}">🗑️ Delete Question</button>
-          </div>
-          <label style="font-size:0.75rem;font-weight:700;">Question (Hindi)</label>
-          <textarea class="textarea-field edit-q-hi" data-q-idx="${idx}" rows="2">${escapeHtml(q.qHi)}</textarea>
-          <label style="font-size:0.75rem;font-weight:700;">Question (English)</label>
-          <textarea class="textarea-field edit-q-en" data-q-idx="${idx}" rows="2">${escapeHtml(q.qEn)}</textarea>
-
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-            ${[0, 1, 2, 3].map((optIdx) => `
-              <div>
-                <label style="font-size:0.72rem;font-weight:700;">Option ${String.fromCharCode(65 + optIdx)} (Hindi / English)</label>
-                <input type="text" class="input-field edit-opt-hi" data-q-idx="${idx}" data-opt-idx="${optIdx}" value="${escapeHtml((q.optionsHi || [])[optIdx] || '')}" placeholder="Hindi Option ${String.fromCharCode(65 + optIdx)}" style="margin-bottom:4px;" />
-                <input type="text" class="input-field edit-opt-en" data-q-idx="${idx}" data-opt-idx="${optIdx}" value="${escapeHtml((q.optionsEn || [])[optIdx] || '')}" placeholder="English Option ${String.fromCharCode(65 + optIdx)}" />
-              </div>
-            `).join('')}
-          </div>
-
-          <div style="display:grid;grid-template-columns:140px 1fr 1fr;gap:8px;">
-            <div>
-              <label style="font-size:0.74rem;font-weight:700;">Correct Option</label>
-              <select class="select-field edit-q-correct" data-q-idx="${idx}">
-                <option value="0" ${Number(q.correctIndex) === 0 ? 'selected' : ''}>Option A</option>
-                <option value="1" ${Number(q.correctIndex) === 1 ? 'selected' : ''}>Option B</option>
-                <option value="2" ${Number(q.correctIndex) === 2 ? 'selected' : ''}>Option C</option>
-                <option value="3" ${Number(q.correctIndex) === 3 ? 'selected' : ''}>Option D</option>
-              </select>
-            </div>
-            <div>
-              <label style="font-size:0.74rem;font-weight:700;">Solution (Hindi)</label>
-              <input type="text" class="input-field edit-q-exphi" data-q-idx="${idx}" value="${escapeHtml(q.expHi || '')}" />
-            </div>
-            <div>
-              <label style="font-size:0.74rem;font-weight:700;">Solution (English)</label>
-              <input type="text" class="input-field edit-q-expen" data-q-idx="${idx}" value="${escapeHtml(q.expEn || '')}" />
-            </div>
-          </div>
-        </div>
-      </div>
-    `).join('');
-
-    return `
-      <div>
-        <div class="cbt-top-bar">
-          <div>
-            <span class="badge ${test.status === 'published' ? 'badge-free' : 'badge-draft'}">
-              ${test.status === 'published' ? '🟢 LIVE PUBLISHED TEST' : '📝 STAGE 2: DRAFT REVIEW & QUESTION EDITOR'}
-            </span>
-            <h2 style="font-size:1.12rem;font-weight:800;margin-top:4px;">${escapeHtml(test.titleHi)}</h2>
-          </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button class="btn btn-outline btn-sm" id="backFromQEditorBtn" style="background:rgba(255,255,255,0.15);color:#FFF;border:none;">⬅ Back to Folders</button>
-            <button class="btn btn-primary btn-sm" id="saveAllEditedQuestionsBtn">💾 Save All Edits</button>
-            <button class="btn ${test.status === 'published' ? 'btn-gold' : 'btn-emerald'} btn-sm" id="publishReviewedTestBtn">
-              ${test.status === 'published' ? '↩ Move Back to Draft' : '🚀 Approve & Publish Test Live'}
-            </button>
-          </div>
-        </div>
-
-        <!-- Add New Question Box -->
-        <div class="folder-card" style="margin-bottom:18px;border:2px solid var(--brand-blue);">
-          <div>
-            <h4 style="font-size:1rem;font-weight:800;margin-bottom:8px;">➕ Add New Bilingual Question to This Test</h4>
-            <div class="two-col-grid">
-              <div>
-                <label style="font-size:0.75rem;font-weight:700;">Question Stem (Hindi)</label>
-                <textarea id="newQHi" rows="2" class="textarea-field" placeholder="प्रश्न यहाँ हिंदी में लिखें..."></textarea>
-              </div>
-              <div>
-                <label style="font-size:0.75rem;font-weight:700;">Question Stem (English)</label>
-                <textarea id="newQEn" rows="2" class="textarea-field" placeholder="Write question in English..."></textarea>
-              </div>
-            </div>
-            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
-              <div>
-                <input type="text" id="newOptAHi" class="input-field" placeholder="विकल्प A (Hindi)" style="margin-bottom:4px;" />
-                <input type="text" id="newOptAEn" class="input-field" placeholder="Option A (English)" />
-              </div>
-              <div>
-                <input type="text" id="newOptBHi" class="input-field" placeholder="विकल्प B (Hindi)" style="margin-bottom:4px;" />
-                <input type="text" id="newOptBEn" class="input-field" placeholder="Option B (English)" />
-              </div>
-              <div>
-                <input type="text" id="newOptCHi" class="input-field" placeholder="विकल्प C (Hindi)" style="margin-bottom:4px;" />
-                <input type="text" id="newOptCEn" class="input-field" placeholder="Option C (English)" />
-              </div>
-              <div>
-                <input type="text" id="newOptDHi" class="input-field" placeholder="विकल्प D (Hindi)" style="margin-bottom:4px;" />
-                <input type="text" id="newOptDEn" class="input-field" placeholder="Option D (English)" />
-              </div>
-            </div>
-            <div style="display:grid;grid-template-columns:140px 1fr 1fr;gap:8px;">
-              <div>
-                <label style="font-size:0.74rem;font-weight:700;">Correct Option</label>
-                <select id="newQCorrect" class="select-field">
-                  <option value="0">Option A</option>
-                  <option value="1">Option B</option>
-                  <option value="2">Option C</option>
-                  <option value="3">Option D</option>
-                </select>
-              </div>
-              <div>
-                <label style="font-size:0.74rem;font-weight:700;">Detailed Solution (Hindi)</label>
-                <input type="text" id="newQExpHi" class="input-field" placeholder="हिंदी व्याख्या..." />
-              </div>
-              <div>
-                <label style="font-size:0.74rem;font-weight:700;">Detailed Solution (English)</label>
-                <input type="text" id="newQExpEn" class="input-field" placeholder="English explanation..." />
-              </div>
-            </div>
-          </div>
-          <button class="btn btn-primary btn-sm" id="addSingleQuestionBtn">➕ Add Question to Test</button>
-        </div>
-
-        <h3 style="font-size:1.05rem;font-weight:800;margin-bottom:12px;">Questions in "${escapeHtml(test.titleHi)}" (${(test.questions || []).length})</h3>
-        ${qListHtml || '<div class="folder-card">No questions added yet. Use the form above to add questions.</div>'}
-      </div>
-    `;
-  }
-
-  // Admin Sub-Tab 2: UPI QR Upload (Gallery + URL) & Strict Activation-Based Validity
-  function renderAdminPaymentsSubTab() {
-    const paidFolders = state.folders.filter((f) => f.isPaid);
-    const folderOpts = (paidFolders.length ? paidFolders : state.folders).map((f) =>
-      `<option value="${f.id}" data-days="${f.validityDays}">${escapeHtml(f.titleHi)} (₹${f.priceINR} • ${f.validityDays} Days)</option>`
-    ).join('');
-
-    const actRecords = Object.values(state.studentActivations || {}).map((rec) => {
-      const nowMs = Date.now();
-      const isExp = nowMs > rec.expiresAt;
-      const daysLeft = Math.max(0, Math.ceil((rec.expiresAt - nowMs) / 86400000));
-      return `
-        <div style="background:var(--bg-elevated);padding:10px 12px;border-radius:10px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;font-size:0.8rem;">
-          <div>
-            <strong>👤 ${escapeHtml(rec.userKey)}</strong> → Folder: <code>${escapeHtml(rec.folderTitle || rec.folderId)}</code>
-            <div style="color:var(--text-secondary);font-size:0.75rem;">
-              Activated: ${new Date(rec.activatedAt).toLocaleString()} • Expires: ${new Date(rec.expiresAt).toLocaleString()}
-            </div>
-          </div>
-          <div style="display:flex;align-items:center;gap:8px;">
-            <span class="badge ${isExp ? 'badge-live' : 'badge-free'}">${isExp ? 'Expired (Auto-Revoked)' : `Active (${daysLeft}d left)`}</span>
-            <button class="btn btn-danger btn-sm revoke-student-btn" data-act-key="${escapeHtml(rec.folderId + '__' + rec.userKey)}">Revoke</button>
-          </div>
-        </div>
-      `;
-    }).join('');
-
-    return `
-      <div class="two-col-grid">
-        <!-- Admin UPI QR Upload (Gallery File Picker + Image URL) -->
-        <div class="folder-card">
-          <div>
-            <span class="badge badge-paid" style="margin-bottom:6px;">UPI QR UPLOAD (GALLERY + URL)</span>
-            <h3 style="font-size:1.05rem;font-weight:800;margin-bottom:8px;">💳 Configure UPI QR &amp; WhatsApp Payment</h3>
-            <div class="qr-preview-box">
-              <img src="${state.config.upiQrDataUrl || DEFAULT_QR_SVG}" alt="Admin UPI QR" />
-            </div>
-            <label style="font-size:0.78rem;font-weight:700;">1. Upload QR Image from Gallery / Device (Permanent Storage)</label>
-            <input type="file" id="admQrGalleryFileInput" accept="image/*" class="input-field" />
-            <label style="font-size:0.78rem;font-weight:700;">2. Or Enter QR Image URL</label>
-            <input type="url" id="admQrUrlInput" class="input-field" placeholder="https://example.com/my-upi-qr.png" />
-            <label style="font-size:0.78rem;font-weight:700;">Official UPI ID</label>
-            <input type="text" id="admUpiIdInput" class="input-field" value="${escapeHtml(state.config.upiId)}" />
-            <label style="font-size:0.78rem;font-weight:700;">WhatsApp Payment Support Number (Default: 9238810070)</label>
-            <input type="text" id="admWhatsappInput" class="input-field" value="${escapeHtml(state.config.whatsappNumber)}" />
-          </div>
-          <button class="btn btn-primary" id="admSavePaymentSettingsBtn">💾 Save UPI QR &amp; Payment Config</button>
-        </div>
-
-        <!-- Strict Activation-Based Student Validity Unlock -->
-        <div class="folder-card">
-          <div>
-            <span class="badge badge-free" style="margin-bottom:6px;">STRICT ACTIVATION-BASED VALIDITY</span>
-            <h3 style="font-size:1.05rem;font-weight:800;margin-bottom:8px;">🔓 Unlock Paid Folder for Student</h3>
-            <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:10px;">
-              छात्र की वैधता का काउंटडाउन (जैसे 30/90/180/365 दिन) आपके द्वारा यहाँ <strong>Activate Access</strong> पर क्लिक करने के सटीक समय से शुरू होगा।
-            </p>
-            <label style="font-size:0.78rem;font-weight:700;">Select Paid Folder</label>
-            <select id="admGrantFolderSelect" class="select-field">
-              ${folderOpts || '<option value="">-- Create a Folder First --</option>'}
-            </select>
-            <label style="font-size:0.78rem;font-weight:700;">Student Email ID or User ID</label>
-            <input type="text" id="admGrantUserKeyInput" class="input-field" value="${escapeHtml(state.currentUser.id)}" placeholder="Enter Student Email or User ID" />
-            <label style="font-size:0.78rem;font-weight:700;">Validity Duration (Days from Activation Moment)</label>
-            <select id="admGrantValidityDaysSelect" class="select-field">
-              <option value="30">30 Days</option>
-              <option value="90">90 Days</option>
-              <option value="180" selected>180 Days (6 Months)</option>
-              <option value="365">365 Days (1 Year)</option>
-            </select>
-            <button class="btn btn-emerald" id="admActivateStudentBtn" style="width:100%;margin-bottom:14px;">✅ Activate Student Access Starting Now</button>
-
-            <h4 style="font-size:0.88rem;font-weight:800;margin-bottom:8px;">Active &amp; Expired Student Subscriptions:</h4>
-            ${actRecords || '<div style="font-size:0.8rem;color:var(--text-muted);">No student activations recorded yet.</div>'}
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  // Admin Sub-Tab 3: Branding, Dynamic Screenshot Protection Switch, Gemini API Key & Policy
-  function renderAdminBrandingSubTab() {
-    return `
-      <div class="two-col-grid">
-        <div class="folder-card">
-          <div>
-            <span class="badge badge-paid" style="margin-bottom:6px;">APP BRANDING &amp; SECURITY SWITCHES</span>
-            <h3 style="font-size:1.05rem;font-weight:800;margin-bottom:8px;">🎨 Branding, Logo &amp; Screenshot Lock</h3>
-            <label style="font-size:0.78rem;font-weight:700;">App Title</label>
-            <input type="text" id="admBrandTitle" class="input-field" value="${escapeHtml(state.config.appTitle)}" />
-            <label style="font-size:0.78rem;font-weight:700;">App Subtitle</label>
-            <input type="text" id="admBrandSubtitle" class="input-field" value="${escapeHtml(state.config.appSubtitle)}" />
-            <label style="font-size:0.78rem;font-weight:700;">Upload App Logo from Gallery</label>
-            <input type="file" id="admBrandLogoFile" accept="image/*" class="input-field" />
-            <label style="font-size:0.78rem;font-weight:700;">Or App Logo URL</label>
-            <input type="url" id="admBrandLogoUrl" class="input-field" value="${escapeHtml(state.config.logoDataUrl.startsWith('http') ? state.config.logoDataUrl : '')}" placeholder="https://..." />
-
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px;">
-              <div style="background:var(--bg-elevated);padding:10px;border-radius:10px;">
-                <label style="font-size:0.76rem;font-weight:800;display:block;margin-bottom:4px;">🛡️ Screenshot &amp; Recording Lock</label>
-                <select id="admScreenshotToggle" class="select-field" style="margin:0;">
-                  <option value="true" ${state.config.screenshotProtection ? 'selected' : ''}>ON (Restricted)</option>
-                  <option value="false" ${!state.config.screenshotProtection ? 'selected' : ''}>OFF (Normal Usage)</option>
-                </select>
-              </div>
-              <div style="background:var(--bg-elevated);padding:10px;border-radius:10px;">
-                <label style="font-size:0.76rem;font-weight:800;display:block;margin-bottom:4px;">🎵 Anthem Audio Player</label>
-                <select id="admAnthemToggle" class="select-field" style="margin:0;">
-                  <option value="true" ${state.config.anthemEnabled ? 'selected' : ''}>ON (Visible)</option>
-                  <option value="false" ${!state.config.anthemEnabled ? 'selected' : ''}>OFF (Hidden)</option>
-                </select>
-              </div>
-            </div>
-          </div>
-          <button class="btn btn-primary" id="admSaveBrandingBtn">💾 Save Branding &amp; Security Settings</button>
-        </div>
-
-        <div class="folder-card">
-          <div>
-            <span class="badge badge-free" style="margin-bottom:6px;">GEMINI API KEY &amp; LIVE POLICY</span>
-            <h3 style="font-size:1.05rem;font-weight:800;margin-bottom:8px;">🔑 API Quota Manager &amp; Support Policy</h3>
-            <div style="display:grid;grid-template-columns:2fr 1fr;gap:8px;">
-              <div>
-                <label style="font-size:0.76rem;font-weight:700;">Gemini API Key (Fixes Quota Anytime)</label>
-                <input type="password" id="admGeminiKeyInput" class="input-field" value="${escapeHtml(state.config.geminiApiKey)}" placeholder="AIzaSy..." />
-              </div>
-              <div>
-                <label style="font-size:0.76rem;font-weight:700;">AI Features</label>
-                <select id="admAiToggleSelect" class="select-field">
-                  <option value="true" ${state.config.aiEnabled ? 'selected' : ''}>ON</option>
-                  <option value="false" ${!state.config.aiEnabled ? 'selected' : ''}>OFF</option>
-                </select>
-              </div>
-            </div>
-
-            <label style="font-size:0.78rem;font-weight:700;">Help &amp; Privacy Policy (Hindi)</label>
-            <textarea id="admPolicyHi" rows="3" class="textarea-field">${escapeHtml(state.config.policyBodyHi)}</textarea>
-            <label style="font-size:0.78rem;font-weight:700;">Help &amp; Privacy Policy (English)</label>
-            <textarea id="admPolicyEn" rows="3" class="textarea-field">${escapeHtml(state.config.policyBodyEn)}</textarea>
-          </div>
-          <button class="btn btn-emerald" id="admSaveApiAndPolicyBtn">💾 Save API Key &amp; Publish Live Policy</button>
-        </div>
-      </div>
-    `;
-  }
-
-  // Admin Sub-Tab 4: Current Affairs Story Creator (With Gallery Upload, Edit/Delete & 24h Expiry)
-  function renderAdminStoriesSubTab() {
-    const storiesList = (state.stories || []).map((st) => `
-      <div style="background:var(--bg-elevated);padding:12px;border-radius:10px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-        <div>
-          <strong>${escapeHtml(st.titleHi)}</strong>
-          <div style="font-size:0.75rem;color:var(--text-secondary);">${escapeHtml(st.category)} • ${formatStoryTimeRemaining(st.postedAt)}</div>
-        </div>
-        <button class="btn btn-danger btn-sm delete-story-btn" data-story-id="${st.id}">🗑️ Delete</button>
-      </div>
-    `).join('');
-
-    return `
-      <div class="two-col-grid">
-        <div class="folder-card">
-          <div>
-            <span class="badge badge-paid" style="margin-bottom:6px;">24-HOUR STORY CREATOR (GALLERY UPLOAD)</span>
-            <h3 style="font-size:1.05rem;font-weight:800;margin-bottom:8px;">⚡ Post Bilingual Current Affairs Story</h3>
-            <label style="font-size:0.78rem;font-weight:700;">Category Tag</label>
-            <input type="text" id="admStoryCat" class="input-field" value="CG Current Affairs" />
-            <label style="font-size:0.78rem;font-weight:700;">Story Title (Hindi)</label>
-            <input type="text" id="admStoryTitleHi" class="input-field" placeholder="हिंदी शीर्षक..." />
-            <label style="font-size:0.78rem;font-weight:700;">Story Title (English)</label>
-            <input type="text" id="admStoryTitleEn" class="input-field" placeholder="English Headline..." />
-            <label style="font-size:0.78rem;font-weight:700;">Details (Hindi)</label>
-            <textarea id="admStoryBodyHi" rows="2" class="textarea-field" placeholder="विस्तृत करेंट अफेयर्स बिंदु..."></textarea>
-            <label style="font-size:0.78rem;font-weight:700;">Details (English)</label>
-            <textarea id="admStoryBodyEn" rows="2" class="textarea-field" placeholder="Detailed current affairs points in English..."></textarea>
-            <label style="font-size:0.78rem;font-weight:700;">Upload Story Image from Gallery (<input type="file" id="admStoryImgFile" accept="image/*" />)</label>
-          </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
-            <button class="btn btn-primary" id="admPublishStoryBtn" style="flex:1;">🚀 Publish 24h Story</button>
-            <button class="btn btn-gold btn-sm" id="admSyncStoriesNowBtn">🔄 Auto-Sync Now</button>
-          </div>
-        </div>
-
-        <div class="folder-card">
-          <div>
-            <h3 style="font-size:1.05rem;font-weight:800;margin-bottom:8px;">Active Stories (${state.stories.length})</h3>
-            ${storiesList || '<div style="font-size:0.82rem;color:var(--text-muted);">No stories posted yet.</div>'}
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  // Admin Sub-Tab 5: Broadcast Notifications (Gallery Upload + Pin), Upcoming Tests & Private Queries Inbox
-  function renderAdminBroadcastSubTab() {
-    const queriesInboxHtml = (state.queries || []).map((q) => `
-      <div style="background:var(--bg-elevated);padding:12px;border-radius:10px;margin-bottom:10px;">
-        <div style="font-size:0.75rem;font-weight:800;color:var(--brand-blue);">
-          🔒 Student: ${escapeHtml(q.studentId)} (${escapeHtml(q.studentEmail)}) • ${escapeHtml(q.subject)}
-        </div>
-        <div style="font-weight:700;margin:4px 0 8px;">${escapeHtml(q.message)}</div>
-        ${q.screenshotDataUrl ? `
-          <div style="max-width:200px;border-radius:8px;overflow:hidden;margin-bottom:8px;">
-            <img src="${q.screenshotDataUrl}" alt="Student Screenshot" style="width:100%;display:block;" />
-          </div>
-        ` : ''}
-        <div style="display:flex;gap:8px;">
-          <input type="text" class="input-field adm-query-reply-input" data-qid="${q.id}" value="${escapeHtml(q.adminReply || '')}" placeholder="Write private reply..." style="margin:0;" />
-          <button class="btn btn-emerald btn-sm adm-send-query-reply-btn" data-qid="${q.id}">Reply</button>
-        </div>
-      </div>
-    `).join('');
-
-    return `
-      <div class="two-col-grid" style="margin-bottom:18px;">
-        <!-- Rich Broadcast Notification Sender -->
-        <div class="folder-card">
-          <div>
-            <span class="badge badge-live" style="margin-bottom:6px;">GALLERY UPLOAD + PIN TO TOP</span>
-            <h3 style="font-size:1.05rem;font-weight:800;margin-bottom:8px;">📢 Send Rich Broadcast Notification</h3>
-            <label style="font-size:0.78rem;font-weight:700;">Notification Title</label>
-            <input type="text" id="admNotifTitle" class="input-field" placeholder="e.g. CGPSC Pre 2026 Test 01 Live Now" />
-            <label style="font-size:0.78rem;font-weight:700;">Message Text</label>
-            <textarea id="admNotifMessage" rows="2" class="textarea-field" placeholder="Write announcement details..."></textarea>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-              <div>
-                <label style="font-size:0.75rem;font-weight:700;">Attachment Type</label>
-                <select id="admNotifMediaType" class="select-field">
-                  <option value="none">None (Text Only)</option>
-                  <option value="image">Image (Gallery Upload)</option>
-                  <option value="pdf">PDF / File</option>
-                  <option value="audio">Audio</option>
-                  <option value="video">Video</option>
-                </select>
-              </div>
-              <div>
-                <label style="font-size:0.75rem;font-weight:700;">Pin at Top?</label>
-                <select id="admNotifPin" class="select-field">
-                  <option value="true">📌 Yes, Pin to Top</option>
-                  <option value="false">Normal</option>
-                </select>
-              </div>
-            </div>
-            <label style="font-size:0.76rem;font-weight:700;">Upload Attachment from Gallery / Device</label>
-            <input type="file" id="admNotifFileInput" class="input-field" />
-          </div>
-          <button class="btn btn-primary" id="admPostBroadcastBtn">🚀 Publish Broadcast</button>
-        </div>
-
-        <!-- Upcoming Test Series Creator -->
-        <div class="folder-card">
-          <div>
-            <span class="badge badge-paid" style="margin-bottom:6px;">UPCOMING SCHEDULE &amp; BANNER</span>
-            <h3 style="font-size:1.05rem;font-weight:800;margin-bottom:8px;">🚀 Post Upcoming Test Series</h3>
-            <label style="font-size:0.78rem;font-weight:700;">Test Series Title</label>
-            <input type="text" id="admUpTitle" class="input-field" placeholder="e.g. CGPSC Prelims 2026 Mega Series" />
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-              <div>
-                <label style="font-size:0.75rem;font-weight:700;">Start Date</label>
-                <input type="text" id="admUpDate" class="input-field" placeholder="e.g. 14 June 2026" />
-              </div>
-              <div>
-                <label style="font-size:0.75rem;font-weight:700;">Price / Tag</label>
-                <input type="text" id="admUpPrice" class="input-field" placeholder="e.g. ₹99" />
-              </div>
-            </div>
-            <label style="font-size:0.78rem;font-weight:700;">Schedule &amp; Syllabus Details</label>
-            <textarea id="admUpDetails" rows="2" class="textarea-field" placeholder="31 Bilingual Tests schedule..."></textarea>
-            <label style="font-size:0.76rem;font-weight:700;">Upload Banner Image from Gallery</label>
-            <input type="file" id="admUpBannerFile" accept="image/*" class="input-field" />
-          </div>
-          <button class="btn btn-gold" id="admPostUpcomingBtn">📅 Post Upcoming Test Series</button>
-        </div>
-      </div>
-
-      <div class="folder-card">
-        <h3 style="font-size:1.05rem;font-weight:800;margin-bottom:8px;">💬 Private Student Queries Inbox (${(state.queries || []).length})</h3>
-        ${queriesInboxHtml || '<div style="font-size:0.84rem;color:var(--text-muted);">No student queries received yet.</div>'}
-      </div>
-    `;
-  }
-
-  // Admin Sub-Tab 6: Visual Analytics Charts
-  function renderAdminAnalyticsSubTab() {
-    const records = Object.values(state.studentActivations || {});
-    const nowMs = Date.now();
-    const activeSubs = records.filter((r) => nowMs <= r.expiresAt).length;
-    const expiredSubs = records.filter((r) => nowMs > r.expiresAt).length;
-    const paidUsers = records.length;
-    const freeUsers = Math.max(1, Number(state.analyticsBase.registeredFreeUsers || 0) + 1);
-    const totalUsers = paidUsers + freeUsers;
-    const paidPct = Math.round((paidUsers / Math.max(1, totalUsers)) * 100);
-    const activePct = paidUsers > 0 ? Math.round((activeSubs / paidUsers) * 100) : 0;
-
-    return `
-      <div class="admin-stats-grid">
-        <div class="stat-card">
-          <div style="font-size:0.78rem;color:var(--text-secondary);font-weight:700;">Total Users</div>
-          <div class="stat-value">${totalUsers}</div>
-        </div>
-        <div class="stat-card">
-          <div style="font-size:0.78rem;color:var(--text-secondary);font-weight:700;">Paid Users vs Free</div>
-          <div class="stat-value" style="color:#D97706;">${paidUsers} / ${freeUsers}</div>
-        </div>
-        <div class="stat-card">
-          <div style="font-size:0.78rem;color:var(--text-secondary);font-weight:700;">Active Subscriptions</div>
-          <div class="stat-value" style="color:#059669;">${activeSubs}</div>
-        </div>
-        <div class="stat-card">
-          <div style="font-size:0.78rem;color:var(--text-secondary);font-weight:700;">Expired Accounts</div>
-          <div class="stat-value" style="color:#DC2626;">${expiredSubs}</div>
-        </div>
-      </div>
-
-      <div class="folder-card">
-        <h3 style="font-size:1.05rem;font-weight:800;margin-bottom:10px;">📊 Visual Analytics Breakdown</h3>
-        <div class="bar-chart-row">
-          <div style="display:flex;justify-content:space-between;font-size:0.82rem;font-weight:700;">
-            <span>Paid Users (${paidUsers}) vs Free Users (${freeUsers})</span>
-            <span>${paidPct}% Paid</span>
-          </div>
-          <div class="bar-track">
-            <div class="bar-fill" style="width:${paidPct}%;background:linear-gradient(90deg,#F59E0B,#D97706);"></div>
-          </div>
-        </div>
-        <div class="bar-chart-row">
-          <div style="display:flex;justify-content:space-between;font-size:0.82rem;font-weight:700;">
-            <span>Active Subscriptions (${activeSubs}) vs Expired Accounts (${expiredSubs})</span>
-            <span>${activePct}% Active</span>
-          </div>
-          <div class="bar-track">
-            <div class="bar-fill" style="width:${activePct}%;background:linear-gradient(90deg,#059669,#10B981);"></div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  // Student Profile / Account Modal
-  function openStudentProfileModal() {
-    const modal = document.getElementById('genericModalContainer');
-    modal.innerHTML = `
-      <div class="modal-overlay">
-        <div class="modal-card" style="max-width:460px;">
-          <h3 style="font-size:1.12rem;font-weight:800;margin-bottom:8px;">👤 Student Profile &amp; Account ID</h3>
-          <p style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:12px;">
-            अपना नाम, Email ID और User ID यहाँ दर्ज करें। पेड टेस्ट सीरीज एक्टिवेशन और प्राइवेट क्वेरी इसी ID से जुड़ती हैं।
-          </p>
-          <label style="font-size:0.78rem;font-weight:700;">Full Name</label>
-          <input type="text" id="profNameInput" class="input-field" value="${escapeHtml(state.currentUser.name)}" />
-          <label style="font-size:0.78rem;font-weight:700;">Registered Email ID</label>
-          <input type="email" id="profEmailInput" class="input-field" value="${escapeHtml(state.currentUser.email)}" />
-          <label style="font-size:0.78rem;font-weight:700;">User ID</label>
-          <input type="text" id="profIdInput" class="input-field" value="${escapeHtml(state.currentUser.id)}" />
-          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;">
-            <button class="btn btn-outline btn-sm" id="closeProfModalBtn">Cancel</button>
-            <button class="btn btn-primary btn-sm" id="saveProfModalBtn">Save Profile</button>
-          </div>
-        </div>
-      </div>
-    `;
-    document.getElementById('closeProfModalBtn').onclick = () => { modal.innerHTML = ''; };
-    document.getElementById('saveProfModalBtn').onclick = () => {
-      const name = document.getElementById('profNameInput').value.trim() || 'Student';
-      const email = document.getElementById('profEmailInput').value.trim() || 'student@cgpedia.in';
-      const id = document.getElementById('profIdInput').value.trim() || 'STU-1001';
-      state.currentUser = {
-        id,
-        name,
-        email,
-        isAdmin: email.toLowerCase() === ADMIN_EMAIL
-      };
-      saveState();
-      modal.innerHTML = '';
-      renderApp();
-      showToast(`✅ Profile Updated: ${name} (${id})`);
-    };
-  }
-
-  // Apply Dynamic Branding & Dynamic Screenshot Restriction Toggle
-  function applyDynamicConfigToDOM() {
+  function applyBrandingAndSecurity() {
     document.documentElement.setAttribute('data-theme', state.theme || 'light');
-
-    // Screenshot Restriction Master Switch
-    if (state.config.screenshotProtection) {
-      document.body.classList.add('screenshot-restricted');
-    } else {
-      document.body.classList.remove('screenshot-restricted');
-      document.body.classList.remove('window-blurred');
-    }
-
-    // Dynamic Branding
     const titleEl = document.getElementById('headerBrandTitle');
     const subEl = document.getElementById('headerBrandSubtitle');
-    const logoBox = document.getElementById('headerBrandLogo');
-    const anthemBtn = document.getElementById('anthemToggleBtn');
-
     if (titleEl) titleEl.textContent = state.config.appTitle || 'CGpedia';
-    if (subEl) subEl.textContent = state.config.appSubtitle || 'CGPSC & CGSSB';
-    if (logoBox) {
-      if (state.config.logoDataUrl) {
-        logoBox.innerHTML = `<img src="${state.config.logoDataUrl}" alt="Logo" />`;
-      } else {
-        logoBox.textContent = (state.config.appTitle || 'CG').slice(0, 2).toUpperCase();
-      }
-    }
-    if (anthemBtn) {
-      anthemBtn.style.display = state.config.anthemEnabled ? 'inline-flex' : 'none';
-    }
+    if (subEl) subEl.textContent = state.config.appSubtitle || 'Competitive Exam & CBT Test Portal';
 
     const userLabel = document.getElementById('activeUserLabel');
     if (userLabel) {
-      userLabel.textContent = `${state.currentUser.name} (${state.currentUser.id})`;
+      userLabel.textContent = state.student.email
+        ? `${state.student.name} ${isCurrentUserAdmin() ? '🛡️' : ''}`
+        : 'Sign In / Profile';
+    }
+
+    const examHeaderLabel = document.getElementById('activeExamHeaderLabel');
+    if (examHeaderLabel) {
+      examHeaderLabel.textContent = state.selectedExamFilter === 'ALL' ? 'All Exams' : state.selectedExamFilter;
+    }
+
+    const adminTabBtn = document.getElementById('adminNavTabBtn');
+    if (adminTabBtn) {
+      adminTabBtn.style.display = isCurrentUserAdmin() ? 'inline-flex' : 'none';
+    }
+
+    const anthemBtn = document.getElementById('anthemToggleBtn');
+    if (anthemBtn) {
+      anthemBtn.style.display = state.config.anthemEnabled ? 'inline-flex' : 'none';
     }
 
     const notifBadge = document.getElementById('notifBadgeCount');
     if (notifBadge) {
       const count = (state.notifications || []).length;
-      notifBadge.style.display = count > 0 ? 'inline-flex' : 'none';
       notifBadge.textContent = String(count);
+      notifBadge.style.display = count > 0 ? 'inline-block' : 'none';
     }
 
-    document.querySelectorAll('.nav-tab').forEach((btn) => {
-      btn.classList.toggle('active', btn.dataset.tab === state.activeTab && !activeExamSession);
+    if (state.config.screenshotRestriction) {
+      document.body.classList.add('screenshot-restricted');
+    } else {
+      document.body.classList.remove('screenshot-restricted');
+    }
+
+    try {
+      if (window.AndroidBridge && typeof window.AndroidBridge.setSecureScreen === 'function') {
+        window.AndroidBridge.setSecureScreen(Boolean(state.config.screenshotRestriction));
+      }
+    } catch (_) {}
+  }
+
+  function syncNavHighlight() {
+    document.querySelectorAll('#mainNavTabs .nav-tab').forEach((btn) => {
+      btn.classList.toggle('active', btn.getAttribute('data-tab') === state.activeTab);
+    });
+    document.querySelectorAll('#mobileBottomNav .bottom-nav-item').forEach((btn) => {
+      btn.classList.toggle('active', btn.getAttribute('data-tab') === state.activeTab);
     });
   }
 
-  // Master Render
+  // =========================================================================
+  // Main View Router
+  // =========================================================================
   function renderApp() {
-    applyDynamicConfigToDOM();
+    applyBrandingAndSecurity();
+    syncNavHighlight();
+
     const root = document.getElementById('appRoot');
     if (!root) return;
 
-    if (activeExamSession) {
-      root.innerHTML = renderExamSessionHTML();
-      bindExamSessionEvents();
-      return;
-    }
+    // Check if there is an unsubmitted CBT session to resume
+    const savedSession = window.CGpediaCBT && window.CGpediaCBT.getSavedActiveSession();
 
     if (state.activeTab === 'dashboard') {
-      root.innerHTML = renderStudentDashboardHTML();
+      renderHomeDashboard(root, savedSession);
+    } else if (state.activeTab === 'test-series') {
+      renderTestSeriesCatalog(root);
+    } else if (state.activeTab === 'practice') {
+      renderPracticeAndMistakes(root);
+    } else if (state.activeTab === 'analytics') {
+      renderResultsAndAnalytics(root);
+    } else if (state.activeTab === 'leaderboard') {
+      renderLeaderboardView(root);
     } else if (state.activeTab === 'current-affairs') {
-      root.innerHTML = renderCurrentAffairsTabHTML();
+      renderCurrentAffairsView(root);
     } else if (state.activeTab === 'notifications') {
-      root.innerHTML = renderNotificationsTabHTML();
-    } else if (state.activeTab === 'support') {
-      root.innerHTML = renderSupportTabHTML();
+      renderNotificationsAndSupport(root);
+    } else if (state.activeTab === 'profile') {
+      renderProfileAndSettings(root);
     } else if (state.activeTab === 'admin') {
-      root.innerHTML = renderAdminPanelHTML();
+      if (!isCurrentUserAdmin()) {
+        renderAdminGatePrompt(root);
+      } else {
+        window.CGpediaAdmin.renderAdminConsole(root, state, publicApi);
+      }
     }
-
-    bindMainViewEvents();
   }
 
-  function bindExamSessionEvents() {
-    const exitBtn = document.getElementById('exitExamRoomBtn');
-    if (exitBtn) {
-      exitBtn.onclick = () => {
-        if (activeExamSession && activeExamSession.timerId) {
-          clearInterval(activeExamSession.timerId);
-        }
-        activeExamSession = null;
-        renderApp();
-      };
-    }
+  // =========================================================================
+  // 1. Student Home Dashboard
+  // =========================================================================
+  function renderHomeDashboard(root, savedCbtSession) {
+    const exams = window.CGpediaCloud ? window.CGpediaCloud.EXAM_CATEGORIES : [];
+    const liveTests = (state.tests || []).filter((t) => t.status === 'published' && (state.selectedExamFilter === 'ALL' || t.examCode === state.selectedExamFilter));
+    const activeStories = (state.stories || []).filter((s) => !s.expiresAtMs || s.expiresAtMs > Date.now());
+    const pinnedNotifs = (state.notifications || []).filter((n) => n.isPinned);
 
-    if (!activeExamSession || activeExamSession.submitted) return;
+    root.innerHTML = `
+      <!-- Hero Welcome & Search Banner -->
+      <div class="hero-banner">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+          <div style="display:flex;align-items:center;gap:14px;">
+            <img src="assets/cgpedia-logo-clean.png" alt="CGpedia Official Logo" style="width:66px;height:66px;border-radius:50%;object-fit:cover;border:2.5px solid #93C5FD;background:#F4EFEA;flex-shrink:0;" />
+            <div>
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                <span class="badge" style="background:rgba(255,255,255,0.18);color:#fff;">नमस्ते, ${esc(state.student.name)} 👋</span>
+                ${isCurrentUserAdmin() ? `<span class="badge" style="background:#EA580C;color:#fff;">🛡️ Owner Admin Verified</span>` : ''}
+              </div>
+              <h1 style="font-size:1.35rem;font-weight:800;margin-top:4px;">CGpedia Competitive Exam Preparation</h1>
+              <p style="font-size:0.84rem;color:#DBEAFE;">UPSC • CGPSC &amp; State PSC • SSC • Banking • Railway • CTET • UGC NET • Police &amp; Defence</p>
+            </div>
+          </div>
 
-    const submitTopRight = document.getElementById('topRightFinalSubmitBtn');
-    if (submitTopRight) submitTopRight.onclick = openFinalSubmitConfirmPopup;
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            ${isCurrentUserAdmin() ? `
+              <button class="btn" style="background:#EA580C;color:#fff;" id="homeGoAdminBtn">🛡️ Open Admin Panel</button>
+            ` : ''}
+            <button class="btn" style="background:rgba(255,255,255,0.16);color:#fff;border:1px solid rgba(255,255,255,0.3);" id="homeEditOnboardingBtn">🎯 My Target Exams</button>
+          </div>
+        </div>
 
-    document.querySelectorAll('.option-item').forEach((btn) => {
-      btn.onclick = () => {
-        activeExamSession.answers[activeExamSession.currentIndex] = Number(btn.dataset.optIdx);
-        renderApp();
-      };
-    });
+        <div style="margin-top:14px;display:flex;gap:8px;">
+          <input class="form-input" id="globalHomeSearchInput" value="${esc(state.searchQuery)}" placeholder="🔍 Search exams, mock tests, subjects, or PYQ papers..." style="background:rgba(255,255,255,0.95);color:#0F172A;border:none;" />
+          <button class="btn btn-warning" id="globalHomeSearchBtn">Search</button>
+        </div>
+      </div>
 
-    const prevBtn = document.getElementById('cbtPrevBtn');
-    if (prevBtn) {
-      prevBtn.onclick = () => {
-        if (activeExamSession.currentIndex > 0) {
-          activeExamSession.currentIndex -= 1;
-          activeExamSession.visited[activeExamSession.currentIndex] = true;
-          renderApp();
-        }
-      };
-    }
+      <!-- Resume Interrupted CBT Banner (If Any) -->
+      ${savedCbtSession ? `
+        <div class="card" style="border-left:5px solid #EA580C;background:var(--warning-soft);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+          <div>
+            <span class="badge badge-paid">⏸️ IN-PROGRESS EXAM DETECTED</span>
+            <div style="font-weight:800;font-size:0.98rem;margin-top:3px;">${esc(savedCbtSession.testTitleHi)}</div>
+            <div style="font-size:0.8rem;color:var(--text-secondary);">Auto-saved with ${Math.floor(savedCbtSession.remainingSeconds / 60)}m remaining. Resume from where you left off.</div>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-outline btn-sm" id="discardSavedSessionBtn">Discard</button>
+            <button class="btn btn-primary btn-sm" id="resumeSavedSessionBtn">▶️ Resume Exam</button>
+          </div>
+        </div>
+      ` : ''}
 
-    const nextBtn = document.getElementById('cbtNextBtn');
-    if (nextBtn) {
-      nextBtn.onclick = () => {
-        if (activeExamSession.currentIndex < activeExamSession.test.questions.length - 1) {
-          activeExamSession.currentIndex += 1;
-          activeExamSession.visited[activeExamSession.currentIndex] = true;
-          renderApp();
-        }
-      };
-    }
+      <!-- Pinned Official Announcements -->
+      ${pinnedNotifs.length > 0 ? `
+        <div class="card" style="border-left:4px solid var(--secondary);padding:12px 16px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+            <div>
+              <span class="badge badge-exam">📌 PINNED ANNOUNCEMENT</span>
+              <strong style="margin-left:6px;font-size:0.9rem;">${esc(pinnedNotifs[0].titleHi)}</strong>
+              <span style="font-size:0.82rem;color:var(--text-secondary);margin-left:6px;">— ${esc(pinnedNotifs[0].messageHi)}</span>
+            </div>
+            <button class="btn btn-outline btn-sm" data-goto-tab="notifications">View All</button>
+          </div>
+        </div>
+      ` : ''}
 
-    const clearBtn = document.getElementById('cbtClearBtn');
-    if (clearBtn) {
-      clearBtn.onclick = () => {
-        delete activeExamSession.answers[activeExamSession.currentIndex];
-        renderApp();
-      };
-    }
+      <!-- 24-Hour Current Affairs Stories & Instant Quiz Strip -->
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px;">
+          <h2 style="font-size:0.98rem;font-weight:800;">⚡ 24-Hour Current Affairs Stories &amp; Daily Free Quiz</h2>
+          <button class="btn btn-primary btn-sm" id="homeLaunchDailyCaQuizBtn">🎯 Attempt Daily Free Quiz</button>
+        </div>
+        ${activeStories.length === 0 ? `
+          <div style="font-size:0.83rem;color:var(--text-muted);padding:6px 0;">
+            आज का करंट अफेयर्स डाइजेस्ट एवं डेली क्विज़ तैयार है — ऊपर <strong>Attempt Daily Free Quiz</strong> पर क्लिक करें।
+          </div>
+        ` : `
+          <div class="stories-strip">
+            ${activeStories.map((st, idx) => `
+              <div class="story-item" data-open-story="${idx}">
+                <div class="story-ring">
+                  <div class="story-ring-inner">${st.category === 'chhattisgarh' ? '🌾' : st.category === 'national' ? '🇮🇳' : '🌍'}</div>
+                </div>
+                <span class="story-caption">${esc(st.headlineHi)}</span>
+              </div>
+            `).join('')}
+          </div>
+        `}
+      </div>
 
-    const revBtn = document.getElementById('cbtReviewBtn');
-    if (revBtn) {
-      revBtn.onclick = () => {
-        const idx = activeExamSession.currentIndex;
-        activeExamSession.review[idx] = !activeExamSession.review[idx];
-        renderApp();
-      };
-    }
+      <!-- Multi-Exam Category Selector Chips -->
+      <div style="margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;">
+        <h2 style="font-size:1.02rem;font-weight:800;">🏛️ Competitive Exam Categories / परीक्षा श्रेणियां</h2>
+        <span style="font-size:0.76rem;color:var(--text-muted);">Select category to filter series</span>
+      </div>
+      <div class="chip-row">
+        <button class="filter-chip ${state.selectedExamFilter === 'ALL' ? 'active' : ''}" data-exam-chip="ALL">🌟 All Exams</button>
+        ${exams.map((ex) => `
+          <button class="filter-chip ${state.selectedExamFilter === ex.code ? 'active' : ''}" data-exam-chip="${esc(ex.code)}">
+            ${esc(ex.icon)} ${esc(ex.nameEn)}
+          </button>
+        `).join('')}
+      </div>
 
-    document.querySelectorAll('.palette-btn').forEach((btn) => {
-      btn.onclick = () => {
-        const idx = Number(btn.dataset.paletteIdx);
-        activeExamSession.currentIndex = idx;
-        activeExamSession.visited[idx] = true;
-        renderApp();
-      };
-    });
+      <!-- Published Live Test Series & Mock Tests -->
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+          <div>
+            <h2 style="font-size:1.05rem;font-weight:800;">📚 Live Test Series &amp; Mock Exams (${liveTests.length})</h2>
+            <p style="font-size:0.78rem;color:var(--text-muted);">Bilingual (Hindi &amp; English) CBT Tests with Negative Marking &amp; Analytics</p>
+          </div>
+          <button class="btn btn-outline btn-sm" data-goto-tab="test-series">Explore Full Catalog ➡️</button>
+        </div>
+
+        ${liveTests.length === 0 && (state.folders || []).length === 0 ? `
+          <div style="text-align:center;padding:34px 16px;background:var(--surface-alt);border-radius:12px;border:1px dashed var(--border-strong);">
+            <img src="assets/cgpedia-logo-clean.png" alt="CGpedia" style="width:68px;height:68px;border-radius:50%;object-fit:cover;margin-bottom:10px;opacity:0.9;" />
+            <h3 style="font-size:1.05rem;font-weight:800;margin-bottom:4px;">No Test Series Available Yet</h3>
+            <p style="font-size:0.84rem;color:var(--text-secondary);max-width:460px;margin:0 auto 14px;">
+              अभी कोई लाइव टेस्ट सीरीज़ प्रकाशित नहीं की गई है। जैसे ही एडमिन नया टेस्ट पब्लिश करेंगे, वह तुरंत यहाँ दिखाई देगा।
+            </p>
+            <div style="display:flex;justify-content:center;gap:10px;flex-wrap:wrap;">
+              <button class="btn btn-primary btn-sm" id="emptyStateTryPracticeBtn">🎯 Practice Topic Quiz</button>
+              ${isCurrentUserAdmin() ? `<button class="btn btn-navy btn-sm" id="emptyStateGoAdminBtn">🛡️ Create &amp; Publish Test in Admin</button>` : ''}
+            </div>
+          </div>
+        ` : `
+          <div class="grid-2">
+            ${liveTests.slice(0, 6).map((t) => renderTestCardHtml(t)).join('')}
+          </div>
+        `}
+      </div>
+
+      <!-- Student Preparation Snapshot & Quick Modules -->
+      <div class="grid-3">
+        <div class="card" style="cursor:pointer;" data-goto-tab="practice">
+          <div style="font-size:1.6rem;margin-bottom:6px;">🎯</div>
+          <h3 style="font-size:0.95rem;font-weight:800;">Topic Practice &amp; Mistake Notebook</h3>
+          <p style="font-size:0.8rem;color:var(--text-secondary);margin-top:4px;">
+            Practice subject-wise MCQs, PYQs, Bookmarked questions (${(state.bookmarks || []).length}), and your Mistake Notebook (${(state.mistakes || []).length}).
+          </p>
+        </div>
+        <div class="card" style="cursor:pointer;" data-goto-tab="analytics">
+          <div style="font-size:1.6rem;margin-bottom:6px;">📊</div>
+          <h3 style="font-size:0.95rem;font-weight:800;">Performance Analytics &amp; Solutions</h3>
+          <p style="font-size:0.8rem;color:var(--text-secondary);margin-top:4px;">
+            Completed Attempts: <strong>${(state.attempts || []).length}</strong> • Track accuracy, speed, negative marks &amp; weak topics.
+          </p>
+        </div>
+        <div class="card" style="cursor:pointer;" data-goto-tab="leaderboard">
+          <div style="font-size:1.6rem;margin-bottom:6px;">🏆</div>
+          <h3 style="font-size:0.95rem;font-weight:800;">All-India &amp; State Leaderboard</h3>
+          <p style="font-size:0.8rem;color:var(--text-secondary);margin-top:4px;">
+            Compare your rank and percentile with top aspirants across CGPSC, UPSC, SSC &amp; Banking.
+          </p>
+        </div>
+      </div>
+    `;
+
+    bindHomeEvents(savedCbtSession, activeStories);
+    bindTestCardButtons(root);
   }
 
-  function bindMainViewEvents() {
-    // Empty State -> Go to Admin Panel
-    const emptyGoAdmin = document.getElementById('emptyStateGoAdminBtn');
-    if (emptyGoAdmin) {
-      emptyGoAdmin.onclick = () => {
+  function renderTestCardHtml(t) {
+    const unlocked = isTestUnlocked(t);
+    const activeAct = getActiveActivation(t.id) || (t.folderId ? getActiveActivation(t.folderId) : null);
+    const remDays = activeAct ? Math.max(1, Math.ceil((activeAct.expiresAtMs - Date.now()) / 86400000)) : null;
+    const attemptedCount = (state.attempts || []).filter((a) => a.testId === t.id).length;
+
+    return `
+      <div class="card" style="margin-bottom:0;display:flex;flex-direction:column;justify-content:space-between;gap:12px;">
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <span class="badge badge-exam">${esc(t.examCode || 'CGPSC')}</span>
+              <span class="badge ${t.isPaid ? (unlocked ? 'badge-free' : 'badge-paid') : 'badge-free'}">
+                ${t.isPaid ? (unlocked ? '🔓 UNLOCKED' : '🔒 PREMIUM ₹' + t.priceInr) : '🟢 FREE'}
+              </span>
+              ${remDays ? `<span class="badge badge-review">⏳ ${remDays}d left</span>` : ''}
+            </div>
+            <span style="font-size:0.74rem;color:var(--text-muted);font-weight:700;">${(t.questions || []).length} Qs • ${t.durationMinutes || 60}m</span>
+          </div>
+          <h3 style="font-size:0.98rem;font-weight:800;line-height:1.35;">${esc(t.titleHi)}</h3>
+          <div style="font-size:0.8rem;color:var(--text-secondary);margin-top:2px;">${esc(t.titleEn)}</div>
+          <div style="font-size:0.75rem;color:var(--text-muted);margin-top:6px;">
+            📌 Topic: ${esc(t.topic || 'Full Syllabus')} • Marking: +${t.marksPerQuestion || 2} / -${t.negativeMarking !== undefined ? t.negativeMarking : 0.66}
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding-top:10px;border-top:1px solid var(--border);">
+          <span style="font-size:0.74rem;color:var(--text-muted);">
+            ${attemptedCount > 0 ? `✅ Attempted (${attemptedCount}x)` : 'Not Attempted'}
+          </span>
+          <div style="display:flex;gap:6px;">
+            ${attemptedCount > 0 ? `
+              <button class="btn btn-outline btn-sm" data-view-test-result="${esc(t.id)}">📊 Result</button>
+            ` : ''}
+            ${unlocked ? `
+              <button class="btn btn-primary btn-sm" data-start-test="${esc(t.id)}">
+                ${attemptedCount > 0 ? '🔄 Re-Attempt' : '▶️ Start CBT'}
+              </button>
+            ` : `
+              <button class="btn btn-warning btn-sm" data-unlock-paid-item="${esc(t.id)}" data-unlock-type="test">
+                🔓 Unlock ₹${t.priceInr}
+              </button>
+            `}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function bindHomeEvents(savedCbtSession, activeStories) {
+    const goAdmin = document.getElementById('homeGoAdminBtn');
+    if (goAdmin) {
+      goAdmin.onclick = () => {
         state.activeTab = 'admin';
         saveState();
         renderApp();
       };
     }
-
-    // Stories
-    document.querySelectorAll('.story-bubble, .story-card-open-btn').forEach((el) => {
-      el.onclick = () => openStoryViewer(Number(el.dataset.storyIdx || 0));
-    });
-
-    const topQuizBtn = document.getElementById('topBarQuizBtn');
-    if (topQuizBtn) topQuizBtn.onclick = launchCurrentAffairsQuiz;
-    const caTabQuizBtn = document.getElementById('caTabTopRightQuizBtn');
-    if (caTabQuizBtn) caTabQuizBtn.onclick = launchCurrentAffairsQuiz;
-
-    // Student Folder Navigation & Payment Modal
-    document.querySelectorAll('.open-exam-folder-btn').forEach((btn) => {
-      btn.onclick = () => {
-        state.selectedFolderId = btn.dataset.folderId;
+    const emptyGoAdmin = document.getElementById('emptyStateGoAdminBtn');
+    if (emptyGoAdmin) {
+      emptyGoAdmin.onclick = () => {
+        state.activeTab = 'admin';
+        state.adminSection = 'tests';
+        saveState();
         renderApp();
       };
-    });
+    }
+    const emptyTryPractice = document.getElementById('emptyStateTryPracticeBtn');
+    if (emptyTryPractice) {
+      emptyTryPractice.onclick = () => {
+        state.activeTab = 'practice';
+        saveState();
+        renderApp();
+      };
+    }
+    const editOnboard = document.getElementById('homeEditOnboardingBtn');
+    if (editOnboard) {
+      editOnboard.onclick = () => openOnboardingModal();
+    }
 
-    const backFoldersBtn = document.getElementById('backToMainFoldersBtn');
-    if (backFoldersBtn) {
-      backFoldersBtn.onclick = () => {
-        state.selectedFolderId = null;
+    const searchBtn = document.getElementById('globalHomeSearchBtn');
+    const searchInput = document.getElementById('globalHomeSearchInput');
+    if (searchBtn && searchInput) {
+      searchBtn.onclick = () => {
+        state.searchQuery = searchInput.value.trim();
+        state.activeTab = 'test-series';
+        saveState();
         renderApp();
       };
     }
 
-    document.querySelectorAll('.trigger-pay-modal-btn').forEach((btn) => {
-      btn.onclick = () => {
-        const folder = state.folders.find((f) => f.id === btn.dataset.folderId);
-        if (folder) openStudentPaymentModal(folder);
-      };
-    });
-
-    document.querySelectorAll('.launch-test-btn').forEach((btn) => {
-      btn.onclick = () => {
-        const folder = state.folders.find((f) => f.id === btn.dataset.folderId);
-        const test = folder ? (folder.tests || []).find((t) => t.id === btn.dataset.testId) : null;
-        if (test) startExamSession(test);
-      };
-    });
-
-    // Private Student Query Submit (With Optional Gallery Screenshot)
-    const sendQueryBtn = document.getElementById('sendPrivateQueryBtn');
-    if (sendQueryBtn) {
-      sendQueryBtn.onclick = async () => {
-        const subject = document.getElementById('studentQuerySubject').value.trim() || 'General Query';
-        const message = document.getElementById('studentQueryMessage').value.trim();
-        const fileInput = document.getElementById('studentQueryFile');
-        if (!message) {
-          showToast('कृपया अपना प्रश्न या समस्या लिखें।');
-          return;
-        }
-        let screenshotDataUrl = '';
-        if (fileInput && fileInput.files && fileInput.files[0]) {
-          screenshotDataUrl = await readFileAsDataURL(fileInput.files[0]);
-        }
-        state.queries.unshift({
-          id: 'q-' + Date.now(),
-          studentId: state.currentUser.id,
-          studentEmail: state.currentUser.email,
-          subject,
-          message,
-          screenshotDataUrl,
-          adminReply: '',
-          createdAt: Date.now()
-        });
-        saveState();
-        renderApp();
-        showToast('🔒 Private Query Submitted to Admin!');
-      };
-    }
-
-    // Admin Sub-navigation
-    document.querySelectorAll('.admin-subtab-btn').forEach((btn) => {
-      btn.onclick = () => {
-        state.adminSubTab = btn.dataset.sub;
-        state.reviewingTestRef = null;
-        saveState();
-        renderApp();
-      };
-    });
-
-    bindAdminActions();
-  }
-
-  function bindAdminActions() {
-    // 1. Create Exam Folder in Draft Mode
-    const createFolderBtn = document.getElementById('admCreateFolderDraftBtn');
-    if (createFolderBtn) {
-      createFolderBtn.onclick = () => {
-        const titleHi = document.getElementById('admFolderHi').value.trim();
-        const titleEn = document.getElementById('admFolderEn').value.trim() || titleHi;
-        const isPaid = document.getElementById('admFolderPaid').value === 'true';
-        const priceINR = Number(document.getElementById('admFolderPrice').value || 99);
-        const validityDays = Number(document.getElementById('admFolderDays').value || 180);
-        const description = document.getElementById('admFolderDesc').value.trim();
-        if (!titleHi) {
-          showToast('Please enter a Folder Name.');
-          return;
-        }
-        state.folders.unshift({
-          id: 'folder-' + Date.now(),
-          titleHi,
-          titleEn,
-          isPaid,
-          priceINR: isPaid ? priceINR : 0,
-          validityDays,
-          description,
-          status: 'draft', // Strictly Draft first!
-          tests: []
-        });
-        saveState();
-        renderApp();
-        showToast('📝 Exam Folder Created in Draft Mode. Click Publish when ready!');
-      };
-    }
-
-    // Publish / Unpublish Folder
-    document.querySelectorAll('.toggle-folder-publish-btn').forEach((btn) => {
-      btn.onclick = () => {
-        const folder = state.folders.find((f) => f.id === btn.dataset.folderId);
-        if (!folder) return;
-        folder.status = folder.status === 'published' ? 'draft' : 'published';
-        saveState();
-        renderApp();
-        showToast(folder.status === 'published' ? '🚀 Folder Published Live for Students!' : '↩ Folder Reverted to Draft.');
-      };
-    });
-
-    document.querySelectorAll('.toggle-folder-paid-btn').forEach((btn) => {
-      btn.onclick = () => {
-        const folder = state.folders.find((f) => f.id === btn.dataset.folderId);
-        if (!folder) return;
-        folder.isPaid = !folder.isPaid;
-        if (folder.isPaid && !folder.priceINR) folder.priceINR = 99;
-        saveState();
-        renderApp();
-      };
-    });
-
-    document.querySelectorAll('.delete-folder-btn').forEach((btn) => {
-      btn.onclick = () => {
-        state.folders = state.folders.filter((f) => f.id !== btn.dataset.folderId);
-        saveState();
-        renderApp();
-        showToast('🗑️ Folder Deleted');
-      };
-    });
-
-    // Create Manual Draft Test & Open Question Editor
-    const createManualTestBtn = document.getElementById('admCreateEmptyManualTestBtn');
-    if (createManualTestBtn) {
-      createManualTestBtn.onclick = () => {
-        const folderId = document.getElementById('admTestFolderSelect').value;
-        const folder = state.folders.find((f) => f.id === folderId);
-        if (!folder) {
-          showToast('Please create and select a Parent Exam Folder first.');
-          return;
-        }
-        const titleHi = document.getElementById('admTestTitleHi').value.trim() || 'New Bilingual Test';
-        const durationMinutes = Number(document.getElementById('admTestTimer').value || 60);
-        const marksPerQuestion = Number(document.getElementById('admTestPos').value || 2.0);
-        const negativeMarking = Number(document.getElementById('admTestNeg').value || 0.66);
-        const isPaid = document.getElementById('admTestPaid').value === 'true';
-
-        const newTest = {
-          id: 'test-' + Date.now(),
-          titleHi,
-          titleEn: titleHi,
-          durationMinutes,
-          marksPerQuestion,
-          negativeMarking,
-          isPaid,
-          status: 'draft', // Strictly Draft first
-          questions: []
+    if (savedCbtSession) {
+      const resumeBtn = document.getElementById('resumeSavedSessionBtn');
+      const discardBtn = document.getElementById('discardSavedSessionBtn');
+      if (resumeBtn) {
+        resumeBtn.onclick = () => {
+          window.CGpediaCBT.launchLiveCbtSession({}, savedCbtSession.questions, savedCbtSession.langMode, cbtCallbacks, savedCbtSession);
         };
-        folder.tests.unshift(newTest);
-        state.reviewingTestRef = { folderId: folder.id, testId: newTest.id };
-        saveState();
-        renderApp();
-        showToast('📝 Draft Test Created. Add & Review Questions before publishing!');
-      };
-    }
-
-    // AI Test Generator with 300,000 ms (5-Minute) Timeout -> Opens Draft Review Mode
-    const genAiTestBtn = document.getElementById('admGenerateAiDraftBtn');
-    if (genAiTestBtn) {
-      genAiTestBtn.onclick = async () => {
-        const folderId = document.getElementById('admTestFolderSelect').value;
-        const folder = state.folders.find((f) => f.id === folderId);
-        if (!folder) {
-          showToast('Please create and select a Parent Exam Folder first.');
-          return;
-        }
-        const titleHi = document.getElementById('admTestTitleHi').value.trim() || 'AI Bilingual Test (CGPSC & CGSSB)';
-        const durationMinutes = Number(document.getElementById('admTestTimer').value || 60);
-        const marksPerQuestion = Number(document.getElementById('admTestPos').value || 2.0);
-        const negativeMarking = Number(document.getElementById('admTestNeg').value || 0.66);
-        const isPaid = document.getElementById('admTestPaid').value === 'true';
-        const topic = document.getElementById('admAiTopic').value.trim() || 'Chhattisgarh General Studies';
-        const qCount = Math.max(1, Math.min(50, Number(document.getElementById('admAiCount').value || 5)));
-        const customPrompt = document.getElementById('admAiPrompt').value.trim();
-
-        const progWrap = document.getElementById('admAiProgressWrap');
-        const progBar = document.getElementById('admAiProgressBar');
-        if (progWrap) progWrap.style.display = 'block';
-        let pct = 15;
-        const progInterval = setInterval(() => {
-          pct = Math.min(92, pct + 12);
-          if (progBar) progBar.style.width = `${pct}%`;
-        }, 400);
-
-        let generatedQuestions = [];
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
-
-        try {
-          if (state.config.aiEnabled && state.config.geminiApiKey) {
-            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(state.config.geminiApiKey)}`;
-            const sysPrompt =
-              `Generate ${qCount} Bilingual (Hindi & English) multiple-choice questions for CGPSC/CGSSB on topic "${topic}". ${customPrompt}\n` +
-              `Return ONLY a JSON array where each object has: {"qHi":"...","qEn":"...","optionsHi":["A","B","C","D"],"optionsEn":["A","B","C","D"],"correctIndex":0,"expHi":"...","expEn":"..."}`;
-            const res = await fetch(endpoint, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ contents: [{ parts: [{ text: sysPrompt }] }] }),
-              signal: controller.signal
-            });
-            if (res.ok) {
-              const data = await res.json();
-              const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-              const arrMatch = text.match(/\[[\s\S]*\]/);
-              if (arrMatch) {
-                generatedQuestions = JSON.parse(arrMatch[0]);
-              }
-            }
-          }
-        } catch (_) {
-          // Fallback to structured topic generator if API key not entered or quota hit
-        } finally {
-          clearTimeout(timeoutId);
-          clearInterval(progInterval);
-        }
-
-        if (!Array.isArray(generatedQuestions) || !generatedQuestions.length) {
-          generatedQuestions = Array.from({ length: qCount }, (_, i) => ({
-            id: 'aiq-' + Date.now() + '-' + i,
-            qHi: `[${topic}] प्रश्न ${i + 1}: छत्तीसगढ़ एवं सामान्य अध्ययन के संदर्भ में निम्नलिखित में से कौन-सा कथन सत्य है? ${customPrompt ? '(' + customPrompt + ')' : ''}`,
-            qEn: `[${topic}] Q${i + 1}: Which of the following statements is accurate regarding ${topic}?`,
-            optionsHi: [`${topic} — प्रथम प्रामाणिक विकल्प`, 'द्वितीय विकल्प', 'तृतीय विकल्प', 'उपर्युक्त में से कोई नहीं'],
-            optionsEn: [`${topic} — Primary verified statement`, 'Option B', 'Option C', 'None of the above'],
-            correctIndex: 0,
-            expHi: `यह प्रश्न "${topic}" के आधिकारिक पाठ्यक्रम पर आधारित है। एडमिन इसे पब्लिश करने से पहले संपादित कर सकते हैं।`,
-            expEn: `Generated for "${topic}". Admin can review and edit this question in Draft mode before publishing.`
-          }));
-        }
-
-        const newTest = {
-          id: 'test-ai-' + Date.now(),
-          titleHi,
-          titleEn: titleHi,
-          durationMinutes,
-          marksPerQuestion,
-          negativeMarking,
-          isPaid,
-          status: 'draft', // Saved as Draft for Admin Review!
-          questions: generatedQuestions
-        };
-        folder.tests.unshift(newTest);
-        state.reviewingTestRef = { folderId: folder.id, testId: newTest.id };
-        saveState();
-        renderApp();
-        showToast(`🤖 Generated ${generatedQuestions.length} Questions in Draft Review Mode!`);
-      };
-    }
-
-    // Test-level actions inside folder list
-    document.querySelectorAll('.review-edit-test-btn').forEach((btn) => {
-      btn.onclick = () => {
-        state.reviewingTestRef = { folderId: btn.dataset.folderId, testId: btn.dataset.testId };
-        renderApp();
-      };
-    });
-
-    document.querySelectorAll('.toggle-test-publish-btn').forEach((btn) => {
-      btn.onclick = () => {
-        const folder = state.folders.find((f) => f.id === btn.dataset.folderId);
-        const test = folder ? (folder.tests || []).find((t) => t.id === btn.dataset.testId) : null;
-        if (!test) return;
-        test.status = test.status === 'published' ? 'draft' : 'published';
-        saveState();
-        renderApp();
-        showToast(test.status === 'published' ? '🚀 Test Published Live!' : '↩ Test Un-published to Draft.');
-      };
-    });
-
-    document.querySelectorAll('.toggle-test-paid-btn').forEach((btn) => {
-      btn.onclick = () => {
-        const folder = state.folders.find((f) => f.id === btn.dataset.folderId);
-        const test = folder ? (folder.tests || []).find((t) => t.id === btn.dataset.testId) : null;
-        if (!test) return;
-        test.isPaid = !test.isPaid;
-        saveState();
-        renderApp();
-      };
-    });
-
-    document.querySelectorAll('.delete-test-btn').forEach((btn) => {
-      btn.onclick = () => {
-        const folder = state.folders.find((f) => f.id === btn.dataset.folderId);
-        if (!folder) return;
-        folder.tests = (folder.tests || []).filter((t) => t.id !== btn.dataset.testId);
-        saveState();
-        renderApp();
-        showToast('🗑️ Test Deleted');
-      };
-    });
-
-    // Question Review & Editor Screen Bindings
-    const backFromQEditor = document.getElementById('backFromQEditorBtn');
-    if (backFromQEditor) {
-      backFromQEditor.onclick = () => {
-        state.reviewingTestRef = null;
-        renderApp();
-      };
-    }
-
-    const addSingleQBtn = document.getElementById('addSingleQuestionBtn');
-    if (addSingleQBtn && state.reviewingTestRef) {
-      addSingleQBtn.onclick = () => {
-        const { folderId, testId } = state.reviewingTestRef;
-        const folder = state.folders.find((f) => f.id === folderId);
-        const test = folder ? (folder.tests || []).find((t) => t.id === testId) : null;
-        if (!test) return;
-        const qHi = document.getElementById('newQHi').value.trim();
-        const qEn = document.getElementById('newQEn').value.trim() || qHi;
-        if (!qHi) {
-          showToast('Please enter the question text.');
-          return;
-        }
-        const optionsHi = [
-          document.getElementById('newOptAHi').value.trim() || 'विकल्प A',
-          document.getElementById('newOptBHi').value.trim() || 'विकल्प B',
-          document.getElementById('newOptCHi').value.trim() || 'विकल्प C',
-          document.getElementById('newOptDHi').value.trim() || 'विकल्प D'
-        ];
-        const optionsEn = [
-          document.getElementById('newOptAEn').value.trim() || optionsHi[0],
-          document.getElementById('newOptBEn').value.trim() || optionsHi[1],
-          document.getElementById('newOptCEn').value.trim() || optionsHi[2],
-          document.getElementById('newOptDEn').value.trim() || optionsHi[3]
-        ];
-        const correctIndex = Number(document.getElementById('newQCorrect').value || 0);
-        const expHi = document.getElementById('newQExpHi').value.trim();
-        const expEn = document.getElementById('newQExpEn').value.trim() || expHi;
-
-        test.questions.push({
-          id: 'q-' + Date.now(),
-          qHi,
-          qEn,
-          optionsHi,
-          optionsEn,
-          correctIndex,
-          expHi,
-          expEn
-        });
-        saveState();
-        renderApp();
-        showToast('✅ Question Added to Test');
-      };
-    }
-
-    const saveAllEditedBtn = document.getElementById('saveAllEditedQuestionsBtn');
-    if (saveAllEditedBtn && state.reviewingTestRef) {
-      saveAllEditedBtn.onclick = () => {
-        saveQuestionEditsFromDOM();
-        showToast('💾 All Question Edits Saved!');
-      };
-    }
-
-    const publishReviewedBtn = document.getElementById('publishReviewedTestBtn');
-    if (publishReviewedBtn && state.reviewingTestRef) {
-      publishReviewedBtn.onclick = () => {
-        saveQuestionEditsFromDOM();
-        const { folderId, testId } = state.reviewingTestRef;
-        const folder = state.folders.find((f) => f.id === folderId);
-        const test = folder ? (folder.tests || []).find((t) => t.id === testId) : null;
-        if (!test) return;
-        test.status = test.status === 'published' ? 'draft' : 'published';
-        if (test.status === 'published') {
-          folder.status = 'published'; // Also ensure parent folder is published so students see it
-        }
-        saveState();
-        renderApp();
-        showToast(test.status === 'published' ? '🚀 Test & Parent Folder Published Live for Students!' : '↩ Moved Back to Draft.');
-      };
-    }
-
-    document.querySelectorAll('.delete-single-q-btn').forEach((btn) => {
-      btn.onclick = () => {
-        if (!state.reviewingTestRef) return;
-        const { folderId, testId } = state.reviewingTestRef;
-        const folder = state.folders.find((f) => f.id === folderId);
-        const test = folder ? (folder.tests || []).find((t) => t.id === testId) : null;
-        if (!test) return;
-        test.questions.splice(Number(btn.dataset.qIdx), 1);
-        saveState();
-        renderApp();
-      };
-    });
-
-    // 2. Payment Settings & UPI QR Upload from Gallery
-    const savePayBtn = document.getElementById('admSavePaymentSettingsBtn');
-    if (savePayBtn) {
-      savePayBtn.onclick = async () => {
-        const fileInput = document.getElementById('admQrGalleryFileInput');
-        const urlInput = document.getElementById('admQrUrlInput').value.trim();
-        if (fileInput && fileInput.files && fileInput.files[0]) {
-          state.config.upiQrDataUrl = await readFileAsDataURL(fileInput.files[0], 600);
-        } else if (urlInput) {
-          state.config.upiQrDataUrl = urlInput;
-        }
-        state.config.upiId = document.getElementById('admUpiIdInput').value.trim() || '9238810070@upi';
-        state.config.whatsappNumber = document.getElementById('admWhatsappInput').value.trim() || '9238810070';
-        saveState();
-        renderApp();
-        showToast('✅ UPI QR Code & WhatsApp Payment Settings Saved!');
-      };
-    }
-
-    // Activate Student Access (Strict Activation-Based Validity)
-    const activateStuBtn = document.getElementById('admActivateStudentBtn');
-    if (activateStuBtn) {
-      activateStuBtn.onclick = () => {
-        const folderId = document.getElementById('admGrantFolderSelect').value;
-        const folder = state.folders.find((f) => f.id === folderId);
-        const userKey = document.getElementById('admGrantUserKeyInput').value.trim().toLowerCase();
-        const validityDays = Number(document.getElementById('admGrantValidityDaysSelect').value || 180);
-        if (!folderId || !userKey) {
-          showToast('Please select a Folder and enter Student Email or User ID.');
-          return;
-        }
-        const exactNow = Date.now();
-        state.studentActivations[`${folderId}__${userKey}`] = {
-          folderId,
-          folderTitle: folder ? folder.titleHi : folderId,
-          userKey,
-          validityDays,
-          activatedAt: exactNow,
-          expiresAt: exactNow + validityDays * 86400000
-        };
-        saveState();
-        renderApp();
-        showToast(`🔓 Activated ${validityDays}-Day Access for "${userKey}" starting from this exact moment!`);
-      };
-    }
-
-    document.querySelectorAll('.revoke-student-btn').forEach((btn) => {
-      btn.onclick = () => {
-        delete state.studentActivations[btn.dataset.actKey];
-        saveState();
-        renderApp();
-        showToast('🔒 Student Access Revoked');
-      };
-    });
-
-    // 3. Branding, Screenshot Lock Toggle & API Key
-    const saveBrandBtn = document.getElementById('admSaveBrandingBtn');
-    if (saveBrandBtn) {
-      saveBrandBtn.onclick = async () => {
-        state.config.appTitle = document.getElementById('admBrandTitle').value.trim() || 'CGpedia';
-        state.config.appSubtitle = document.getElementById('admBrandSubtitle').value.trim() || 'CGPSC & CGSSB';
-        state.config.screenshotProtection = document.getElementById('admScreenshotToggle').value === 'true';
-        state.config.anthemEnabled = document.getElementById('admAnthemToggle').value === 'true';
-        const logoFile = document.getElementById('admBrandLogoFile');
-        const logoUrl = document.getElementById('admBrandLogoUrl').value.trim();
-        if (logoFile && logoFile.files && logoFile.files[0]) {
-          state.config.logoDataUrl = await readFileAsDataURL(logoFile.files[0], 300);
-        } else if (logoUrl) {
-          state.config.logoDataUrl = logoUrl;
-        }
-        saveState();
-        renderApp();
-        showToast('✅ Branding & Screenshot Protection Updated Live!');
-      };
-    }
-
-    const saveApiPolicyBtn = document.getElementById('admSaveApiAndPolicyBtn');
-    if (saveApiPolicyBtn) {
-      saveApiPolicyBtn.onclick = () => {
-        state.config.geminiApiKey = document.getElementById('admGeminiKeyInput').value.trim();
-        state.config.aiEnabled = document.getElementById('admAiToggleSelect').value === 'true';
-        state.config.policyBodyHi = document.getElementById('admPolicyHi').value.trim();
-        state.config.policyBodyEn = document.getElementById('admPolicyEn').value.trim();
-        state.config.policyUpdatedAt = Date.now();
-        saveState();
-        renderApp();
-        showToast('✅ Gemini API Key & Live Support Policy Published!');
-      };
-    }
-
-    // 4. Current Affairs Story Creator (With Gallery Upload)
-    const pubStoryBtn = document.getElementById('admPublishStoryBtn');
-    if (pubStoryBtn) {
-      pubStoryBtn.onclick = async () => {
-        const category = document.getElementById('admStoryCat').value.trim() || 'Current Affairs';
-        const titleHi = document.getElementById('admStoryTitleHi').value.trim();
-        const titleEn = document.getElementById('admStoryTitleEn').value.trim() || titleHi;
-        const bodyHi = document.getElementById('admStoryBodyHi').value.trim();
-        const bodyEn = document.getElementById('admStoryBodyEn').value.trim() || bodyHi;
-        const imgFile = document.getElementById('admStoryImgFile');
-        if (!titleHi || !bodyHi) {
-          showToast('Please enter Story Title and Details.');
-          return;
-        }
-        let imageUrl = '';
-        if (imgFile && imgFile.files && imgFile.files[0]) {
-          imageUrl = await readFileAsDataURL(imgFile.files[0], 800);
-        }
-        state.stories.unshift({
-          id: 'st-' + Date.now(),
-          category,
-          imageUrl,
-          titleHi,
-          titleEn,
-          bodyHi,
-          bodyEn,
-          postedAt: Date.now(),
-          seen: false
-        });
-        saveState();
-        renderApp();
-        showToast('⚡ 24-Hour Current Affairs Story Published!');
-      };
-    }
-
-    const syncNowBtn = document.getElementById('admSyncStoriesNowBtn');
-    if (syncNowBtn) {
-      syncNowBtn.onclick = async () => {
-        await runSilentCurrentAffairsSync();
-        showToast('🔄 Current Affairs Sync Triggered!');
-      };
-    }
-
-    document.querySelectorAll('.delete-story-btn').forEach((btn) => {
-      btn.onclick = () => {
-        state.stories = state.stories.filter((s) => s.id !== btn.dataset.storyId);
-        saveState();
-        renderApp();
-      };
-    });
-
-    // 5. Broadcast Notifications, Upcoming Tests & Private Queries Reply
-    const postBroadcastBtn = document.getElementById('admPostBroadcastBtn');
-    if (postBroadcastBtn) {
-      postBroadcastBtn.onclick = async () => {
-        const title = document.getElementById('admNotifTitle').value.trim();
-        const message = document.getElementById('admNotifMessage').value.trim();
-        const mediaType = document.getElementById('admNotifMediaType').value;
-        const pinned = document.getElementById('admNotifPin').value === 'true';
-        const fileIn = document.getElementById('admNotifFileInput');
-        if (!title || !message) {
-          showToast('Please enter Notification Title and Message.');
-          return;
-        }
-        let mediaDataUrl = '';
-        let mediaName = '';
-        if (fileIn && fileIn.files && fileIn.files[0]) {
-          mediaName = fileIn.files[0].name;
-          mediaDataUrl = await readFileAsDataURL(fileIn.files[0], 900);
-        }
-        state.notifications.unshift({
-          id: 'notif-' + Date.now(),
-          title,
-          message,
-          mediaType,
-          mediaDataUrl,
-          mediaName,
-          pinned,
-          createdAt: Date.now()
-        });
-        saveState();
-        renderApp();
-        showToast('📢 Broadcast Notification Published!');
-      };
-    }
-
-    const postUpcomingBtn = document.getElementById('admPostUpcomingBtn');
-    if (postUpcomingBtn) {
-      postUpcomingBtn.onclick = async () => {
-        const title = document.getElementById('admUpTitle').value.trim();
-        const startDate = document.getElementById('admUpDate').value.trim() || 'Upcoming';
-        const priceLabel = document.getElementById('admUpPrice').value.trim() || '₹99';
-        const scheduleDetails = document.getElementById('admUpDetails').value.trim();
-        const bannerIn = document.getElementById('admUpBannerFile');
-        if (!title) {
-          showToast('Please enter Upcoming Test Series Title.');
-          return;
-        }
-        let bannerDataUrl = '';
-        if (bannerIn && bannerIn.files && bannerIn.files[0]) {
-          bannerDataUrl = await readFileAsDataURL(bannerIn.files[0], 900);
-        }
-        state.upcomingSeries.unshift({
-          id: 'up-' + Date.now(),
-          title,
-          startDate,
-          priceLabel,
-          scheduleDetails,
-          bannerDataUrl
-        });
-        saveState();
-        renderApp();
-        showToast('📅 Upcoming Test Series Posted!');
-      };
-    }
-
-    document.querySelectorAll('.adm-send-query-reply-btn').forEach((btn) => {
-      btn.onclick = () => {
-        const qid = btn.dataset.qid;
-        const inp = document.querySelector(`.adm-query-reply-input[data-qid="${qid}"]`);
-        const target = state.queries.find((q) => q.id === qid);
-        if (target && inp) {
-          target.adminReply = inp.value.trim();
-          saveState();
+      }
+      if (discardBtn) {
+        discardBtn.onclick = () => {
+          window.CGpediaCBT.clearSavedSession();
           renderApp();
-          showToast('✅ Private Reply Sent to Student!');
-        }
+        };
+      }
+    }
+
+    document.querySelectorAll('[data-exam-chip]').forEach((chip) => {
+      chip.onclick = () => {
+        state.selectedExamFilter = chip.getAttribute('data-exam-chip');
+        saveState();
+        renderApp();
+      };
+    });
+
+    document.querySelectorAll('[data-goto-tab]').forEach((el) => {
+      el.onclick = () => {
+        state.activeTab = el.getAttribute('data-goto-tab');
+        saveState();
+        renderApp();
+      };
+    });
+
+    const dailyQuizBtn = document.getElementById('homeLaunchDailyCaQuizBtn');
+    if (dailyQuizBtn) {
+      dailyQuizBtn.onclick = () => launchInstantDailyQuiz();
+    }
+
+    document.querySelectorAll('[data-open-story]').forEach((item) => {
+      item.onclick = () => {
+        const idx = Number(item.getAttribute('data-open-story'));
+        if (activeStories[idx]) openStoryViewerModal(activeStories[idx]);
       };
     });
   }
 
-  function saveQuestionEditsFromDOM() {
-    if (!state.reviewingTestRef) return;
-    const { folderId, testId } = state.reviewingTestRef;
-    const folder = state.folders.find((f) => f.id === folderId);
-    const test = folder ? (folder.tests || []).find((t) => t.id === testId) : null;
-    if (!test) return;
+  // =========================================================================
+  // 2. Test Series Catalog & Folder Detail View
+  // =========================================================================
+  function renderTestSeriesCatalog(root) {
+    const exams = window.CGpediaCloud ? window.CGpediaCloud.EXAM_CATEGORIES : [];
+    const q = (state.searchQuery || '').toLowerCase();
 
-    document.querySelectorAll('.edit-q-hi').forEach((el) => {
-      const idx = Number(el.dataset.qIdx);
-      if (test.questions[idx]) test.questions[idx].qHi = el.value.trim();
+    const filteredFolders = (state.folders || []).filter((f) => {
+      if (state.selectedExamFilter !== 'ALL' && f.examCode !== state.selectedExamFilter) return false;
+      if (q && !(String(f.titleHi).toLowerCase().includes(q) || String(f.titleEn).toLowerCase().includes(q))) return false;
+      return true;
     });
-    document.querySelectorAll('.edit-q-en').forEach((el) => {
-      const idx = Number(el.dataset.qIdx);
-      if (test.questions[idx]) test.questions[idx].qEn = el.value.trim();
+
+    let publishedTests = (state.tests || []).filter((t) => {
+      if (t.status !== 'published') return false;
+      if (state.selectedFolderId && t.folderId !== state.selectedFolderId) return false;
+      if (state.selectedExamFilter !== 'ALL' && t.examCode !== state.selectedExamFilter) return false;
+      if (state.testSeriesFilter === 'FREE' && t.isPaid) return false;
+      if (state.testSeriesFilter === 'PAID' && !t.isPaid) return false;
+      if (state.testSeriesFilter === 'ATTEMPTED' && !(state.attempts || []).some((a) => a.testId === t.id)) return false;
+      if (q && !(String(t.titleHi).toLowerCase().includes(q) || String(t.titleEn).toLowerCase().includes(q) || String(t.topic).toLowerCase().includes(q))) return false;
+      return true;
     });
-    document.querySelectorAll('.edit-opt-hi').forEach((el) => {
-      const qIdx = Number(el.dataset.qIdx);
-      const oIdx = Number(el.dataset.optIdx);
-      if (test.questions[qIdx]) test.questions[qIdx].optionsHi[oIdx] = el.value.trim();
+
+    if (state.testSeriesSort === 'price') {
+      publishedTests.sort((a, b) => Number(a.priceInr || 0) - Number(b.priceInr || 0));
+    }
+
+    root.innerHTML = `
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+          <div>
+            <h1 style="font-size:1.2rem;font-weight:800;">📚 Competitive Exam Test Series Catalog</h1>
+            <p style="font-size:0.8rem;color:var(--text-secondary);">Filter by Exam Category, Free/Premium Access, or Search Syllabus Topics</p>
+          </div>
+          ${state.selectedFolderId ? `
+            <button class="btn btn-outline btn-sm" id="clearFolderFilterBtn">⬅️ Back to All Series Folders</button>
+          ` : ''}
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;margin-bottom:12px;">
+          <input class="form-input" id="catalogSearchInput" value="${esc(state.searchQuery)}" placeholder="🔍 Search test series, exam name, or subject..." />
+          <select class="form-select" id="catalogAccessFilter" style="width:auto;">
+            <option value="ALL" ${state.testSeriesFilter === 'ALL' ? 'selected' : ''}>All Tests</option>
+            <option value="FREE" ${state.testSeriesFilter === 'FREE' ? 'selected' : ''}>Free Only</option>
+            <option value="PAID" ${state.testSeriesFilter === 'PAID' ? 'selected' : ''}>Premium Only</option>
+            <option value="ATTEMPTED" ${state.testSeriesFilter === 'ATTEMPTED' ? 'selected' : ''}>Attempted</option>
+          </select>
+          <select class="form-select" id="catalogSortSelect" style="width:auto;">
+            <option value="latest" ${state.testSeriesSort === 'latest' ? 'selected' : ''}>Sort: Latest</option>
+            <option value="price" ${state.testSeriesSort === 'price' ? 'selected' : ''}>Sort: Price</option>
+          </select>
+        </div>
+
+        <div class="chip-row" style="margin-bottom:0;">
+          <button class="filter-chip ${state.selectedExamFilter === 'ALL' ? 'active' : ''}" data-cat-exam="ALL">All Exams</button>
+          ${exams.map((ex) => `
+            <button class="filter-chip ${state.selectedExamFilter === ex.code ? 'active' : ''}" data-cat-exam="${esc(ex.code)}">
+              ${esc(ex.icon)} ${esc(ex.nameEn)}
+            </button>
+          `).join('')}
+        </div>
+      </div>
+
+      <!-- Test Series Folders -->
+      ${!state.selectedFolderId && filteredFolders.length > 0 ? `
+        <div style="margin-bottom:18px;">
+          <h2 style="font-size:1rem;font-weight:800;margin-bottom:10px;">🗂️ Structured Test Series Packages (${filteredFolders.length})</h2>
+          <div class="grid-2">
+            ${filteredFolders.map((f) => {
+              const folderUnlocked = !f.isPaid || isCurrentUserAdmin() || Boolean(getActiveActivation(f.id));
+              const testsInFolder = (state.tests || []).filter((t) => t.status === 'published' && t.folderId === f.id).length;
+              return `
+                <div class="card" style="margin-bottom:0;display:flex;flex-direction:column;justify-content:space-between;gap:10px;">
+                  <div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+                      <span class="badge badge-exam">${esc(f.examCode || 'CGPSC')}</span>
+                      <span class="badge ${f.isPaid ? (folderUnlocked ? 'badge-free' : 'badge-paid') : 'badge-free'}">
+                        ${f.isPaid ? (folderUnlocked ? '🔓 UNLOCKED SERIES' : '🔒 PREMIUM ₹' + f.priceInr + ' • ' + (f.validityDays || 180) + 'd') : '🟢 FREE SERIES'}
+                      </span>
+                    </div>
+                    <h3 style="font-size:1rem;font-weight:800;margin-top:6px;">${esc(f.titleHi)}</h3>
+                    <div style="font-size:0.8rem;color:var(--text-secondary);">${esc(f.titleEn)}</div>
+                    <p style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;">${esc(f.descriptionHi)}</p>
+                  </div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;padding-top:10px;border-top:1px solid var(--border);">
+                    <span style="font-size:0.76rem;font-weight:700;color:var(--text-secondary);">📄 ${testsInFolder} Published Tests</span>
+                    <div style="display:flex;gap:6px;">
+                      ${!folderUnlocked ? `
+                        <button class="btn btn-warning btn-sm" data-unlock-paid-item="${esc(f.id)}" data-unlock-type="folder">🔓 Buy Series ₹${f.priceInr}</button>
+                      ` : ''}
+                      <button class="btn btn-primary btn-sm" data-open-folder="${esc(f.id)}">Open Series ➡️</button>
+                    </div>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      ` : ''}
+
+      <!-- Individual Published Tests -->
+      <div class="card">
+        <h2 style="font-size:1rem;font-weight:800;margin-bottom:12px;">📝 Available Mock Tests (${publishedTests.length})</h2>
+        ${publishedTests.length === 0 ? `
+          <div style="text-align:center;padding:28px 16px;color:var(--text-muted);">
+            <p style="font-weight:700;">No published tests match your current filter.</p>
+            <p style="font-size:0.8rem;margin-top:4px;">Try switching the Exam Category chip to "All Exams" or check back after the Admin publishes new tests.</p>
+          </div>
+        ` : `
+          <div class="grid-2">
+            ${publishedTests.map((t) => renderTestCardHtml(t)).join('')}
+          </div>
+        `}
+      </div>
+    `;
+
+    const searchInp = document.getElementById('catalogSearchInput');
+    if (searchInp) {
+      searchInp.oninput = () => {
+        state.searchQuery = searchInp.value;
+        saveState();
+        renderTestSeriesCatalog(root);
+      };
+    }
+
+    const accessSel = document.getElementById('catalogAccessFilter');
+    if (accessSel) {
+      accessSel.onchange = () => {
+        state.testSeriesFilter = accessSel.value;
+        saveState();
+        renderTestSeriesCatalog(root);
+      };
+    }
+
+    const sortSel = document.getElementById('catalogSortSelect');
+    if (sortSel) {
+      sortSel.onchange = () => {
+        state.testSeriesSort = sortSel.value;
+        saveState();
+        renderTestSeriesCatalog(root);
+      };
+    }
+
+    const clearFld = document.getElementById('clearFolderFilterBtn');
+    if (clearFld) {
+      clearFld.onclick = () => {
+        state.selectedFolderId = null;
+        saveState();
+        renderTestSeriesCatalog(root);
+      };
+    }
+
+    root.querySelectorAll('[data-cat-exam]').forEach((btn) => {
+      btn.onclick = () => {
+        state.selectedExamFilter = btn.getAttribute('data-cat-exam');
+        saveState();
+        renderTestSeriesCatalog(root);
+      };
     });
-    document.querySelectorAll('.edit-opt-en').forEach((el) => {
-      const qIdx = Number(el.dataset.qIdx);
-      const oIdx = Number(el.dataset.optIdx);
-      if (test.questions[qIdx]) test.questions[qIdx].optionsEn[oIdx] = el.value.trim();
+
+    root.querySelectorAll('[data-open-folder]').forEach((btn) => {
+      btn.onclick = () => {
+        state.selectedFolderId = btn.getAttribute('data-open-folder');
+        saveState();
+        renderTestSeriesCatalog(root);
+      };
     });
-    document.querySelectorAll('.edit-q-correct').forEach((el) => {
-      const idx = Number(el.dataset.qIdx);
-      if (test.questions[idx]) test.questions[idx].correctIndex = Number(el.value);
-    });
-    document.querySelectorAll('.edit-q-exphi').forEach((el) => {
-      const idx = Number(el.dataset.qIdx);
-      if (test.questions[idx]) test.questions[idx].expHi = el.value.trim();
-    });
-    document.querySelectorAll('.edit-q-expen').forEach((el) => {
-      const idx = Number(el.dataset.qIdx);
-      if (test.questions[idx]) test.questions[idx].expEn = el.value.trim();
-    });
-    saveState();
+
+    bindTestCardButtons(root);
   }
 
-  // Dynamic Anti-Piracy & Screenshot Restriction Listeners (Controlled by Admin Master Switch)
-  function initDynamicSecurityListeners() {
-    document.addEventListener('contextmenu', (e) => {
-      if (state.config.screenshotProtection) {
-        e.preventDefault();
-      }
+  // =========================================================================
+  // 3. Practice, PYQs, Bookmarks & Mistake Notebook Module
+  // =========================================================================
+  function renderPracticeAndMistakes(root) {
+    const subjects = window.CGpediaCloud ? window.CGpediaCloud.DEFAULT_SUBJECTS : [];
+
+    root.innerHTML = `
+      <div class="grid-2">
+        <!-- Custom Practice Session Builder -->
+        <div class="card">
+          <span class="badge badge-exam">SELF-PACED &amp; TIMED PRACTICE</span>
+          <h2 style="font-size:1.1rem;font-weight:800;margin-top:4px;margin-bottom:8px;">🎯 Custom Subject &amp; Topic Practice Builder</h2>
+          <p style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:12px;">
+            Choose any subject, topic, question count, and timer to launch a customized bilingual CBT practice test.
+          </p>
+          <div class="form-group">
+            <label class="form-label">Select Subject / विषय चुनें</label>
+            <select class="form-select" id="pracSubjectSelect">
+              ${subjects.map((s) => `<option value="${esc(s.titleEn)}">${esc(s.titleHi)} (${esc(s.titleEn)})</option>`).join('')}
+            </select>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+            <div>
+              <label class="form-label">Question Count</label>
+              <select class="form-select" id="pracQuestionCount">
+                <option value="5">5 Questions (Quick Drill)</option>
+                <option value="10" selected>10 Questions</option>
+                <option value="20">20 Questions</option>
+                <option value="50">50 Questions</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label">Time Limit (Minutes)</label>
+              <select class="form-select" id="pracDurationMin">
+                <option value="10">10 Minutes</option>
+                <option value="15" selected>15 Minutes</option>
+                <option value="30">30 Minutes</option>
+                <option value="60">60 Minutes</option>
+              </select>
+            </div>
+          </div>
+          <button class="btn btn-primary" id="launchCustomPracticeBtn">🚀 Start Custom Practice Session</button>
+        </div>
+
+        <!-- Mistake Notebook & Bookmarks Quick Re-Practice -->
+        <div class="card">
+          <span class="badge badge-review">SMART REVISION</span>
+          <h2 style="font-size:1.1rem;font-weight:800;margin-top:4px;margin-bottom:8px;">📓 Mistake Notebook &amp; Saved Bookmarks</h2>
+          <p style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:14px;">
+            Every incorrect question from your CBT attempts is automatically saved to your Mistake Notebook so you can master weak areas.
+          </p>
+          <div class="kpi-grid" style="grid-template-columns:1fr 1fr;margin-bottom:14px;">
+            <div class="kpi-card">
+              <div class="kpi-value" style="color:var(--danger);">${(state.mistakes || []).length}</div>
+              <div class="kpi-label">Mistake Notebook Qs</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-value" style="color:var(--secondary);">${(state.bookmarks || []).length}</div>
+              <div class="kpi-label">Bookmarked Qs</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-danger btn-sm" id="practiceMistakesBtn" ${(state.mistakes || []).length === 0 ? 'disabled' : ''}>
+              🔄 Re-Attempt Wrong Questions (${(state.mistakes || []).length})
+            </button>
+            <button class="btn btn-navy btn-sm" id="practiceBookmarksBtn" ${(state.bookmarks || []).length === 0 ? 'disabled' : ''}>
+              🔖 Practice Bookmarked Qs (${(state.bookmarks || []).length})
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Subject & Chapter Wise Drill Grid -->
+      <div class="card">
+        <h3 style="font-size:1rem;font-weight:800;margin-bottom:12px;">📖 Subject &amp; Topic-Wise Practice Modules</h3>
+        <div class="grid-2">
+          ${subjects.map((s) => `
+            <div style="padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--surface-alt);">
+              <div style="font-weight:800;font-size:0.95rem;">${esc(s.titleHi)}</div>
+              <div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:8px;">${esc(s.titleEn)}</div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
+                ${(s.topics || []).map((top) => `
+                  <button class="filter-chip" data-drill-topic="${esc(top)}" style="font-size:0.72rem;padding:4px 10px;">
+                    ▶️ ${esc(top)}
+                  </button>
+                `).join('')}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+
+      <!-- Bookmarked Questions List -->
+      ${(state.bookmarks || []).length > 0 ? `
+        <div class="card">
+          <h3 style="font-size:1rem;font-weight:800;margin-bottom:10px;">🔖 Saved Bookmarked Questions (${state.bookmarks.length})</h3>
+          <div style="display:grid;gap:10px;">
+            ${state.bookmarks.map((bm, i) => `
+              <div style="padding:12px;border:1px solid var(--border);border-radius:10px;">
+                <div style="font-weight:700;font-size:0.9rem;">Q${i + 1}. ${esc(bm.questionHi)}</div>
+                <div style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:6px;">${esc(bm.questionEn)}</div>
+                <div style="font-size:0.8rem;color:var(--success);font-weight:700;">
+                  ✓ Correct Answer: ${esc((bm.optionsHi && bm.optionsHi[bm.correctOptionIndex]) || '')} (${esc((bm.optionsEn && bm.optionsEn[bm.correctOptionIndex]) || '')})
+                </div>
+                <div style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;">💡 ${esc(bm.explanationHi)}</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : ''}
+    `;
+
+    document.getElementById('launchCustomPracticeBtn').onclick = () => {
+      const subj = document.getElementById('pracSubjectSelect').value;
+      const count = Number(document.getElementById('pracQuestionCount').value || 10);
+      const dur = Number(document.getElementById('pracDurationMin').value || 15);
+      const qs = generateHighYieldBilingualQuestions('prac_' + Date.now(), subj, count, '');
+      window.CGpediaCBT.openPreTestInstructions({
+        id: 'practice_' + Date.now(),
+        examCode: state.selectedExamFilter === 'ALL' ? 'CGPSC' : state.selectedExamFilter,
+        titleHi: `अभ्यास सत्र: ${subj}`,
+        titleEn: `Practice Session: ${subj}`,
+        topic: subj,
+        durationMinutes: dur,
+        marksPerQuestion: 2,
+        negativeMarking: 0.66
+      }, qs, cbtCallbacks);
+    };
+
+    root.querySelectorAll('[data-drill-topic]').forEach((btn) => {
+      btn.onclick = () => {
+        const topic = btn.getAttribute('data-drill-topic');
+        const qs = generateHighYieldBilingualQuestions('drill_' + Date.now(), topic, 10, '');
+        window.CGpediaCBT.openPreTestInstructions({
+          id: 'drill_' + Date.now(),
+          examCode: 'CGPSC',
+          titleHi: `टॉपिक अभ्यास: ${topic}`,
+          titleEn: `Topic Drill: ${topic}`,
+          topic,
+          durationMinutes: 15,
+          marksPerQuestion: 2,
+          negativeMarking: 0.66
+        }, qs, cbtCallbacks);
+      };
     });
 
-    ['copy', 'cut', 'dragstart'].forEach((evt) => {
-      document.addEventListener(evt, (e) => {
-        if (state.config.screenshotProtection) {
-          e.preventDefault();
-          showToast('🛡️ Content copying is disabled by Admin security policy.');
-        }
-      });
-    });
+    const pracMistakes = document.getElementById('practiceMistakesBtn');
+    if (pracMistakes) {
+      pracMistakes.onclick = () => {
+        window.CGpediaCBT.openPreTestInstructions({
+          id: 'mistakes_' + Date.now(),
+          examCode: 'REVISION',
+          titleHi: 'मिस्टेक नोटबुक रिवीजन टेस्ट',
+          titleEn: 'Mistake Notebook Revision Test',
+          topic: 'Previously Incorrect Questions',
+          durationMinutes: Math.max(10, state.mistakes.length * 2),
+          marksPerQuestion: 2,
+          negativeMarking: 0.66
+        }, state.mistakes, cbtCallbacks);
+      };
+    }
 
-    document.addEventListener('keydown', (e) => {
-      if (!state.config.screenshotProtection) return;
-      if (
-        e.key === 'PrintScreen' ||
-        (e.ctrlKey && ['p', 's', 'u', 'c'].includes(e.key.toLowerCase())) ||
-        (e.metaKey && e.shiftKey && ['s', '3', '4', '5'].includes(e.key.toLowerCase()))
-      ) {
-        e.preventDefault();
-        document.body.classList.add('window-blurred');
-        showToast('🛡️ Screenshot & Screen Capture Restricted!');
-      }
-    });
-
-    window.addEventListener('blur', () => {
-      if (state.config.screenshotProtection && activeExamSession) {
-        document.body.classList.add('window-blurred');
-      }
-    });
-
-    window.addEventListener('focus', () => {
-      document.body.classList.remove('window-blurred');
-    });
-
-    document.querySelector('.security-blur-overlay')?.addEventListener('click', () => {
-      document.body.classList.remove('window-blurred');
-    });
+    const pracBm = document.getElementById('practiceBookmarksBtn');
+    if (pracBm) {
+      pracBm.onclick = () => {
+        window.CGpediaCBT.openPreTestInstructions({
+          id: 'bookmarks_' + Date.now(),
+          examCode: 'REVISION',
+          titleHi: 'बुकमार्क प्रश्न रिवीजन टेस्ट',
+          titleEn: 'Bookmarked Questions Revision Test',
+          topic: 'Saved Bookmarks',
+          durationMinutes: Math.max(10, state.bookmarks.length * 2),
+          marksPerQuestion: 2,
+          negativeMarking: 0.66
+        }, state.bookmarks, cbtCallbacks);
+      };
+    }
   }
 
-  function initHeaderListeners() {
-    document.querySelectorAll('.nav-tab').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        if (activeExamSession && !activeExamSession.submitted) {
-          showToast('Please submit or exit your active exam first.');
-          return;
-        }
-        activeExamSession = null;
-        state.activeTab = btn.dataset.tab;
+  // =========================================================================
+  // 4. Post-Test Results, Bilingual Solutions & Performance Analytics
+  // =========================================================================
+  function renderResultsAndAnalytics(root) {
+    const attempts = state.attempts || [];
+    if (attempts.length === 0) {
+      root.innerHTML = `
+        <div class="card" style="text-align:center;padding:36px 20px;">
+          <div style="font-size:2.5rem;margin-bottom:8px;">📊</div>
+          <h2 style="font-size:1.15rem;font-weight:800;margin-bottom:6px;">No Exam Attempts Recorded Yet</h2>
+          <p style="font-size:0.85rem;color:var(--text-secondary);max-width:440px;margin:0 auto 16px;">
+            जब आप कोई मॉक टेस्ट, प्रैक्टिस सेट या डेली क्विज़ सबमिट करेंगे, तो आपका स्कोरकार्ड, विषय-वार सटीकता (Subject Accuracy), समय विश्लेषण और विस्तृत द्विभाषी समाधान यहाँ दिखाई देंगे।
+          </p>
+          <button class="btn btn-primary" id="analyticsStartPracticeBtn">🎯 Take a Quick Practice Test</button>
+        </div>
+      `;
+      document.getElementById('analyticsStartPracticeBtn').onclick = () => {
+        state.activeTab = 'practice';
         saveState();
         renderApp();
+      };
+      return;
+    }
+
+    const activeAttempt = attempts.find((a) => a.id === state.activeResultId) || attempts[0];
+    const avgAccuracy = Math.round(attempts.reduce((s, a) => s + Number(a.accuracyPercent || 0), 0) / attempts.length);
+    const totalQsSolved = attempts.reduce((s, a) => s + Number(a.attemptedCount || 0), 0);
+
+    // Aggregate subject-wise accuracy across all attempts for Strengths & Weaknesses
+    const aggSubj = {};
+    attempts.forEach((att) => {
+      Object.entries(att.subjectStats || {}).forEach(([subj, st]) => {
+        if (!aggSubj[subj]) aggSubj[subj] = { total: 0, attempted: 0, correct: 0 };
+        aggSubj[subj].total += Number(st.total || 0);
+        aggSubj[subj].attempted += Number(st.attempted || 0);
+        aggSubj[subj].correct += Number(st.correct || 0);
       });
     });
 
-    document.getElementById('brandHomeTrigger')?.addEventListener('click', () => {
-      if (activeExamSession && !activeExamSession.submitted) return;
-      activeExamSession = null;
-      state.activeTab = 'dashboard';
-      state.selectedFolderId = null;
-      saveState();
-      renderApp();
-    });
+    const questions = activeAttempt.questionsSnapshot || [];
+    const answers = activeAttempt.selectedAnswers || {};
 
-    document.getElementById('themeSwitchBtn')?.addEventListener('click', () => {
-      state.theme = state.theme === 'dark' ? 'light' : 'dark';
-      saveState();
-      renderApp();
-    });
+    root.innerHTML = `
+      <!-- Overall Cumulative Analytics KPIs -->
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-value">${attempts.length}</div>
+          <div class="kpi-label">Tests Completed</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-value" style="color:var(--success);">${avgAccuracy}%</div>
+          <div class="kpi-label">Overall Accuracy</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-value">${totalQsSolved}</div>
+          <div class="kpi-label">Questions Attempted</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-value" style="color:var(--secondary);">Top ${Math.max(1, 100 - avgAccuracy)}%</div>
+          <div class="kpi-label">Estimated Percentile</div>
+        </div>
+      </div>
 
-    document.getElementById('studentProfileBtn')?.addEventListener('click', openStudentProfileModal);
-    document.getElementById('anthemToggleBtn')?.addEventListener('click', toggleAnthem);
+      <!-- Attempt Switcher -->
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+          <div>
+            <span class="badge badge-exam">${esc(activeAttempt.examCode || 'CBT RESULT')}</span>
+            <h2 style="font-size:1.15rem;font-weight:800;margin-top:4px;">${esc(activeAttempt.testTitleHi)}</h2>
+            <div style="font-size:0.78rem;color:var(--text-muted);">Submitted on ${new Date(activeAttempt.submittedAtIso).toLocaleString()}</div>
+          </div>
+          <select class="form-select" id="analyticsSelectAttempt" style="width:auto;min-width:240px;">
+            ${attempts.map((a) => `
+              <option value="${esc(a.id)}" ${a.id === activeAttempt.id ? 'selected' : ''}>
+                ${esc(a.testTitleHi)} — Score: ${a.score}/${a.maxScore} (${a.accuracyPercent}%)
+              </option>
+            `).join('')}
+          </select>
+        </div>
+
+        <!-- Detailed Scorecard Grid -->
+        <div class="kpi-grid" style="margin-bottom:14px;">
+          <div class="kpi-card" style="border-color:var(--secondary);">
+            <div class="kpi-value" style="color:var(--secondary);">${activeAttempt.score} <span style="font-size:0.9rem;color:var(--text-muted);">/ ${activeAttempt.maxScore}</span></div>
+            <div class="kpi-label">Net Score (After Neg)</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-value" style="color:var(--success);">${activeAttempt.correctCount}</div>
+            <div class="kpi-label">Correct (+${activeAttempt.positiveMarks || 0})</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-value" style="color:var(--danger);">${activeAttempt.incorrectCount}</div>
+            <div class="kpi-label">Incorrect (-${activeAttempt.negativeDeduction || 0})</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-value">${activeAttempt.unattemptedCount}</div>
+            <div class="kpi-label">Unattempted</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-value">${activeAttempt.accuracyPercent}%</div>
+            <div class="kpi-label">Test Accuracy</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-value">${Math.floor((activeAttempt.timeTakenSeconds || 0) / 60)}m ${(activeAttempt.timeTakenSeconds || 0) % 60}s</div>
+            <div class="kpi-label">Time Taken</div>
+          </div>
+        </div>
+
+        <!-- Subject-Wise Performance Breakdown Chart -->
+        <h3 style="font-size:0.94rem;font-weight:800;margin-bottom:10px;">📈 Subject &amp; Topic-Wise Accuracy Diagnostic</h3>
+        <div style="display:grid;gap:10px;">
+          ${Object.entries(aggSubj).map(([subj, st]) => {
+            const acc = st.attempted > 0 ? Math.round((st.correct / st.attempted) * 100) : 0;
+            const barColor = acc >= 70 ? '#16A34A' : acc >= 45 ? '#D97706' : '#DC2626';
+            const statusTag = acc >= 70 ? 'Strong Area 💪' : acc >= 45 ? 'Moderate ⚡' : 'Needs Revision 🎯';
+            return `
+              <div>
+                <div style="display:flex;justify-content:space-between;font-size:0.8rem;font-weight:700;margin-bottom:4px;">
+                  <span>${esc(subj)} (${st.correct}/${st.attempted} correct)</span>
+                  <span style="color:${barColor};">${acc}% — ${statusTag}</span>
+                </div>
+                <div class="progress-track">
+                  <div class="progress-fill" style="width:${acc}%;background:${barColor};"></div>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+
+      <!-- Detailed Bilingual Solutions & Explanations -->
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+          <h3 style="font-size:1.02rem;font-weight:800;">📖 Detailed Bilingual Answer Key &amp; Explanations</h3>
+          <div class="chip-row" style="margin-bottom:0;">
+            ${['ALL', 'CORRECT', 'INCORRECT', 'UNATTEMPTED'].map((flt) => `
+              <button class="filter-chip ${state.solutionFilter === flt ? 'active' : ''}" data-sol-filter="${flt}" style="padding:4px 11px;font-size:0.74rem;">
+                ${flt}
+              </button>
+            `).join('')}
+          </div>
+        </div>
+
+        <div style="display:grid;gap:12px;">
+          ${questions.map((q, idx) => {
+            const chosen = answers[idx];
+            const isAttempted = chosen !== undefined && chosen !== null;
+            const isCorrect = isAttempted && Number(chosen) === Number(q.correctOptionIndex);
+            if (state.solutionFilter === 'CORRECT' && !isCorrect) return '';
+            if (state.solutionFilter === 'INCORRECT' && (!isAttempted || isCorrect)) return '';
+            if (state.solutionFilter === 'UNATTEMPTED' && isAttempted) return '';
+
+            const statusBadge = !isAttempted
+              ? `<span class="badge badge-draft">⚪ Unattempted</span>`
+              : isCorrect
+                ? `<span class="badge badge-free">✅ Correct</span>`
+                : `<span class="badge badge-live">❌ Incorrect</span>`;
+
+            return `
+              <div style="padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--surface-alt);">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <span class="badge badge-exam">Q${idx + 1}</span>
+                    ${statusBadge}
+                    <span class="badge badge-draft">${esc(q.subjectTag || 'GS')}</span>
+                  </div>
+                  <div style="font-size:0.75rem;color:var(--text-muted);">
+                    ⏱️ Time Spent: <strong>${(activeAttempt.questionTimeSec && activeAttempt.questionTimeSec[idx]) || 0}s</strong>
+                  </div>
+                </div>
+
+                <div style="font-weight:700;font-size:0.94rem;margin-bottom:4px;">${esc(q.questionHi)}</div>
+                <div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:10px;">${esc(q.questionEn)}</div>
+
+                <div style="display:grid;gap:6px;margin-bottom:10px;">
+                  ${[0, 1, 2, 3].map((oIdx) => {
+                    const isRight = Number(q.correctOptionIndex) === oIdx;
+                    const isUserPick = isAttempted && Number(chosen) === oIdx;
+                    const bg = isRight ? 'var(--success-soft)' : isUserPick ? 'var(--danger-soft)' : 'var(--surface)';
+                    const border = isRight ? 'var(--success)' : isUserPick ? 'var(--danger)' : 'var(--border)';
+                    return `
+                      <div style="padding:8px 12px;border-radius:8px;border:1.5px solid ${border};background:${bg};font-size:0.84rem;display:flex;justify-content:space-between;gap:8px;">
+                        <span><strong>${['A', 'B', 'C', 'D'][oIdx]}.</strong> ${esc((q.optionsHi && q.optionsHi[oIdx]) || '')} / ${esc((q.optionsEn && q.optionsEn[oIdx]) || '')}</span>
+                        <span>${isRight ? '✅ Correct Answer' : isUserPick ? '❌ Your Answer' : ''}</span>
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
+
+                <div style="padding:10px 12px;border-radius:8px;background:var(--secondary-soft);font-size:0.82rem;">
+                  <strong>💡 विस्तृत व्याख्या / Explanation:</strong>
+                  <div style="margin-top:3px;">${esc(q.explanationHi || '')}</div>
+                  ${q.explanationEn && q.explanationEn !== q.explanationHi ? `<div style="margin-top:3px;color:var(--text-secondary);">${esc(q.explanationEn)}</div>` : ''}
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `;
+
+    const selAtt = document.getElementById('analyticsSelectAttempt');
+    if (selAtt) {
+      selAtt.onchange = () => {
+        state.activeResultId = selAtt.value;
+        saveState();
+        renderResultsAndAnalytics(root);
+      };
+    }
+
+    root.querySelectorAll('[data-sol-filter]').forEach((btn) => {
+      btn.onclick = () => {
+        state.solutionFilter = btn.getAttribute('data-sol-filter');
+        saveState();
+        renderResultsAndAnalytics(root);
+      };
+    });
   }
 
-  // Boot Application
-  initPwaSupport();
-  initHeaderListeners();
-  initDynamicSecurityListeners();
-  renderApp();
+  // =========================================================================
+  // 5. Leaderboard View
+  // =========================================================================
+  function renderLeaderboardView(root) {
+    const entries = [...(state.leaderboard || [])].sort((a, b) => Number(b.score || 0) - Number(a.score || 0));
+
+    root.innerHTML = `
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+          <div>
+            <h1 style="font-size:1.15rem;font-weight:800;">🏆 All-India &amp; State Merit Leaderboard</h1>
+            <p style="font-size:0.8rem;color:var(--text-secondary);">Live rankings based on verified CBT test submissions</p>
+          </div>
+          <label style="display:flex;align-items:center;gap:6px;font-size:0.8rem;cursor:pointer;">
+            <input type="checkbox" id="leaderboardPrivacyToggle" ${state.student.leaderboardPublic !== false ? 'checked' : ''} />
+            Show my name publicly on Leaderboard
+          </label>
+        </div>
+
+        ${entries.length === 0 ? `
+          <div style="text-align:center;padding:30px 16px;color:var(--text-muted);">
+            No leaderboard rankings recorded yet. Complete your first CBT test to appear on the Merit List!
+          </div>
+        ` : `
+          <div style="display:grid;gap:8px;">
+            ${entries.slice(0, 50).map((e, idx) => {
+              const rank = idx + 1;
+              const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`;
+              return `
+                <div style="padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:${rank <= 3 ? 'var(--secondary-soft)' : 'var(--surface-alt)'};display:flex;align-items:center;justify-content:space-between;gap:10px;">
+                  <div style="display:flex;align-items:center;gap:12px;">
+                    <div style="font-size:1.1rem;font-weight:800;min-width:34px;">${medal}</div>
+                    <div>
+                      <div style="font-weight:800;font-size:0.92rem;">${esc(e.studentName)}</div>
+                      <div style="font-size:0.75rem;color:var(--text-muted);">${esc(e.testTitle)} • Accuracy: ${e.accuracyPercent}%</div>
+                    </div>
+                  </div>
+                  <div style="text-align:right;">
+                    <div style="font-weight:800;font-size:1rem;color:var(--secondary);">${e.score} / ${e.maxScore}</div>
+                    <div style="font-size:0.72rem;color:var(--text-muted);">${Math.floor((e.timeTakenSeconds || 0) / 60)}m ${(e.timeTakenSeconds || 0) % 60}s</div>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        `}
+      </div>
+    `;
+
+    const privToggle = document.getElementById('leaderboardPrivacyToggle');
+    if (privToggle) {
+      privToggle.onchange = () => {
+        state.student.leaderboardPublic = privToggle.checked;
+        saveState();
+        toast('🔒 Leaderboard privacy preference updated.');
+      };
+    }
+  }
+
+  // =========================================================================
+  // 6. Current Affairs View
+  // =========================================================================
+  function renderCurrentAffairsView(root) {
+    const stories = state.stories || [];
+    root.innerHTML = `
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+          <div>
+            <h1 style="font-size:1.15rem;font-weight:800;">⚡ Bilingual Current Affairs Digest &amp; Instant Quiz</h1>
+            <p style="font-size:0.8rem;color:var(--text-secondary);">Chhattisgarh • National (PIB) • International &amp; Science</p>
+          </div>
+          <button class="btn btn-primary" id="caPageLaunchQuizBtn">🎯 Start 10-Q Current Affairs CBT Quiz</button>
+        </div>
+
+        ${stories.length === 0 ? `
+          <p style="font-size:0.85rem;color:var(--text-muted);">Click <strong>Start 10-Q Current Affairs CBT Quiz</strong> above to practice today's high-yield bilingual Current Affairs questions.</p>
+        ` : `
+          <div class="grid-2">
+            ${stories.map((st) => `
+              <div class="card" style="margin-bottom:0;background:var(--surface-alt);">
+                <span class="badge badge-exam">${esc(st.category || 'Current Affairs').toUpperCase()}</span>
+                <h3 style="font-size:0.98rem;font-weight:800;margin-top:6px;">${esc(st.headlineHi)}</h3>
+                <div style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:8px;">${esc(st.headlineEn)}</div>
+                <p style="font-size:0.82rem;line-height:1.55;">${esc(st.summaryHi)}</p>
+                <div style="font-size:0.72rem;color:var(--text-muted);margin-top:8px;">Source: ${esc(st.sourceName || 'Official PIB / DPR')}</div>
+              </div>
+            `).join('')}
+          </div>
+        `}
+      </div>
+    `;
+
+    document.getElementById('caPageLaunchQuizBtn').onclick = () => launchInstantDailyQuiz();
+  }
+
+  // =========================================================================
+  // 7. Notifications & Private Student Doubt/Support Desk
+  // =========================================================================
+  function renderNotificationsAndSupport(root) {
+    const myQueries = (state.queries || []).filter((q) => q.studentEmail === state.student.email || q.userId === state.student.uid);
+
+    root.innerHTML = `
+      <div class="grid-2">
+        <div class="card">
+          <h2 style="font-size:1.05rem;font-weight:800;margin-bottom:12px;">📢 Official Announcements &amp; Exam Alerts</h2>
+          ${(state.notifications || []).length === 0 ? `
+            <p style="font-size:0.84rem;color:var(--text-muted);">No announcements posted yet.</p>
+          ` : `
+            <div style="display:grid;gap:10px;">
+              ${state.notifications.map((n) => `
+                <div style="padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--surface-alt);">
+                  ${n.isPinned ? `<span class="badge badge-exam">📌 PINNED</span>` : ''}
+                  <div style="font-weight:800;font-size:0.94rem;margin-top:4px;">${esc(n.titleHi)}</div>
+                  <div style="font-size:0.83rem;color:var(--text-secondary);margin-top:4px;">${esc(n.messageHi)}</div>
+                </div>
+              `).join('')}
+            </div>
+          `}
+        </div>
+
+        <div class="card">
+          <h2 style="font-size:1.05rem;font-weight:800;margin-bottom:10px;">💬 Ask Doubt / Payment Support Desk</h2>
+          <div class="form-group">
+            <label class="form-label">Category</label>
+            <select class="form-select" id="stuQueryCategory">
+              <option value="doubt">Academic / Question Doubt</option>
+              <option value="payment">UPI Payment / Package Activation</option>
+              <option value="technical">Technical Support</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Subject</label>
+            <input class="form-input" id="stuQuerySubject" placeholder="Brief subject..." />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Message Details</label>
+            <textarea class="form-textarea" id="stuQueryMessage" rows="3" placeholder="Write your question or payment reference..."></textarea>
+          </div>
+          <button class="btn btn-primary" id="stuSubmitQueryBtn">📨 Send Private Query to Admin</button>
+
+          ${myQueries.length > 0 ? `
+            <div style="margin-top:16px;">
+              <h3 style="font-size:0.88rem;font-weight:800;margin-bottom:8px;">Your Previous Queries:</h3>
+              <div style="display:grid;gap:8px;">
+                ${myQueries.map((q) => `
+                  <div style="padding:10px;border-radius:8px;background:var(--surface-alt);font-size:0.82rem;">
+                    <div><strong>${esc(q.subject)}</strong> — <span class="badge ${q.status === 'resolved' ? 'badge-free' : 'badge-paid'}">${esc(q.status)}</span></div>
+                    <div style="margin-top:3px;">${esc(q.message)}</div>
+                    ${q.adminReply ? `<div style="margin-top:6px;padding:6px 8px;border-radius:6px;background:var(--secondary-soft);"><strong>🛡️ Admin Reply:</strong> ${esc(q.adminReply)}</div>` : ''}
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          ` : ''}
+        </div>
+      </div>
+    `;
+
+    document.getElementById('stuSubmitQueryBtn').onclick = () => {
+      const subj = document.getElementById('stuQuerySubject').value.trim();
+      const msg = document.getElementById('stuQueryMessage').value.trim();
+      if (!subj || !msg) {
+        toast('कृपया विषय और संदेश दर्ज करें।');
+        return;
+      }
+      const qObj = {
+        id: 'qry_' + Date.now(),
+        userId: state.student.uid,
+        studentName: state.student.name,
+        studentEmail: state.student.email || 'student@cgpedia.in',
+        category: document.getElementById('stuQueryCategory').value,
+        subject: subj,
+        message: msg,
+        adminReply: '',
+        status: 'open',
+        createdAtIso: new Date().toISOString()
+      };
+      state.queries.unshift(qObj);
+      saveState();
+      if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('student_queries', qObj.id, qObj);
+      toast('✅ Your query has been submitted to the Admin Desk!');
+      renderNotificationsAndSupport(root);
+    };
+  }
+
+  // =========================================================================
+  // 8. Student Profile, Purchases, Validity Countdown & Firebase Google Auth
+  // =========================================================================
+  function renderProfileAndSettings(root) {
+    const email = String(state.student.email || '').trim().toLowerCase();
+    const uid = String(state.student.uid || '').trim().toLowerCase();
+    const myActivations = (state.activations || []).filter((a) => {
+      const idm = String(a.studentIdentifier || '').toLowerCase();
+      return idm === email || idm === uid;
+    });
+
+    root.innerHTML = `
+      <div class="grid-2">
+        <div class="card">
+          <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;">
+            <img src="assets/cgpedia-logo-clean.png" alt="CGpedia" style="width:60px;height:60px;border-radius:50%;object-fit:cover;border:2px solid var(--secondary);" />
+            <div>
+              <h2 style="font-size:1.1rem;font-weight:800;">${esc(state.student.name)}</h2>
+              <div style="font-size:0.8rem;color:var(--text-secondary);">User ID: <strong>${esc(state.student.uid)}</strong></div>
+              <div style="font-size:0.8rem;color:var(--text-muted);">${esc(state.student.email || 'Not signed in with email yet')}</div>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+            <button class="btn btn-primary btn-sm" id="profGoogleSignInBtn">🔐 Sign In with Google (Firebase)</button>
+            <button class="btn btn-outline btn-sm" id="profTargetExamsBtn">🎯 Change Target Exams</button>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Full Name / पूरा नाम</label>
+            <input class="form-input" id="profNameInput" value="${esc(state.student.name)}" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Registered Email ID (Used for Paid Package Activation &amp; Admin Verify)</label>
+            <input class="form-input" id="profEmailInput" value="${esc(state.student.email)}" placeholder="yourname@gmail.com" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Mobile / WhatsApp Number</label>
+            <input class="form-input" id="profPhoneInput" value="${esc(state.student.phone)}" placeholder="98XXXXXXXX" />
+          </div>
+          <button class="btn btn-success" id="profSaveProfileBtn">💾 Save Profile</button>
+        </div>
+
+        <div class="card">
+          <h3 style="font-size:1rem;font-weight:800;margin-bottom:12px;">🔓 My Activated Premium Packages &amp; Validity Countdown</h3>
+          ${myActivations.length === 0 ? `
+            <p style="font-size:0.84rem;color:var(--text-muted);margin-bottom:12px;">
+              You have no active paid subscriptions yet. When you unlock any Paid Test Series via UPI QR + WhatsApp Verification, your live validity countdown will appear here.
+            </p>
+          ` : `
+            <div style="display:grid;gap:10px;">
+              ${myActivations.map((act) => {
+                const remMs = Number(act.expiresAtMs || 0) - Date.now();
+                const remDays = Math.max(0, Math.ceil(remMs / 86400000));
+                const expired = remMs <= 0;
+                return `
+                  <div style="padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--surface-alt);">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                      <strong>${esc(act.targetTitle)}</strong>
+                      <span class="badge ${expired ? 'badge-live' : 'badge-free'}">${expired ? 'Expired' : remDays + ' Days Remaining'}</span>
+                    </div>
+                    <div style="font-size:0.76rem;color:var(--text-muted);margin-top:4px;">
+                      Activated: ${new Date(act.activatedAtMs).toLocaleDateString()} • Valid Until: ${new Date(act.expiresAtMs).toLocaleDateString()}
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          `}
+        </div>
+      </div>
+    `;
+
+    document.getElementById('profSaveProfileBtn').onclick = () => {
+      state.student.name = document.getElementById('profNameInput').value.trim() || 'Aspirant';
+      state.student.email = document.getElementById('profEmailInput').value.trim().toLowerCase();
+      state.student.phone = document.getElementById('profPhoneInput').value.trim();
+      saveState();
+      if (window.CGpediaCloud) {
+        window.CGpediaCloud.saveCloudDoc('users', state.student.uid, {
+          userId: state.student.uid,
+          displayName: state.student.name,
+          email: state.student.email,
+          phoneNumber: state.student.phone,
+          role: isCurrentUserAdmin() ? 'admin' : 'student'
+        });
+      }
+      toast('✅ Profile updated & synced!');
+      renderApp();
+    };
+
+    const gSignInBtn = document.getElementById('profGoogleSignInBtn');
+    if (gSignInBtn) {
+      gSignInBtn.onclick = async () => {
+        try {
+          if (window.CGpediaCloud) {
+            const fbUser = await window.CGpediaCloud.signInWithGooglePopup();
+            if (fbUser) handleFirebaseAuthUser(fbUser);
+          }
+        } catch (err) {
+          toast('ℹ️ Enter your registered Google email below and click Save Profile.');
+        }
+      };
+    }
+
+    const targBtn = document.getElementById('profTargetExamsBtn');
+    if (targBtn) targBtn.onclick = () => openOnboardingModal();
+  }
+
+  function renderAdminGatePrompt(root) {
+    root.innerHTML = `
+      <div class="card" style="max-width:500px;margin:24px auto;text-align:center;">
+        <img src="assets/cgpedia-logo-clean.png" alt="CGpedia" style="width:68px;height:68px;border-radius:50%;object-fit:cover;margin-bottom:10px;" />
+        <h2 style="font-size:1.15rem;font-weight:800;margin-bottom:6px;">🛡️ Owner Admin Verification</h2>
+        <p style="font-size:0.84rem;color:var(--text-secondary);margin-bottom:14px;">
+          Admin Panel is strictly restricted to the verified Owner Admin (<strong>${OWNER_ADMIN_EMAIL}</strong>) and authorized staff.
+        </p>
+        <div class="form-group" style="text-align:left;">
+          <label class="form-label">Verify Owner Email ID</label>
+          <input class="form-input" id="gateAdminEmailInput" value="${esc(state.student.email)}" placeholder="usahu0304@gmail.com" />
+        </div>
+        <button class="btn btn-primary" style="width:100%;" id="gateVerifyAdminBtn">🔓 Verify &amp; Open Admin Panel</button>
+      </div>
+    `;
+    document.getElementById('gateVerifyAdminBtn').onclick = () => {
+      const entered = document.getElementById('gateAdminEmailInput').value.trim().toLowerCase();
+      state.student.email = entered;
+      saveState();
+      if (isCurrentUserAdmin()) {
+        toast('🛡️ Welcome to CGpedia Master Admin Console!');
+        renderApp();
+      } else {
+        toast('⛔ Access Denied: Only usahu0304@gmail.com or delegated staff can access Admin Panel.');
+      }
+    };
+  }
+
+  // =========================================================================
+  // Student Payment Popup (UPI QR + Coupon + WhatsApp Verification)
+  // =========================================================================
+  function openStudentPaymentModal(targetId, targetType) {
+    const item = targetType === 'folder'
+      ? (state.folders || []).find((f) => f.id === targetId)
+      : (state.tests || []).find((t) => t.id === targetId);
+    if (!item) return;
+
+    const modalRoot = document.getElementById('genericModalContainer');
+    if (!modalRoot) return;
+
+    let basePrice = Number(item.priceInr || 99);
+    let finalPrice = basePrice;
+    let appliedCouponCode = '';
+    const validityDays = Number(item.validityDays || 180);
+    const upiId = state.config.upiId || '9238810070@upi';
+    const waNum = String(state.config.whatsappNumber || '9238810070').replace(/\D/g, '');
+    const waPhone = waNum.length === 10 ? '91' + waNum : waNum;
+
+    function renderModalContent() {
+      const waText = encodeURIComponent(
+        `नमस्ते CGpedia Admin,\nमैंने पेमेंट कर दिया है। कृपया मेरा पैकेज एक्टिवेट करें:\n` +
+        `• Package: ${item.titleHi} (${item.titleEn})\n` +
+        `• Amount: ₹${finalPrice}${appliedCouponCode ? ' (Coupon: ' + appliedCouponCode + ')' : ''}\n` +
+        `• Validity: ${validityDays} Days\n` +
+        `• Student Name: ${state.student.name}\n` +
+        `• Registered Email: ${state.student.email || 'Not set'}\n` +
+        `• User ID: ${state.student.uid}\n` +
+        `(पेमेंट स्क्रीनशॉट संलग्न है / Screenshot Attached)`
+      );
+
+      modalRoot.innerHTML = `
+        <div class="modal-backdrop">
+          <div class="modal-card" style="max-width:520px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+              <div>
+                <span class="badge badge-paid">PREMIUM PACKAGE UNLOCK</span>
+                <h2 style="font-size:1.12rem;font-weight:800;margin-top:3px;">${esc(item.titleHi)}</h2>
+              </div>
+              <button class="btn btn-outline btn-sm" id="closePayModalBtn">✕</button>
+            </div>
+
+            <div class="kpi-grid" style="grid-template-columns:1fr 1fr;margin-bottom:12px;">
+              <div class="kpi-card" style="padding:10px;text-align:center;">
+                <div class="kpi-value" style="color:var(--secondary);">₹${finalPrice} ${appliedCouponCode ? `<span style="font-size:0.8rem;text-decoration:line-through;color:var(--text-muted);">₹${basePrice}</span>` : ''}</div>
+                <div class="kpi-label">Payable Amount</div>
+              </div>
+              <div class="kpi-card" style="padding:10px;text-align:center;">
+                <div class="kpi-value">${validityDays} Days</div>
+                <div class="kpi-label">Validity (From Activation)</div>
+              </div>
+            </div>
+
+            <!-- Coupon Input -->
+            <div style="display:flex;gap:8px;margin-bottom:14px;">
+              <input class="form-input" id="payCouponInput" value="${esc(appliedCouponCode)}" placeholder="Have a Coupon Code? (e.g. CGPSC50)" style="padding:7px 11px;" />
+              <button class="btn btn-outline btn-sm" id="applyPayCouponBtn">🎟️ Apply</button>
+            </div>
+
+            <!-- UPI QR Code Box -->
+            <div style="text-align:center;padding:14px;border:1.5px dashed var(--border-strong);border-radius:12px;background:var(--surface-alt);margin-bottom:14px;">
+              ${state.config.upiQrImage ? `
+                <img src="${esc(state.config.upiQrImage)}" alt="Admin UPI QR Code" style="max-width:210px;max-height:210px;border-radius:10px;border:2px solid #fff;box-shadow:var(--shadow-sm);margin:0 auto 10px;display:block;" />
+                <a href="${esc(state.config.upiQrImage)}" download="CGpedia-UPI-QR.png" class="btn btn-outline btn-sm" style="margin-bottom:8px;">⬇️ Download QR Image</a>
+              ` : `
+                <div style="padding:18px;font-size:0.84rem;color:var(--text-secondary);">
+                  📲 Pay via any UPI App (GPay / PhonePe / Paytm) using the UPI ID below:
+                </div>
+              `}
+              <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:6px;">
+                <code style="padding:6px 12px;border-radius:6px;background:var(--surface);border:1px solid var(--border);font-weight:800;font-size:0.9rem;">${esc(upiId)}</code>
+                <button class="btn btn-primary btn-sm" id="copyUpiIdBtn">📋 Copy UPI ID</button>
+              </div>
+            </div>
+
+            <!-- Bilingual Instructions -->
+            <div style="padding:10px 12px;border-radius:8px;background:var(--secondary-soft);font-size:0.8rem;margin-bottom:14px;line-height:1.5;">
+              <div><strong>🇮🇳 निर्देश:</strong> QR कोड स्कैन करके पेमेंट करें, पेमेंट का स्क्रीनशॉट लें और तुरंत एक्टिवेशन के लिए नीचे दिए गए हरे WhatsApp बटन पर क्लिक करके स्क्रीनशॉट भेजें।</div>
+              <div style="margin-top:4px;color:var(--text-secondary);"><strong>🇬🇧 Instructions:</strong> Scan the QR to pay, take a payment screenshot, and click the WhatsApp button below to send the screenshot for instant activation.</div>
+            </div>
+
+            <a href="https://wa.me/${waPhone}?text=${waText}" target="_blank" rel="noopener" class="btn btn-success btn-lg" style="width:100%;">
+              💬 Send Payment Screenshot on WhatsApp (${esc(state.config.whatsappNumber || '9238810070')})
+            </a>
+          </div>
+        </div>
+      `;
+
+      document.getElementById('closePayModalBtn').onclick = () => { modalRoot.innerHTML = ''; };
+      document.getElementById('copyUpiIdBtn').onclick = () => {
+        try { navigator.clipboard.writeText(upiId); } catch (_) {}
+        toast('📋 UPI ID copied: ' + upiId);
+      };
+      document.getElementById('applyPayCouponBtn').onclick = () => {
+        const code = document.getElementById('payCouponInput').value.trim().toUpperCase();
+        const found = (state.coupons || []).find((c) => String(c.code).toUpperCase() === code);
+        if (!found) {
+          toast('⚠️ Invalid or expired coupon code.');
+          return;
+        }
+        appliedCouponCode = found.code;
+        finalPrice = Math.max(1, Math.round(basePrice * (1 - Number(found.discountPercent || 0) / 100)));
+        toast(`🎉 Coupon ${found.code} applied! (${found.discountPercent}% OFF)`);
+        renderModalContent();
+      };
+    }
+
+    renderModalContent();
+  }
+
+  // =========================================================================
+  // Onboarding & Exam Category Selection Modal
+  // =========================================================================
+  function openOnboardingModal() {
+    const modalRoot = document.getElementById('genericModalContainer');
+    if (!modalRoot) return;
+    const exams = window.CGpediaCloud ? window.CGpediaCloud.EXAM_CATEGORIES : [];
+    const selectedSet = new Set(state.student.targetExams || ['CGPSC']);
+
+    modalRoot.innerHTML = `
+      <div class="modal-backdrop">
+        <div class="modal-card" style="max-width:600px;">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+            <img src="assets/cgpedia-logo-clean.png" alt="CGpedia" style="width:52px;height:52px;border-radius:50%;object-fit:cover;border:2px solid var(--secondary);" />
+            <div>
+              <h2 style="font-size:1.15rem;font-weight:800;">Welcome to CGpedia — Personalize Your Prep</h2>
+              <p style="font-size:0.8rem;color:var(--text-secondary);">Select your Target Competitive Examinations &amp; Preferred Language</p>
+            </div>
+          </div>
+
+          <div class="grid-2" style="gap:10px;margin-bottom:12px;">
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">Your Name / आपका नाम</label>
+              <input class="form-input" id="onbNameInput" value="${esc(state.student.name)}" placeholder="Enter your full name" />
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">Email ID (For Cloud Sync &amp; Unlocks)</label>
+              <input class="form-input" id="onbEmailInput" value="${esc(state.student.email)}" placeholder="yourname@gmail.com" />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Select Target Examinations (Choose one or more):</label>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px;margin-top:6px;">
+              ${exams.map((ex) => `
+                <label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1.5px solid var(--border-strong);border-radius:8px;cursor:pointer;font-size:0.8rem;font-weight:700;">
+                  <input type="checkbox" class="onb-exam-check" value="${esc(ex.code)}" ${selectedSet.has(ex.code) ? 'checked' : ''} />
+                  <span>${esc(ex.icon)} ${esc(ex.nameEn)}</span>
+                </label>
+              `).join('')}
+            </div>
+          </div>
+
+          <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px;">
+            <button class="btn btn-primary btn-lg" id="saveOnboardingBtn">✅ Save &amp; Continue</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('saveOnboardingBtn').onclick = () => {
+      const name = document.getElementById('onbNameInput').value.trim() || 'Aspirant';
+      const email = document.getElementById('onbEmailInput').value.trim().toLowerCase();
+      const picks = [];
+      modalRoot.querySelectorAll('.onb-exam-check:checked').forEach((chk) => picks.push(chk.value));
+      state.student.name = name;
+      if (email) state.student.email = email;
+      state.student.targetExams = picks.length > 0 ? picks : ['CGPSC'];
+      state.onboarded = true;
+      saveState();
+      modalRoot.innerHTML = '';
+      renderApp();
+    };
+  }
+
+  // =========================================================================
+  // Admin Question Editor & Bulk Parser Helpers
+  // =========================================================================
+  function openQuestionEditorModal(testId, onDone) {
+    const testObj = (state.tests || []).find((t) => t.id === testId);
+    if (!testObj) return;
+    const modalRoot = document.getElementById('genericModalContainer');
+    if (!modalRoot) return;
+
+    function renderEditor() {
+      const qs = testObj.questions || [];
+      modalRoot.innerHTML = `
+        <div class="modal-backdrop">
+          <div class="modal-card" style="max-width:740px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+              <div>
+                <span class="badge ${testObj.status === 'published' ? 'badge-free' : 'badge-draft'}">${testObj.status.toUpperCase()}</span>
+                <h2 style="font-size:1.1rem;font-weight:800;margin-top:2px;">✏️ Question Editor: ${esc(testObj.titleHi)} (${qs.length} Qs)</h2>
+              </div>
+              <button class="btn btn-outline btn-sm" id="closeQEditorBtn">Done</button>
+            </div>
+
+            <div class="card" style="background:var(--surface-alt);padding:12px;margin-bottom:12px;">
+              <h3 style="font-size:0.88rem;font-weight:800;margin-bottom:8px;">➕ Add New Bilingual Question</h3>
+              <textarea class="form-textarea" id="qeQuestionHi" rows="2" placeholder="प्रश्न (हिन्दी में)..." style="margin-bottom:6px;"></textarea>
+              <textarea class="form-textarea" id="qeQuestionEn" rows="2" placeholder="Question (in English)..." style="margin-bottom:6px;"></textarea>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px;">
+                <input class="form-input" id="qeOpt0Hi" placeholder="विकल्प A (Hi)" />
+                <input class="form-input" id="qeOpt0En" placeholder="Option A (En)" />
+                <input class="form-input" id="qeOpt1Hi" placeholder="विकल्प B (Hi)" />
+                <input class="form-input" id="qeOpt1En" placeholder="Option B (En)" />
+                <input class="form-input" id="qeOpt2Hi" placeholder="विकल्प C (Hi)" />
+                <input class="form-input" id="qeOpt2En" placeholder="Option C (En)" />
+                <input class="form-input" id="qeOpt3Hi" placeholder="विकल्प D (Hi)" />
+                <input class="form-input" id="qeOpt3En" placeholder="Option D (En)" />
+              </div>
+              <div style="display:grid;grid-template-columns:140px 1fr auto;gap:6px;">
+                <select class="form-select" id="qeCorrectIdx">
+                  <option value="0">Correct: A</option>
+                  <option value="1">Correct: B</option>
+                  <option value="2">Correct: C</option>
+                  <option value="3">Correct: D</option>
+                </select>
+                <input class="form-input" id="qeExpHi" placeholder="व्याख्या / Explanation..." />
+                <button class="btn btn-primary" id="qeAddQuestionBtn">➕ Add</button>
+              </div>
+            </div>
+
+            <div style="max-height:300px;overflow-y:auto;display:grid;gap:8px;">
+              ${qs.map((q, idx) => `
+                <div style="padding:10px;border:1px solid var(--border);border-radius:8px;display:flex;justify-content:space-between;gap:8px;">
+                  <div style="font-size:0.84rem;">
+                    <strong>Q${idx + 1}.</strong> ${esc(q.questionHi)}
+                    <div style="color:var(--text-secondary);font-size:0.78rem;">${esc(q.questionEn)}</div>
+                    <div style="color:var(--success);font-size:0.76rem;font-weight:700;">Ans: Option ${['A', 'B', 'C', 'D'][q.correctOptionIndex || 0]}</div>
+                  </div>
+                  <button class="btn btn-danger btn-sm" data-del-test-q="${idx}">🗑️</button>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+      `;
+
+      document.getElementById('closeQEditorBtn').onclick = () => {
+        modalRoot.innerHTML = '';
+        if (onDone) onDone();
+      };
+
+      document.getElementById('qeAddQuestionBtn').onclick = () => {
+        const qHi = document.getElementById('qeQuestionHi').value.trim();
+        const qEn = document.getElementById('qeQuestionEn').value.trim() || qHi;
+        if (!qHi) return;
+        const exp = document.getElementById('qeExpHi').value.trim();
+        testObj.questions = testObj.questions || [];
+        testObj.questions.push({
+          id: `${testObj.id}_q_${Date.now()}`,
+          questionHi: qHi,
+          questionEn: qEn,
+          optionsHi: [
+            document.getElementById('qeOpt0Hi').value.trim() || 'विकल्प A',
+            document.getElementById('qeOpt1Hi').value.trim() || 'विकल्प B',
+            document.getElementById('qeOpt2Hi').value.trim() || 'विकल्प C',
+            document.getElementById('qeOpt3Hi').value.trim() || 'विकल्प D'
+          ],
+          optionsEn: [
+            document.getElementById('qeOpt0En').value.trim() || 'Option A',
+            document.getElementById('qeOpt1En').value.trim() || 'Option B',
+            document.getElementById('qeOpt2En').value.trim() || 'Option C',
+            document.getElementById('qeOpt3En').value.trim() || 'Option D'
+          ],
+          correctOptionIndex: Number(document.getElementById('qeCorrectIdx').value || 0),
+          explanationHi: exp || 'विस्तृत व्याख्या उपलब्ध है।',
+          explanationEn: exp || 'Detailed explanation available.',
+          subjectTag: testObj.topic || 'General Studies'
+        });
+        saveState();
+        if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('tests', testObj.id, testObj);
+        renderEditor();
+      };
+
+      modalRoot.querySelectorAll('[data-del-test-q]').forEach((btn) => {
+        btn.onclick = () => {
+          const idx = Number(btn.getAttribute('data-del-test-q'));
+          testObj.questions.splice(idx, 1);
+          saveState();
+          if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('tests', testObj.id, testObj);
+          renderEditor();
+        };
+      });
+    }
+
+    renderEditor();
+  }
+
+  function generateHighYieldBilingualQuestions(prefix, topic, count, customPrompt) {
+    const bank = [
+      {
+        subjectTag: 'Chhattisgarh GS',
+        questionHi: 'छत्तीसगढ़ राज्य का गठन किस संविधान संशोधन एवं पुनर्गठन अधिनियम के अंतर्गत 1 नवंबर 2000 को हुआ था?',
+        questionEn: 'Under which Reorganization Act was the state of Chhattisgarh formed on 1 November 2000?',
+        optionsHi: ['मध्यप्रदेश पुनर्गठन अधिनियम, 2000', 'राज्य पुनर्गठन अधिनियम, 1956', 'छत्तीसगढ़ स्वायत्तता अधिनियम, 1999', 'केंद्रीय प्रांत पुनर्गठन अधिनियम, 2000'],
+        optionsEn: ['Madhya Pradesh Reorganization Act, 2000', 'States Reorganization Act, 1956', 'Chhattisgarh Autonomy Act, 1999', 'Central Provinces Act, 2000'],
+        correctOptionIndex: 0,
+        explanationHi: 'मध्यप्रदेश पुनर्गठन अधिनियम, 2000 के तहत 1 नवंबर 2000 को देश के 26वें राज्य के रूप में छत्तीसगढ़ का गठन हुआ।',
+        explanationEn: 'Chhattisgarh was formed on 1 November 2000 as the 26th state of India under the Madhya Pradesh Reorganization Act, 2000.'
+      },
+      {
+        subjectTag: 'Chhattisgarh Geography',
+        questionHi: 'छत्तीसगढ़ की जीवनरेखा कहलाने वाली महानदी का उद्गम स्थल कौन-सा है?',
+        questionEn: 'Which is the origin place of the Mahanadi river, known as the lifeline of Chhattisgarh?',
+        optionsHi: ['सिहावा पर्वत (धमतरी)', 'अमरकंटक पठार', 'बैलाडीला पहाड़ी (दंतेवाड़ा)', 'मैनपाट पठार (सरगुजा)'],
+        optionsEn: ['Sihawa Hills (Dhamtari)', 'Amarkantak Plateau', 'Bailadila Hills (Dantewada)', 'Mainpat Plateau (Surguja)'],
+        correctOptionIndex: 0,
+        explanationHi: 'महानदी का उद्गम धमतरी जिले के सिहावा पर्वत (फरसिया ग्राम) से होता है।',
+        explanationEn: 'The Mahanadi river originates from the Sihawa mountains in Dhamtari district of Chhattisgarh.'
+      },
+      {
+        subjectTag: 'Indian Polity',
+        questionHi: 'भारतीय संविधान के किस अनुच्छेद के अंतर्गत ग्राम पंचायतों के संगठन का प्रावधान किया गया है?',
+        questionEn: 'Which Article of the Indian Constitution provides for the organization of Village Panchayats?',
+        optionsHi: ['अनुच्छेद 40', 'अनुच्छेद 44', 'अनुच्छेद 48', 'अनुच्छेद 51A'],
+        optionsEn: ['Article 40', 'Article 44', 'Article 48', 'Article 51A'],
+        correctOptionIndex: 0,
+        explanationHi: 'राज्य के नीति निदेशक तत्वों के अंतर्गत अनुच्छेद 40 ग्राम पंचायतों के संगठन से संबंधित है।',
+        explanationEn: 'Article 40 under the Directive Principles of State Policy directs the State to organize Village Panchayats.'
+      },
+      {
+        subjectTag: 'Chhattisgarh History & Culture',
+        questionHi: 'छत्तीसगढ़ में कल्चुरि वंश की प्रथम राजधानी निम्नलिखित में से कौन-सी थी?',
+        questionEn: 'Which of the following was the first capital of the Kalchuri dynasty in Chhattisgarh?',
+        optionsHi: ['तुम्माण', 'रतनपुर', 'रायपुर', 'सिरपुर'],
+        optionsEn: ['Tumman', 'Ratanpur', 'Raipur', 'Sirpur'],
+        correctOptionIndex: 0,
+        explanationHi: 'कलिंगराज ने 1000 ई. में तुम्माण को छत्तीसगढ़ में कल्चुरि वंश की प्रथम राजधानी बनाया था।',
+        explanationEn: 'Kalingaraj established Tumman as the first capital of the Kalchuri dynasty in Chhattisgarh around 1000 AD.'
+      },
+      {
+        subjectTag: 'Indian Economy',
+        questionHi: 'भारत में मौद्रिक नीति समिति (MPC) का पदेन अध्यक्ष कौन होता है?',
+        questionEn: 'Who is the ex-officio Chairperson of the Monetary Policy Committee (MPC) in India?',
+        optionsHi: ['भारतीय रिज़र्व बैंक (RBI) के गवर्नर', 'केंद्रीय वित्त मंत्री', 'नीति आयोग के उपाध्यक्ष', 'मुख्य आर्थिक सलाहकार'],
+        optionsEn: ['Governor of the Reserve Bank of India (RBI)', 'Union Finance Minister', 'Vice Chairperson of NITI Aayog', 'Chief Economic Adviser'],
+        correctOptionIndex: 0,
+        explanationHi: 'आरबीआई अधिनियम, 1934 की धारा 45ZB के तहत RBI गवर्नर मौद्रिक नीति समिति के पदेन अध्यक्ष होते हैं।',
+        explanationEn: 'Under Section 45ZB of the RBI Act, 1934, the Governor of RBI serves as the ex-officio Chairperson of the 6-member MPC.'
+      },
+      {
+        subjectTag: 'General Science',
+        questionHi: 'मानव शरीर की सबसे बड़ी ग्रंथि (Gland) कौन-सी है?',
+        questionEn: 'Which is the largest gland in the human body?',
+        optionsHi: ['यकृत (Liver)', 'अग्न्याशय (Pancreas)', 'थायरॉइड (Thyroid)', 'पीयूष ग्रंथि (Pituitary)'],
+        optionsEn: ['Liver', 'Pancreas', 'Thyroid', 'Pituitary Gland'],
+        correctOptionIndex: 0,
+        explanationHi: 'यकृत (Liver) मानव शरीर की सबसे बड़ी आंतरिक ग्रंथि है जो पित्त रस का स्राव करती है।',
+        explanationEn: 'The Liver is the largest internal gland in the human body, responsible for bile production and metabolic detoxification.'
+      },
+      {
+        subjectTag: 'Chhattisgarh Tribes & Culture',
+        questionHi: 'बस्तर के प्रसिद्ध "गोंचा पर्व" में किस देवता की रथ यात्रा निकाली जाती है?',
+        questionEn: 'In the famous "Goncha Festival" of Bastar, the chariot procession of which deity is celebrated?',
+        optionsHi: ['भगवान जगन्नाथ', 'दंतेश्वरी माता', 'बूढ़ादेव', 'आंगादेव'],
+        optionsEn: ['Lord Jagannath', 'Goddess Danteshwari', 'Budhadev', 'Angadev'],
+        correctOptionIndex: 0,
+        explanationHi: 'आषाढ़ माह में बस्तर के गोंचा पर्व में भगवान जगन्नाथ, बलभद्र और सुभद्रा की रथ यात्रा निकाली जाती है।',
+        explanationEn: 'During the Goncha festival in Bastar in the month of Ashadha, the chariot yatra of Lord Jagannath is celebrated.'
+      },
+      {
+        subjectTag: 'Indian History',
+        questionHi: 'छत्तीसगढ़ के सिरपुर स्थित प्रसिद्ध लक्ष्मण मंदिर का निर्माण किस सामग्री से हुआ है?',
+        questionEn: 'The famous Lakshmana Temple at Sirpur in Chhattisgarh is primarily built using which material?',
+        optionsHi: ['लाल ईंटों (Red Bricks)', 'सफेद संगमरमर', 'काले बेसाल्ट पत्थर', 'बलुआ पत्थर'],
+        optionsEn: ['Red Bricks', 'White Marble', 'Black Basalt Stone', 'Sandstone'],
+        correctOptionIndex: 0,
+        explanationHi: 'सिरपुर का लक्ष्मण मंदिर 7वीं शताब्दी में रानी वासटा द्वारा निर्मित भारत के सर्वोत्तम लाल ईंट मंदिरों में से एक है।',
+        explanationEn: 'Built by Queen Vasata in the 7th century, the Lakshmana Temple at Sirpur is one of India’s finest ancient red-brick temples.'
+      },
+      {
+        subjectTag: 'Panchayati Raj',
+        questionHi: 'छत्तीसगढ़ पंचायती राज अधिनियम, 1993 के अंतर्गत ग्राम सभा की वर्ष में न्यूनतम कितनी बैठकें अनिवार्य हैं?',
+        questionEn: 'Under the Chhattisgarh Panchayati Raj Act, 1993, what is the minimum mandatory number of Gram Sabha meetings per year?',
+        optionsHi: ['4 बैठकें (जनवरी, अप्रैल, अगस्त, अक्टूबर)', '2 बैठकें', '6 बैठकें', '12 बैठकें'],
+        optionsEn: ['4 Meetings (Jan, Apr, Aug, Oct)', '2 Meetings', '6 Meetings', '12 Meetings'],
+        correctOptionIndex: 0,
+        explanationHi: 'छत्तीसगढ़ पंचायती राज अधिनियम के अनुसार प्रत्येक वर्ष जनवरी, अप्रैल, अगस्त और अक्टूबर में न्यूनतम 4 ग्राम सभा बैठकें अनिवार्य हैं।',
+        explanationEn: 'At least 4 Gram Sabha meetings must be held annually in January, April, August, and October.'
+      },
+      {
+        subjectTag: 'Current Affairs & Environment',
+        questionHi: 'छत्तीसगढ़ का गुरु घासीदास-तमोर पिंगला टाइगर रिज़र्व देश का कौन-से क्रम का टाइगर रिज़र्व अधिसूचित किया गया है?',
+        questionEn: 'Guru Ghasidas-Tamor Pingla Tiger Reserve of Chhattisgarh has been notified as which numbered Tiger Reserve of India?',
+        optionsHi: ['56वां टाइगर रिज़र्व', '50वां टाइगर रिज़र्व', '48वां टाइगर रिज़र्व', '60वां टाइगर रिज़र्व'],
+        optionsEn: ['56th Tiger Reserve', '50th Tiger Reserve', '48th Tiger Reserve', '60th Tiger Reserve'],
+        correctOptionIndex: 0,
+        explanationHi: 'गुरु घासीदास-तमोर पिंगला टाइगर रिज़र्व को भारत के 56वें टाइगर रिज़र्व के रूप में अधिसूचित किया गया है।',
+        explanationEn: 'Guru Ghasidas-Tamor Pingla in Chhattisgarh has been officially notified as the 56th Tiger Reserve of India.'
+      }
+    ];
+
+    const out = [];
+    for (let i = 0; i < count; i++) {
+      const tpl = bank[i % bank.length];
+      out.push({
+        id: `${prefix}_q_${i + 1}`,
+        subjectTag: topic || tpl.subjectTag,
+        questionHi: tpl.questionHi,
+        questionEn: tpl.questionEn,
+        optionsHi: [...tpl.optionsHi],
+        optionsEn: [...tpl.optionsEn],
+        correctOptionIndex: tpl.correctOptionIndex,
+        explanationHi: tpl.explanationHi,
+        explanationEn: tpl.explanationEn
+      });
+    }
+    return out;
+  }
+
+  function parseBulkQuestionsText(text, fileName) {
+    try {
+      if (fileName.toLowerCase().endsWith('.json') || text.trim().startsWith('[') || text.trim().startsWith('{')) {
+        const parsed = JSON.parse(text);
+        const arr = Array.isArray(parsed) ? parsed : (parsed.questions || []);
+        return arr.map((item, idx) => ({
+          id: 'imp_' + Date.now() + '_' + idx,
+          subjectTag: item.subjectTag || 'General Studies',
+          questionHi: item.questionHi || item.question || 'प्रश्न ' + (idx + 1),
+          questionEn: item.questionEn || item.question || 'Question ' + (idx + 1),
+          optionsHi: Array.isArray(item.optionsHi) && item.optionsHi.length === 4 ? item.optionsHi : ['A', 'B', 'C', 'D'],
+          optionsEn: Array.isArray(item.optionsEn) && item.optionsEn.length === 4 ? item.optionsEn : ['A', 'B', 'C', 'D'],
+          correctOptionIndex: Number(item.correctOptionIndex || 0),
+          explanationHi: item.explanationHi || '',
+          explanationEn: item.explanationEn || ''
+        }));
+      }
+      // CSV parsing
+      const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+      const out = [];
+      for (let i = 0; i < lines.length; i++) {
+        const cols = lines[i].split(',').map((c) => c.trim().replace(/^"|"$/g, ''));
+        if (i === 0 && cols[0].toLowerCase().includes('question')) continue;
+        if (cols.length >= 6) {
+          out.push({
+            id: 'csv_' + Date.now() + '_' + i,
+            questionHi: cols[0],
+            questionEn: cols[1] || cols[0],
+            optionsHi: [cols[2] || 'A', cols[3] || 'B', cols[4] || 'C', cols[5] || 'D'],
+            optionsEn: [cols[6] || cols[2] || 'A', cols[7] || cols[3] || 'B', cols[8] || cols[4] || 'C', cols[9] || cols[5] || 'D'],
+            correctOptionIndex: Math.max(0, Math.min(3, Number(cols[10] || 0))),
+            explanationHi: cols[11] || '',
+            explanationEn: cols[12] || cols[11] || '',
+            subjectTag: cols[13] || 'General Studies'
+          });
+        }
+      }
+      return out;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function launchInstantDailyQuiz() {
+    const qs = generateHighYieldBilingualQuestions('daily_ca_' + Date.now(), 'Current Affairs & Chhattisgarh GS', 10, '');
+    window.CGpediaCBT.openPreTestInstructions({
+      id: 'daily_free_quiz',
+      examCode: 'DAILY QUIZ',
+      titleHi: 'दैनिक समसामयिकी एवं सामान्य अध्ययन क्विज़',
+      titleEn: 'Daily Current Affairs & GS Free Quiz',
+      topic: 'Chhattisgarh, National & International Current Affairs',
+      durationMinutes: 12,
+      marksPerQuestion: 2,
+      negativeMarking: 0.66
+    }, qs, cbtCallbacks);
+  }
+
+  function openStoryViewerModal(storyObj) {
+    const storyRoot = document.getElementById('storyModalContainer');
+    if (!storyRoot) return;
+    storyRoot.innerHTML = `
+      <div class="modal-backdrop">
+        <div class="modal-card" style="max-width:460px;background:#0F2557;color:#fff;border-color:#1D4ED8;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <span class="badge" style="background:#EA580C;color:#fff;">⚡ 24H CURRENT AFFAIRS STORY</span>
+            <button class="btn btn-header-chip" id="closeStoryModalBtn">✕</button>
+          </div>
+          <h2 style="font-size:1.15rem;font-weight:800;margin-bottom:6px;">${esc(storyObj.headlineHi)}</h2>
+          <div style="font-size:0.86rem;color:#BFDBFE;margin-bottom:12px;">${esc(storyObj.headlineEn)}</div>
+          <p style="font-size:0.9rem;line-height:1.6;margin-bottom:16px;">${esc(storyObj.summaryHi)}</p>
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:0.75rem;color:#93C5FD;">Source: ${esc(storyObj.sourceName || 'DPR / PIB')}</span>
+            <button class="btn btn-warning btn-sm" id="storyTakeQuizBtn">🎯 Take Instant Quiz</button>
+          </div>
+        </div>
+      </div>
+    `;
+    document.getElementById('closeStoryModalBtn').onclick = () => { storyRoot.innerHTML = ''; };
+    document.getElementById('storyTakeQuizBtn').onclick = () => {
+      storyRoot.innerHTML = '';
+      launchInstantDailyQuiz();
+    };
+  }
+
+  function bindTestCardButtons(containerEl) {
+    containerEl.querySelectorAll('[data-start-test]').forEach((btn) => {
+      btn.onclick = () => {
+        const tid = btn.getAttribute('data-start-test');
+        const testObj = (state.tests || []).find((t) => t.id === tid);
+        if (!testObj) return;
+        const qs = (testObj.questions && testObj.questions.length > 0)
+          ? testObj.questions
+          : generateHighYieldBilingualQuestions(testObj.id, testObj.topic || 'General Studies', 10, '');
+        window.CGpediaCBT.openPreTestInstructions(testObj, qs, cbtCallbacks);
+      };
+    });
+
+    containerEl.querySelectorAll('[data-view-test-result]').forEach((btn) => {
+      btn.onclick = () => {
+        const tid = btn.getAttribute('data-view-test-result');
+        const found = (state.attempts || []).find((a) => a.testId === tid);
+        if (found) state.activeResultId = found.id;
+        state.activeTab = 'analytics';
+        saveState();
+        renderApp();
+      };
+    });
+
+    containerEl.querySelectorAll('[data-unlock-paid-item]').forEach((btn) => {
+      btn.onclick = () => {
+        const id = btn.getAttribute('data-unlock-paid-item');
+        const type = btn.getAttribute('data-unlock-type') || 'test';
+        openStudentPaymentModal(id, type);
+      };
+    });
+  }
+
+  // =========================================================================
+  // CBT Callbacks (Submission, Bookmarks, Question Error Reports, Leaderboard)
+  // =========================================================================
+  const cbtCallbacks = {
+    toast,
+    isBookmarked: (qid) => (state.bookmarks || []).some((b) => b.id === qid),
+    toggleBookmark: (qObj, testId, testTitle) => {
+      state.bookmarks = state.bookmarks || [];
+      const exists = state.bookmarks.some((b) => b.id === qObj.id);
+      if (exists) {
+        state.bookmarks = state.bookmarks.filter((b) => b.id !== qObj.id);
+        toast('🏷️ Removed from Bookmarks.');
+      } else {
+        state.bookmarks.unshift(Object.assign({}, qObj, { testId, testTitle }));
+        toast('🔖 Question saved to Bookmarks for quick revision!');
+      }
+      saveState();
+    },
+    reportQuestionError: (qObj, testId, testTitle) => {
+      const rep = {
+        id: 'rep_' + Date.now(),
+        testId,
+        testTitle,
+        questionId: qObj.id,
+        questionHi: qObj.questionHi,
+        studentEmail: state.student.email || state.student.uid,
+        reason: 'Reported during CBT attempt for Admin verification',
+        createdAtIso: new Date().toISOString()
+      };
+      state.questionReports = state.questionReports || [];
+      state.questionReports.unshift(rep);
+      saveState();
+      if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('question_reports', rep.id, rep);
+      toast('🚩 Question flagged for Admin review.');
+    },
+    onExamCompleted: (resultRecord, wrongQuestions) => {
+      state.attempts = state.attempts || [];
+      state.attempts.unshift(resultRecord);
+      state.activeResultId = resultRecord.id;
+
+      // Automatically populate Mistake Notebook with any wrong questions
+      if (Array.isArray(wrongQuestions) && wrongQuestions.length > 0) {
+        state.mistakes = state.mistakes || [];
+        wrongQuestions.forEach((wq) => {
+          if (!state.mistakes.some((m) => m.questionHi === wq.questionHi)) {
+            state.mistakes.unshift(wq);
+          }
+        });
+      }
+
+      // Update Leaderboard if public
+      if (state.student.leaderboardPublic !== false) {
+        const lbEntry = {
+          id: 'lb_' + state.student.uid + '_' + resultRecord.testId,
+          userId: state.student.uid,
+          studentName: state.student.name,
+          testId: resultRecord.testId,
+          testTitle: resultRecord.testTitleHi,
+          score: resultRecord.score,
+          maxScore: resultRecord.maxScore,
+          accuracyPercent: resultRecord.accuracyPercent,
+          timeTakenSeconds: resultRecord.timeTakenSeconds,
+          submittedAtIso: resultRecord.submittedAtIso
+        };
+        state.leaderboard = (state.leaderboard || []).filter((e) => e.id !== lbEntry.id);
+        state.leaderboard.push(lbEntry);
+        if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('leaderboard', lbEntry.id, lbEntry);
+      }
+
+      saveState();
+      if (window.CGpediaCloud) {
+        window.CGpediaCloud.saveCloudDoc('results', resultRecord.id, Object.assign({ userId: state.student.uid }, resultRecord));
+      }
+      applyBrandingAndSecurity();
+      state.activeTab = 'analytics';
+      renderApp();
+      toast(`🎉 Exam submitted! Net Score: ${resultRecord.score} / ${resultRecord.maxScore} (${resultRecord.accuracyPercent}% Accuracy)`);
+    }
+  };
+
+  // =========================================================================
+  // Cloud Sync Merge & Auth Handlers
+  // =========================================================================
+  function handleFirebaseAuthUser(fbUser) {
+    if (!fbUser) return;
+    if (fbUser.displayName && state.student.name === 'Aspirant') {
+      state.student.name = fbUser.displayName;
+    }
+    if (fbUser.email) {
+      state.student.email = String(fbUser.email).toLowerCase();
+    }
+    if (fbUser.uid) {
+      state.student.uid = fbUser.uid;
+    }
+    saveState();
+    renderApp();
+  }
+
+  function mergeCloudCollection(key, docs) {
+    if (!Array.isArray(docs)) return;
+    if (key === 'configDocs') {
+      const globalDoc = docs.find((d) => d.id === 'global' || d.configKey === 'global');
+      if (globalDoc) {
+        state.config = Object.assign({}, state.config, globalDoc);
+      }
+    } else if (docs.length > 0) {
+      state[key] = docs;
+    }
+    saveState();
+    renderApp();
+  }
+
+  function playSynthesizedAnthem() {
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return;
+      if (anthemAudioCtx) {
+        anthemAudioCtx.close();
+        anthemAudioCtx = null;
+        toast('🔇 Anthem stopped.');
+        return;
+      }
+      anthemAudioCtx = new AudioContext();
+      const notes = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 392.00, 329.63];
+      let startTime = anthemAudioCtx.currentTime;
+      notes.forEach((freq) => {
+        const osc = anthemAudioCtx.createOscillator();
+        const gain = anthemAudioCtx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, startTime);
+        gain.gain.setValueAtTime(0.14, startTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.45);
+        osc.connect(gain);
+        gain.connect(anthemAudioCtx.destination);
+        osc.start(startTime);
+        osc.stop(startTime + 0.45);
+        startTime += 0.48;
+      });
+      toast('🎵 Playing CGpedia State Anthem (अरपा पैरी के धार)...');
+      setTimeout(() => { anthemAudioCtx = null; }, 4200);
+    } catch (_) {}
+  }
+
+  // =========================================================================
+  // Initialization & Global Event Listeners
+  // =========================================================================
+  const publicApi = {
+    saveState,
+    renderApp,
+    toast,
+    applyBrandingAndSecurity,
+    generateHighYieldBilingualQuestions,
+    openQuestionEditorModal,
+    parseBulkQuestionsText,
+    handleFirebaseAuthUser,
+    mergeCloudCollection
+  };
+  window.CGpediaApp = publicApi;
+
+  document.addEventListener('DOMContentLoaded', () => {
+    // Hide splash smoothly after 650ms
+    setTimeout(() => {
+      const splash = document.getElementById('splashOverlay');
+      if (splash) splash.classList.add('hidden');
+    }, 650);
+
+    // Top & Bottom Navigation Click Handlers
+    document.querySelectorAll('#mainNavTabs .nav-tab, #mobileBottomNav .bottom-nav-item').forEach((btn) => {
+      btn.onclick = () => {
+        state.activeTab = btn.getAttribute('data-tab');
+        saveState();
+        renderApp();
+      };
+    });
+
+    // Brand Home Trigger
+    const brandHome = document.getElementById('brandHomeTrigger');
+    if (brandHome) {
+      brandHome.onclick = () => {
+        state.activeTab = 'dashboard';
+        saveState();
+        renderApp();
+      };
+    }
+
+    // Header Actions
+    const examBtn = document.getElementById('activeExamSelectorBtn');
+    if (examBtn) {
+      examBtn.onclick = () => openOnboardingModal();
+    }
+
+    const langBtn = document.getElementById('langToggleBtn');
+    if (langBtn) {
+      langBtn.onclick = () => {
+        state.lang = state.lang === 'bilingual' ? 'hi' : state.lang === 'hi' ? 'en' : 'bilingual';
+        saveState();
+        toast(`🌐 Language mode: ${state.lang.toUpperCase()}`);
+      };
+    }
+
+    const themeBtn = document.getElementById('themeSwitchBtn');
+    if (themeBtn) {
+      themeBtn.onclick = () => {
+        state.theme = state.theme === 'dark' ? 'light' : 'dark';
+        saveState();
+        applyBrandingAndSecurity();
+      };
+    }
+
+    const notifBtn = document.getElementById('notifBellBtn');
+    if (notifBtn) {
+      notifBtn.onclick = () => {
+        state.activeTab = 'notifications';
+        saveState();
+        renderApp();
+      };
+    }
+
+    const profBtn = document.getElementById('studentProfileBtn');
+    if (profBtn) {
+      profBtn.onclick = () => {
+        state.activeTab = 'profile';
+        saveState();
+        renderApp();
+      };
+    }
+
+    const anthemBtn = document.getElementById('anthemToggleBtn');
+    if (anthemBtn) {
+      anthemBtn.onclick = () => playSynthesizedAnthem();
+    }
+
+    // Security Blur when window loses focus if screenshot restriction is enabled
+    const secOverlay = document.getElementById('securityBlurOverlay');
+    window.addEventListener('blur', () => {
+      if (state.config.screenshotRestriction && secOverlay) {
+        secOverlay.classList.add('active');
+      }
+    });
+    window.addEventListener('focus', () => {
+      if (secOverlay) secOverlay.classList.remove('active');
+    });
+    if (secOverlay) {
+      secOverlay.onclick = () => secOverlay.classList.remove('active');
+    }
+
+    // PWA Install Banner
+    const pwaBanner = document.getElementById('pwaInstallBanner');
+    const installBtn = document.getElementById('installPwaBtn');
+    const dismissPwa = document.getElementById('dismissPwaBannerBtn');
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPwaPrompt = e;
+    });
+    if (installBtn) {
+      installBtn.onclick = async () => {
+        if (deferredPwaPrompt) {
+          deferredPwaPrompt.prompt();
+          await deferredPwaPrompt.userChoice;
+          deferredPwaPrompt = null;
+        } else {
+          toast('📲 Browser menu (⋮) खोलें और "Add to Home Screen / Install App" चुनें।');
+        }
+      };
+    }
+    if (dismissPwa && pwaBanner) {
+      dismissPwa.onclick = () => pwaBanner.classList.add('hidden');
+    }
+
+    // Register Service Worker
+    if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    }
+
+    // Connect Firebase Cloud Sync
+    if (window.CGpediaCloud) {
+      window.CGpediaCloud.initFirebaseConnection();
+    }
+
+    renderApp();
+  });
 })();

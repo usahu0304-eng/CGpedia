@@ -1,9 +1,12 @@
 package com.example
 
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.view.WindowManager
+import android.webkit.JavascriptInterface
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -43,8 +46,14 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Default exam security flag; dynamically controlled via AndroidBridge.setSecureScreen(...)
+        window.setFlags(
+            WindowManager.LayoutParams.FLAG_SECURE,
+            WindowManager.LayoutParams.FLAG_SECURE
+        )
         setContent {
             CgpediaWebAppHost(
+                activity = this,
                 onLaunchFilePicker = { mimeType ->
                     filePickerLauncher.launch(mimeType.ifBlank { "*/*" })
                 },
@@ -57,9 +66,26 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+class CgpediaAndroidBridge(private val activity: Activity) {
+    @JavascriptInterface
+    fun setSecureScreen(enabled: Boolean) {
+        activity.runOnUiThread {
+            if (enabled) {
+                activity.window.setFlags(
+                    WindowManager.LayoutParams.FLAG_SECURE,
+                    WindowManager.LayoutParams.FLAG_SECURE
+                )
+            } else {
+                activity.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+            }
+        }
+    }
+}
+
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun CgpediaWebAppHost(
+    activity: Activity,
     onLaunchFilePicker: (String) -> Unit,
     onSetUploadCallback: (ValueCallback<Array<Uri>>?) -> Unit
 ) {
@@ -91,6 +117,8 @@ fun CgpediaWebAppHost(
                         mediaPlaybackRequiresUserGesture = false
                         cacheMode = WebSettings.LOAD_NO_CACHE
                     }
+
+                    addJavascriptInterface(CgpediaAndroidBridge(activity), "AndroidBridge")
 
                     webViewClient = object : WebViewClient() {
                         override fun shouldOverrideUrlLoading(

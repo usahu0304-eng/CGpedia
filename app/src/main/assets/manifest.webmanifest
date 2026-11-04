@@ -1,26 +1,26 @@
 {
-  "name": "CGpedia — CGPSC & CGSSB Exam Portal",
+  "name": "CGpedia — Competitive Exam & Online Test Series Platform",
   "short_name": "CGpedia",
-  "description": "Mobile-First Bilingual (Hindi & English) CGPSC & CGSSB Test Series, 24-Hour Current Affairs Stories & Live CBT Exam Portal.",
+  "description": "Multi-Exam Competitive Examination & Online Test Series Platform for UPSC, State PSC, CGPSC, CGSSB, SSC, Banking, Railway, CTET, UGC NET, Police & Defence.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#0A192F",
+  "background_color": "#0F2557",
   "theme_color": "#0F2557",
   "orientation": "portrait-primary",
   "lang": "hi-IN",
   "categories": ["education", "books", "productivity"],
   "icons": [
     {
-      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='42' fill='%230F2557'/%3E%3Ccircle cx='96' cy='96' r='74' fill='none' stroke='%23F59E0B' stroke-width='6'/%3E%3Ctext x='96' y='110' font-family='sans-serif' font-size='56' font-weight='900' fill='%23FFFFFF' text-anchor='middle'%3ECG%3C/text%3E%3Ctext x='96' y='144' font-family='sans-serif' font-size='18' font-weight='800' fill='%23F59E0B' text-anchor='middle'%3EPEDIA%3C/text%3E%3C/svg%3E",
+      "src": "/assets/icon-192.png",
       "sizes": "192x192",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='112' fill='%230F2557'/%3E%3Ccircle cx='256' cy='256' r='198' fill='none' stroke='%23F59E0B' stroke-width='14'/%3E%3Ctext x='256' y='290' font-family='sans-serif' font-size='150' font-weight='900' fill='%23FFFFFF' text-anchor='middle'%3ECG%3C/text%3E%3Ctext x='256' y='380' font-family='sans-serif' font-size='48' font-weight='800' fill='%23F59E0B' text-anchor='middle'%3EPEDIA%3C/text%3E%3C/svg%3E",
+      "src": "/assets/icon-512.png",
       "sizes": "512x512",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "any maskable"
     }
   ]
