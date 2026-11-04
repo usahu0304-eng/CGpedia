@@ -478,6 +478,119 @@
         "subjectTag",
         "createdAt"
       ]
+    },
+    "ExamMaster": {
+      "title": "ExamMaster",
+      "description": "Exam Master record (e.g., CG Vyapam, CGPSC, ADEO, Patwari, Sub Inspector, Teacher Recruitment, TET) with mapped Subject IDs.",
+      "type": "object",
+      "properties": {
+        "examId": { "type": "string" },
+        "code": { "type": "string" },
+        "nameHi": { "type": "string" },
+        "nameEn": { "type": "string" },
+        "subjectIds": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["examId", "code", "nameHi", "nameEn"]
+    },
+    "SubjectMaster": {
+      "title": "SubjectMaster",
+      "description": "Reusable Subject Master record shared across multiple competitive exams.",
+      "type": "object",
+      "properties": {
+        "subjectId": { "type": "string" },
+        "code": { "type": "string" },
+        "titleHi": { "type": "string" },
+        "titleEn": { "type": "string" },
+        "aliases": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["subjectId", "titleHi", "titleEn"]
+    },
+    "TopicMaster": {
+      "title": "TopicMaster",
+      "description": "Hierarchical Topic Master record linked to a parent Subject.",
+      "type": "object",
+      "properties": {
+        "topicId": { "type": "string" },
+        "subjectId": { "type": "string" },
+        "titleHi": { "type": "string" },
+        "titleEn": { "type": "string" },
+        "keywords": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["topicId", "subjectId", "titleHi", "titleEn"]
+    },
+    "SubtopicMaster": {
+      "title": "SubtopicMaster",
+      "description": "Hierarchical Subtopic Master record linked to a parent Topic and Subject.",
+      "type": "object",
+      "properties": {
+        "subtopicId": { "type": "string" },
+        "topicId": { "type": "string" },
+        "subjectId": { "type": "string" },
+        "titleHi": { "type": "string" },
+        "titleEn": { "type": "string" },
+        "keywords": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["subtopicId", "topicId", "subjectId", "titleHi", "titleEn"]
+    },
+    "QuestionBankItem": {
+      "title": "QuestionBankItem",
+      "description": "Canonical bilingual question in the Central Reusable Question Bank with Exam -> Subject -> Topic -> Subtopic hierarchy and backward-compatible fields.",
+      "type": "object",
+      "properties": {
+        "questionId": { "type": "string" },
+        "examCode": { "type": "string" },
+        "examIds": { "type": "array", "items": { "type": "string" } },
+        "subjectId": { "type": "string" },
+        "subjectTag": { "type": "string" },
+        "topicId": { "type": "string" },
+        "topic": { "type": "string" },
+        "subtopicId": { "type": "string" },
+        "subtopic": { "type": "string" },
+        "difficultyLevel": { "type": "string", "enum": ["Easy", "Moderate", "Hard"] },
+        "questionType": { "type": "string" },
+        "sourceExam": { "type": "string" },
+        "sourceYear": { "type": "string" },
+        "paperSetCode": { "type": "string" },
+        "sourceDocument": { "type": "string" },
+        "sourcePageNumber": { "type": "string" },
+        "verificationStatus": { "type": "string", "enum": ["verified", "needs_categorisation", "unverified", "draft", "flagged", "deleted"] },
+        "questionHi": { "type": "string" },
+        "questionEn": { "type": "string" },
+        "optA_Hi": { "type": "string" },
+        "optB_Hi": { "type": "string" },
+        "optC_Hi": { "type": "string" },
+        "optD_Hi": { "type": "string" },
+        "optA_En": { "type": "string" },
+        "optB_En": { "type": "string" },
+        "optC_En": { "type": "string" },
+        "optD_En": { "type": "string" },
+        "optionsHi": { "type": "array", "items": { "type": "string" } },
+        "optionsEn": { "type": "array", "items": { "type": "string" } },
+        "correctIndex": { "type": "integer" },
+        "correctOptionIndex": { "type": "integer" },
+        "explanationHi": { "type": "string" },
+        "explanationEn": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "questionId",
+        "examIds",
+        "subjectId",
+        "subjectTag",
+        "topicId",
+        "difficultyLevel",
+        "verificationStatus",
+        "questionHi",
+        "questionEn",
+        "optionsHi",
+        "optionsEn",
+        "correctOptionIndex",
+        "explanationHi",
+        "explanationEn",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -504,6 +617,26 @@
     "/anthem_chunks/{chunkId}": {
       "schema": { "$ref": "#/entities/AnthemChunk" },
       "description": "Chunked audio data for custom uploaded CGpedia Anthem."
+    },
+    "/exams/{examId}": {
+      "schema": { "$ref": "#/entities/ExamMaster" },
+      "description": "Exam Master hierarchy records."
+    },
+    "/subjects/{subjectId}": {
+      "schema": { "$ref": "#/entities/SubjectMaster" },
+      "description": "Reusable Subject Master hierarchy records."
+    },
+    "/topics/{topicId}": {
+      "schema": { "$ref": "#/entities/TopicMaster" },
+      "description": "Topic Master records linked to Subject Master."
+    },
+    "/subtopics/{subtopicId}": {
+      "schema": { "$ref": "#/entities/SubtopicMaster" },
+      "description": "Subtopic Master records linked to Topic Master."
+    },
+    "/question_bank/{questionId}": {
+      "schema": { "$ref": "#/entities/QuestionBankItem" },
+      "description": "Central Reusable Question Bank with Exam -> Subject -> Topic -> Subtopic classification."
     },
     "/exam_folders/{folderId}": {
       "schema": { "$ref": "#/entities/ExamFolder" },

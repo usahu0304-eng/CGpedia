@@ -2,7 +2,8 @@
   "firestore": [
     {
       "database": "ai-studio-android-cgpedia-28065f3c-5ca6-4761-9e70-c46ab8df720d",
-      "rules": "firestore.rules"
+      "rules": "firestore.rules",
+      "indexes": "firestore.indexes.json"
     }
   ],
   "emulators": {

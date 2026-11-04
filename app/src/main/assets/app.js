@@ -185,7 +185,23 @@
       leaderboard: [],
       queries: [],
       questionReports: [],
-      adminStaff: []
+      adminStaff: [],
+      customTaxonomy: {
+        customCategories: [],
+        customSubjects: []
+      },
+      examMaster: [],
+      subjectMaster: [],
+      topicMaster: [],
+      subtopicMaster: [],
+      migrationState: {
+        version: 0,
+        lastRunIso: '',
+        migratedCount: 0,
+        alreadyCategorisedCount: 0,
+        needsCategorisationCount: 0,
+        errors: []
+      }
     };
   }
 
@@ -2844,12 +2860,15 @@
       modalRoot.innerHTML = `
         <div class="modal-backdrop">
           <div class="modal-card" style="max-width:740px;">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:8px;flex-wrap:wrap;">
               <div>
                 <span class="badge ${testObj.status === 'published' ? 'badge-free' : 'badge-draft'}">${testObj.status.toUpperCase()}</span>
                 <h2 style="font-size:1.1rem;font-weight:800;margin-top:2px;">✏️ Question Editor: ${esc(testObj.titleHi)} (${qs.length} Qs)</h2>
               </div>
-              <button class="btn btn-outline btn-sm" id="closeQEditorBtn">Done</button>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                ${(state.questionBank || []).length > 0 ? `<button class="btn btn-navy btn-sm" id="qePickFromCentralBtn">📚 Add from Central Question Bank (${(state.questionBank || []).length})</button>` : ''}
+                <button class="btn btn-outline btn-sm" id="closeQEditorBtn">Done</button>
+              </div>
             </div>
 
             <div class="card" style="background:var(--surface-alt);padding:12px;margin-bottom:12px;">
@@ -2899,6 +2918,41 @@
         if (onDone) onDone();
       };
 
+      const pickCentralBtn = document.getElementById('qePickFromCentralBtn');
+      if (pickCentralBtn) {
+        pickCentralBtn.onclick = () => {
+          const existingRefIds = new Set((testObj.questions || []).map((q) => q.centralQuestionId || q.id));
+          const availableCentral = (state.questionBank || []).filter((cq) => !existingRefIds.has(cq.id) && isQuestionEligibleForAutoSelection(cq));
+          if (availableCentral.length === 0) {
+            toast('All eligible Central Question Bank questions are already linked to this test.');
+            return;
+          }
+          let toLink = availableCentral.filter((cq) => {
+            if (!testObj.examCode || testObj.examCode === 'ALL') return true;
+            const targetEx = String(testObj.examCode || '').trim().toUpperCase();
+            const qExamIds = Array.isArray(cq.examIds) ? cq.examIds.map((x) => String(x || '').trim().toUpperCase()) : [];
+            const qExamCodes = Array.isArray(cq.examCodes) ? cq.examCodes.map((x) => String(x || '').trim().toUpperCase()) : [];
+            const qExam = String(cq.examCode || '').trim().toUpperCase();
+            return !qExam || qExam === targetEx || qExam === 'ALL' || qExamIds.includes(targetEx) || qExamIds.includes('ALL') || qExamCodes.includes(targetEx);
+          });
+          if (toLink.length === 0) toLink = availableCentral;
+          const addedCount = toLink.length;
+          testObj.questions = testObj.questions || [];
+          toLink.forEach((cq) => {
+            testObj.questions.push(Object.assign({}, cq, {
+              id: `${testObj.id}_ref_${cq.id}`,
+              centralQuestionId: cq.id
+            }));
+            cq.linkedTestIds = Array.from(new Set([...(cq.linkedTestIds || []), testObj.id]));
+            if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('question_bank', cq.id, cq);
+          });
+          saveState();
+          if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('tests', testObj.id, testObj);
+          toast(`✅ Linked ${addedCount} reusable questions from Central Question Bank!`);
+          renderEditor();
+        };
+      }
+
       document.getElementById('qeAddQuestionBtn').onclick = () => {
         const qHi = document.getElementById('qeQuestionHi').value.trim();
         const qEn = document.getElementById('qeQuestionEn').value.trim() || qHi;
@@ -2945,126 +2999,316 @@
     renderEditor();
   }
 
-  function generateHighYieldBilingualQuestions(prefix, topic, count, customPrompt) {
-    const bank = [
-      {
-        subjectTag: 'Chhattisgarh GS',
-        questionHi: 'छत्तीसगढ़ राज्य का गठन किस संविधान संशोधन एवं पुनर्गठन अधिनियम के अंतर्गत 1 नवंबर 2000 को हुआ था?',
-        questionEn: 'Under which Reorganization Act was the state of Chhattisgarh formed on 1 November 2000?',
-        optionsHi: ['मध्यप्रदेश पुनर्गठन अधिनियम, 2000', 'राज्य पुनर्गठन अधिनियम, 1956', 'छत्तीसगढ़ स्वायत्तता अधिनियम, 1999', 'केंद्रीय प्रांत पुनर्गठन अधिनियम, 2000'],
-        optionsEn: ['Madhya Pradesh Reorganization Act, 2000', 'States Reorganization Act, 1956', 'Chhattisgarh Autonomy Act, 1999', 'Central Provinces Act, 2000'],
-        correctOptionIndex: 0,
-        explanationHi: 'मध्यप्रदेश पुनर्गठन अधिनियम, 2000 के तहत 1 नवंबर 2000 को देश के 26वें राज्य के रूप में छत्तीसगढ़ का गठन हुआ।',
-        explanationEn: 'Chhattisgarh was formed on 1 November 2000 as the 26th state of India under the Madhya Pradesh Reorganization Act, 2000.'
-      },
-      {
-        subjectTag: 'Chhattisgarh Geography',
-        questionHi: 'छत्तीसगढ़ की जीवनरेखा कहलाने वाली महानदी का उद्गम स्थल कौन-सा है?',
-        questionEn: 'Which is the origin place of the Mahanadi river, known as the lifeline of Chhattisgarh?',
-        optionsHi: ['सिहावा पर्वत (धमतरी)', 'अमरकंटक पठार', 'बैलाडीला पहाड़ी (दंतेवाड़ा)', 'मैनपाट पठार (सरगुजा)'],
-        optionsEn: ['Sihawa Hills (Dhamtari)', 'Amarkantak Plateau', 'Bailadila Hills (Dantewada)', 'Mainpat Plateau (Surguja)'],
-        correctOptionIndex: 0,
-        explanationHi: 'महानदी का उद्गम धमतरी जिले के सिहावा पर्वत (फरसिया ग्राम) से होता है।',
-        explanationEn: 'The Mahanadi river originates from the Sihawa mountains in Dhamtari district of Chhattisgarh.'
-      },
-      {
-        subjectTag: 'Indian Polity',
-        questionHi: 'भारतीय संविधान के किस अनुच्छेद के अंतर्गत ग्राम पंचायतों के संगठन का प्रावधान किया गया है?',
-        questionEn: 'Which Article of the Indian Constitution provides for the organization of Village Panchayats?',
-        optionsHi: ['अनुच्छेद 40', 'अनुच्छेद 44', 'अनुच्छेद 48', 'अनुच्छेद 51A'],
-        optionsEn: ['Article 40', 'Article 44', 'Article 48', 'Article 51A'],
-        correctOptionIndex: 0,
-        explanationHi: 'राज्य के नीति निदेशक तत्वों के अंतर्गत अनुच्छेद 40 ग्राम पंचायतों के संगठन से संबंधित है।',
-        explanationEn: 'Article 40 under the Directive Principles of State Policy directs the State to organize Village Panchayats.'
-      },
-      {
-        subjectTag: 'Chhattisgarh History & Culture',
-        questionHi: 'छत्तीसगढ़ में कल्चुरि वंश की प्रथम राजधानी निम्नलिखित में से कौन-सी थी?',
-        questionEn: 'Which of the following was the first capital of the Kalchuri dynasty in Chhattisgarh?',
-        optionsHi: ['तुम्माण', 'रतनपुर', 'रायपुर', 'सिरपुर'],
-        optionsEn: ['Tumman', 'Ratanpur', 'Raipur', 'Sirpur'],
-        correctOptionIndex: 0,
-        explanationHi: 'कलिंगराज ने 1000 ई. में तुम्माण को छत्तीसगढ़ में कल्चुरि वंश की प्रथम राजधानी बनाया था।',
-        explanationEn: 'Kalingaraj established Tumman as the first capital of the Kalchuri dynasty in Chhattisgarh around 1000 AD.'
-      },
-      {
-        subjectTag: 'Indian Economy',
-        questionHi: 'भारत में मौद्रिक नीति समिति (MPC) का पदेन अध्यक्ष कौन होता है?',
-        questionEn: 'Who is the ex-officio Chairperson of the Monetary Policy Committee (MPC) in India?',
-        optionsHi: ['भारतीय रिज़र्व बैंक (RBI) के गवर्नर', 'केंद्रीय वित्त मंत्री', 'नीति आयोग के उपाध्यक्ष', 'मुख्य आर्थिक सलाहकार'],
-        optionsEn: ['Governor of the Reserve Bank of India (RBI)', 'Union Finance Minister', 'Vice Chairperson of NITI Aayog', 'Chief Economic Adviser'],
-        correctOptionIndex: 0,
-        explanationHi: 'आरबीआई अधिनियम, 1934 की धारा 45ZB के तहत RBI गवर्नर मौद्रिक नीति समिति के पदेन अध्यक्ष होते हैं।',
-        explanationEn: 'Under Section 45ZB of the RBI Act, 1934, the Governor of RBI serves as the ex-officio Chairperson of the 6-member MPC.'
-      },
-      {
-        subjectTag: 'General Science',
-        questionHi: 'मानव शरीर की सबसे बड़ी ग्रंथि (Gland) कौन-सी है?',
-        questionEn: 'Which is the largest gland in the human body?',
-        optionsHi: ['यकृत (Liver)', 'अग्न्याशय (Pancreas)', 'थायरॉइड (Thyroid)', 'पीयूष ग्रंथि (Pituitary)'],
-        optionsEn: ['Liver', 'Pancreas', 'Thyroid', 'Pituitary Gland'],
-        correctOptionIndex: 0,
-        explanationHi: 'यकृत (Liver) मानव शरीर की सबसे बड़ी आंतरिक ग्रंथि है जो पित्त रस का स्राव करती है।',
-        explanationEn: 'The Liver is the largest internal gland in the human body, responsible for bile production and metabolic detoxification.'
-      },
-      {
-        subjectTag: 'Chhattisgarh Tribes & Culture',
-        questionHi: 'बस्तर के प्रसिद्ध "गोंचा पर्व" में किस देवता की रथ यात्रा निकाली जाती है?',
-        questionEn: 'In the famous "Goncha Festival" of Bastar, the chariot procession of which deity is celebrated?',
-        optionsHi: ['भगवान जगन्नाथ', 'दंतेश्वरी माता', 'बूढ़ादेव', 'आंगादेव'],
-        optionsEn: ['Lord Jagannath', 'Goddess Danteshwari', 'Budhadev', 'Angadev'],
-        correctOptionIndex: 0,
-        explanationHi: 'आषाढ़ माह में बस्तर के गोंचा पर्व में भगवान जगन्नाथ, बलभद्र और सुभद्रा की रथ यात्रा निकाली जाती है।',
-        explanationEn: 'During the Goncha festival in Bastar in the month of Ashadha, the chariot yatra of Lord Jagannath is celebrated.'
-      },
-      {
-        subjectTag: 'Indian History',
-        questionHi: 'छत्तीसगढ़ के सिरपुर स्थित प्रसिद्ध लक्ष्मण मंदिर का निर्माण किस सामग्री से हुआ है?',
-        questionEn: 'The famous Lakshmana Temple at Sirpur in Chhattisgarh is primarily built using which material?',
-        optionsHi: ['लाल ईंटों (Red Bricks)', 'सफेद संगमरमर', 'काले बेसाल्ट पत्थर', 'बलुआ पत्थर'],
-        optionsEn: ['Red Bricks', 'White Marble', 'Black Basalt Stone', 'Sandstone'],
-        correctOptionIndex: 0,
-        explanationHi: 'सिरपुर का लक्ष्मण मंदिर 7वीं शताब्दी में रानी वासटा द्वारा निर्मित भारत के सर्वोत्तम लाल ईंट मंदिरों में से एक है।',
-        explanationEn: 'Built by Queen Vasata in the 7th century, the Lakshmana Temple at Sirpur is one of India’s finest ancient red-brick temples.'
-      },
-      {
-        subjectTag: 'Panchayati Raj',
-        questionHi: 'छत्तीसगढ़ पंचायती राज अधिनियम, 1993 के अंतर्गत ग्राम सभा की वर्ष में न्यूनतम कितनी बैठकें अनिवार्य हैं?',
-        questionEn: 'Under the Chhattisgarh Panchayati Raj Act, 1993, what is the minimum mandatory number of Gram Sabha meetings per year?',
-        optionsHi: ['4 बैठकें (जनवरी, अप्रैल, अगस्त, अक्टूबर)', '2 बैठकें', '6 बैठकें', '12 बैठकें'],
-        optionsEn: ['4 Meetings (Jan, Apr, Aug, Oct)', '2 Meetings', '6 Meetings', '12 Meetings'],
-        correctOptionIndex: 0,
-        explanationHi: 'छत्तीसगढ़ पंचायती राज अधिनियम के अनुसार प्रत्येक वर्ष जनवरी, अप्रैल, अगस्त और अक्टूबर में न्यूनतम 4 ग्राम सभा बैठकें अनिवार्य हैं।',
-        explanationEn: 'At least 4 Gram Sabha meetings must be held annually in January, April, August, and October.'
-      },
-      {
-        subjectTag: 'Current Affairs & Environment',
-        questionHi: 'छत्तीसगढ़ का गुरु घासीदास-तमोर पिंगला टाइगर रिज़र्व देश का कौन-से क्रम का टाइगर रिज़र्व अधिसूचित किया गया है?',
-        questionEn: 'Guru Ghasidas-Tamor Pingla Tiger Reserve of Chhattisgarh has been notified as which numbered Tiger Reserve of India?',
-        optionsHi: ['56वां टाइगर रिज़र्व', '50वां टाइगर रिज़र्व', '48वां टाइगर रिज़र्व', '60वां टाइगर रिज़र्व'],
-        optionsEn: ['56th Tiger Reserve', '50th Tiger Reserve', '48th Tiger Reserve', '60th Tiger Reserve'],
-        correctOptionIndex: 0,
-        explanationHi: 'गुरु घासीदास-तमोर पिंगला टाइगर रिज़र्व को भारत के 56वें टाइगर रिज़र्व के रूप में अधिसूचित किया गया है।',
-        explanationEn: 'Guru Ghasidas-Tamor Pingla in Chhattisgarh has been officially notified as the 56th Tiger Reserve of India.'
-      }
-    ];
+  function normalizeStemTextForSelection(str) {
+    return String(str == null ? '' : str)
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
 
-    const out = [];
-    for (let i = 0; i < count; i++) {
-      const tpl = bank[i % bank.length];
-      out.push({
-        id: `${prefix}_q_${i + 1}`,
-        subjectTag: topic || tpl.subjectTag,
-        questionHi: tpl.questionHi,
-        questionEn: tpl.questionEn,
-        optionsHi: [...tpl.optionsHi],
-        optionsEn: [...tpl.optionsEn],
-        correctOptionIndex: tpl.correctOptionIndex,
-        explanationHi: tpl.explanationHi,
-        explanationEn: tpl.explanationEn
+  function computeStemSimilarityForSelection(strA, strB) {
+    const a = normalizeStemTextForSelection(strA);
+    const b = normalizeStemTextForSelection(strB);
+    if (!a || !b) return 0;
+    if (a === b) return 1;
+    const tokA = new Set(a.split(' ').filter(Boolean));
+    const tokB = new Set(b.split(' ').filter(Boolean));
+    let inter = 0;
+    tokA.forEach((t) => { if (tokB.has(t)) inter += 1; });
+    const union = tokA.size + tokB.size - inter;
+    return union > 0 ? inter / union : 0;
+  }
+
+  function isQuestionEligibleForAutoSelection(q) {
+    if (!q || typeof q !== 'object') return false;
+    if (q.isDeleted === true || q.deleted === true) return false;
+    if (q.verified === false || q.adminVerified === false) return false;
+    if (q.needsCategorisation === true) return false;
+    const status = String(q.status || 'verified').trim().toLowerCase();
+    const verStatus = String(q.verificationStatus || status || 'verified').trim().toLowerCase();
+    const disallowed = ['unverified', 'needs_categorisation', 'needs categorisation', 'deleted', 'draft', 'flagged', 'rejected', 'pending', 'pending_verification'];
+    if (disallowed.includes(status) || disallowed.includes(verStatus)) {
+      return false;
+    }
+    const qHi = String(q.questionHi || '').trim();
+    const qEn = String(q.questionEn || '').trim();
+    if (!qHi && !qEn) return false;
+
+    const optsHi = Array.isArray(q.optionsHi) && q.optionsHi.length >= 4
+      ? q.optionsHi.map((o) => String(o || '').trim()).filter(Boolean)
+      : [q.optA_Hi, q.optB_Hi, q.optC_Hi, q.optD_Hi].map((o) => String(o || '').trim()).filter(Boolean);
+    const optsEn = Array.isArray(q.optionsEn) && q.optionsEn.length >= 4
+      ? q.optionsEn.map((o) => String(o || '').trim()).filter(Boolean)
+      : [q.optA_En, q.optB_En, q.optC_En, q.optD_En].map((o) => String(o || '').trim()).filter(Boolean);
+    if (optsHi.length < 4 && optsEn.length < 4) return false;
+
+    const corrIdx = Number(q.correctOptionIndex !== undefined ? q.correctOptionIndex : q.correctIndex);
+    if (!Number.isInteger(corrIdx) || corrIdx < 0 || corrIdx > 3) return false;
+
+    return true;
+  }
+
+  function normalizeDifficultyValueForMatch(val) {
+    const low = String(val || 'Moderate').trim().toLowerCase();
+    if (low === 'easy' || low === 'सरल') return 'easy';
+    if (low === 'hard' || low === 'difficult' || low === 'कठिन') return 'hard';
+    return 'moderate';
+  }
+
+  function selectEligibleQuestionsForTest(criteria) {
+    const opts = criteria || {};
+    const testPrefix = String(opts.testId || opts.prefix || ('test_' + Date.now())).trim();
+    const requestedCount = Math.max(0, Number(opts.count != null ? opts.count : 0));
+    const examFilter = String(opts.examId || opts.examCode || '').trim().toUpperCase();
+    const subjectFilter = String(opts.subjectId || opts.subject || '').trim();
+    const strictTopicFilter = String(opts.topicId || opts.topicFilter || '').trim();
+    const strictSubtopicFilter = String(opts.subtopicId || opts.subtopicFilter || opts.subtopic || '').trim();
+    const rawTopicInput = String(opts.topic || '').trim();
+    const difficultyFilter = String(opts.difficultyLevel || opts.difficulty || '').trim();
+    const languageFilter = String(opts.language || '').trim();
+
+    const sourceBank = Array.isArray(opts.sourceQuestionBank)
+      ? opts.sourceQuestionBank
+      : (state.questionBank || []);
+
+    // Step 1: Strictly exclude unverified, needs_categorisation, deleted, draft, flagged, or invalid questions
+    let eligiblePool = sourceBank.filter(isQuestionEligibleForAutoSelection);
+
+    // Step 2: Filter by Exam Category (supports examIds array, examCodes array, and single examCode)
+    if (examFilter && examFilter !== 'ALL' && examFilter !== 'DAILY QUIZ') {
+      const normEx = examFilter.replace(/[\s-]+/g, '_');
+      eligiblePool = eligiblePool.filter((q) => {
+        const qExam = String(q.examCode || '').trim().toUpperCase();
+        const qExamNorm = qExam.replace(/[\s-]+/g, '_');
+        const qExamIds = Array.isArray(q.examIds)
+          ? q.examIds.map((e) => String(e || '').trim().toUpperCase().replace(/[\s-]+/g, '_'))
+          : [];
+        const qExamCodes = Array.isArray(q.examCodes)
+          ? q.examCodes.map((e) => String(e || '').trim().toUpperCase().replace(/[\s-]+/g, '_'))
+          : [];
+        return (
+          qExam === 'ALL' ||
+          qExam === examFilter ||
+          qExamNorm === normEx ||
+          qExamIds.includes('ALL') ||
+          qExamIds.includes(examFilter) ||
+          qExamIds.includes(normEx) ||
+          qExamCodes.includes('ALL') ||
+          qExamCodes.includes(examFilter) ||
+          qExamCodes.includes(normEx)
+        );
       });
     }
-    return out;
+
+    // Step 3: Filter by explicit Subject filter (supports subjectId or subjectTag/title)
+    if (subjectFilter && subjectFilter.toUpperCase() !== 'ALL') {
+      const subLow = subjectFilter.toLowerCase();
+      eligiblePool = eligiblePool.filter((q) => {
+        const qSubId = String(q.subjectId || '').trim().toLowerCase();
+        const qSub = String(q.subjectTag || q.subject || '').trim().toLowerCase();
+        if (qSubId && qSubId === subLow) return true;
+        if (qSub && (qSub === subLow || qSub.includes(subLow) || subLow.includes(qSub))) return true;
+        return false;
+      });
+    }
+
+    // Step 4: Filter by explicit Topic filter (supports topicId or topic name) or Syllabus Topic match
+    if (strictTopicFilter && strictTopicFilter.toUpperCase() !== 'ALL') {
+      const topLow = strictTopicFilter.toLowerCase();
+      eligiblePool = eligiblePool.filter((q) => {
+        const qTopId = String(q.topicId || '').trim().toLowerCase();
+        const qTop = String(q.topic || '').trim().toLowerCase();
+        const qSubTop = String(q.subtopic || '').trim().toLowerCase();
+        const qSub = String(q.subjectTag || '').trim().toLowerCase();
+        return (
+          (qTopId && qTopId === topLow) ||
+          qTop === topLow ||
+          qSubTop === topLow ||
+          qSub === topLow ||
+          (qTop && qTop.includes(topLow))
+        );
+      });
+    } else if (rawTopicInput && (!subjectFilter || subjectFilter.toUpperCase() === 'ALL')) {
+      const rawLow = rawTopicInput.toLowerCase();
+      const topicMatched = eligiblePool.filter((q) => {
+        const qTopId = String(q.topicId || '').trim().toLowerCase();
+        const qTop = String(q.topic || '').trim().toLowerCase();
+        const qSubTopId = String(q.subtopicId || '').trim().toLowerCase();
+        const qSubTop = String(q.subtopic || '').trim().toLowerCase();
+        const qSubId = String(q.subjectId || '').trim().toLowerCase();
+        const qSub = String(q.subjectTag || '').trim().toLowerCase();
+        const qTags = Array.isArray(q.tags) ? q.tags.join(' ').toLowerCase() : '';
+        return (
+          (qTopId && qTopId === rawLow) ||
+          (qSubTopId && qSubTopId === rawLow) ||
+          (qSubId && qSubId === rawLow) ||
+          (qTop && (qTop === rawLow || rawLow.includes(qTop) || qTop.includes(rawLow))) ||
+          (qSub && (qSub === rawLow || rawLow.includes(qSub) || qSub.includes(rawLow))) ||
+          (qSubTop && (qSubTop === rawLow || rawLow.includes(qSubTop) || qSubTop.includes(rawLow))) ||
+          (qTags && qTags.includes(rawLow))
+        );
+      });
+      if (topicMatched.length > 0 || opts.strictTopicMatch === true) {
+        eligiblePool = topicMatched;
+      }
+    }
+
+    // Step 4b: Filter by explicit Subtopic filter (supports subtopicId or subtopic name)
+    if (strictSubtopicFilter && strictSubtopicFilter.toUpperCase() !== 'ALL') {
+      const subtopLow = strictSubtopicFilter.toLowerCase();
+      eligiblePool = eligiblePool.filter((q) => {
+        const qSubTopId = String(q.subtopicId || '').trim().toLowerCase();
+        const qSubTop = String(q.subtopic || '').trim().toLowerCase();
+        return (
+          (qSubTopId && qSubTopId === subtopLow) ||
+          qSubTop === subtopLow ||
+          (qSubTop && qSubTop.includes(subtopLow))
+        );
+      });
+    }
+
+    // Step 5: Filter by Difficulty Level (supports Easy, Moderate, Hard/Difficult)
+    if (difficultyFilter && difficultyFilter.toUpperCase() !== 'ALL') {
+      const targetDiffNorm = normalizeDifficultyValueForMatch(difficultyFilter);
+      eligiblePool = eligiblePool.filter((q) => {
+        const qDiffNorm = normalizeDifficultyValueForMatch(q.difficultyLevel || q.difficulty || 'Moderate');
+        return qDiffNorm === targetDiffNorm;
+      });
+    }
+
+    // Step 6: Filter by Language Availability
+    if (languageFilter && languageFilter.toUpperCase() !== 'ALL') {
+      const langLow = languageFilter.toLowerCase();
+      eligiblePool = eligiblePool.filter((q) => {
+        const qLang = String(q.languageAvailability || 'Both').trim().toLowerCase();
+        return qLang === langLow || qLang === 'both';
+      });
+    }
+
+    // Step 7: Deduplicate candidate pool & prevent duplicate questions within the same test
+    const uniqueEligible = [];
+    const seenIds = new Set();
+    const seenNormHi = new Set();
+    const seenNormEn = new Set();
+
+    for (const q of eligiblePool) {
+      const qid = String(q.centralQuestionId || q.questionId || q.id || '').trim();
+      const normHi = normalizeStemTextForSelection(q.questionHi || '');
+      const normEn = normalizeStemTextForSelection(q.questionEn || '');
+
+      if (qid && seenIds.has(qid)) continue;
+      if (normHi && seenNormHi.has(normHi)) continue;
+      if (normEn && seenNormEn.has(normEn)) continue;
+
+      const isNearDup = uniqueEligible.some((already) => {
+        const simHi = (normHi && already.questionHi) ? computeStemSimilarityForSelection(q.questionHi, already.questionHi) : 0;
+        const simEn = (normEn && already.questionEn) ? computeStemSimilarityForSelection(q.questionEn, already.questionEn) : 0;
+        return Math.max(simHi, simEn) >= 0.88;
+      });
+      if (isNearDup) continue;
+
+      if (qid) seenIds.add(qid);
+      if (normHi) seenNormHi.add(normHi);
+      if (normEn) seenNormEn.add(normEn);
+      uniqueEligible.push(q);
+    }
+
+    const availableEligibleCount = uniqueEligible.length;
+    const chosenSlice = requestedCount > 0 ? uniqueEligible.slice(0, requestedCount) : [];
+
+    // Create independent snapshot copies linked via centralQuestionId so published tests are never mutated later
+    const selectedQuestions = chosenSlice.map((q, idx) => {
+      const optsHi = Array.isArray(q.optionsHi) && q.optionsHi.length === 4
+        ? [...q.optionsHi]
+        : [q.optA_Hi, q.optB_Hi, q.optC_Hi, q.optD_Hi].map((o, i) => String(o || (q.optionsEn && q.optionsEn[i]) || ['A', 'B', 'C', 'D'][i]));
+      const optsEn = Array.isArray(q.optionsEn) && q.optionsEn.length === 4
+        ? [...q.optionsEn]
+        : [q.optA_En, q.optB_En, q.optC_En, q.optD_En].map((o, i) => String(o || optsHi[i] || ['A', 'B', 'C', 'D'][i]));
+      const corrIdx = Number(q.correctOptionIndex != null ? q.correctOptionIndex : q.correctIndex || 0);
+      const canonicalId = q.questionId || q.id || `qb_${idx + 1}`;
+      const examIdsArr = Array.isArray(q.examIds) && q.examIds.length > 0
+        ? [...q.examIds]
+        : [q.examCode || examFilter || 'CGPSC'];
+      const diffLabel = q.difficultyLevel || (String(q.difficulty || '').toLowerCase() === 'difficult' ? 'Hard' : (q.difficulty || 'Moderate'));
+
+      return {
+        id: `${testPrefix}_ref_${canonicalId}`,
+        questionId: canonicalId,
+        centralQuestionId: q.id || canonicalId,
+        examCode: q.examCode || examIdsArr[0] || examFilter || 'CGPSC',
+        examIds: examIdsArr,
+        subjectId: q.subjectId || '',
+        subjectTag: q.subjectTag || subjectFilter || rawTopicInput || 'General Studies',
+        topicId: q.topicId || '',
+        topic: q.topic || strictTopicFilter || rawTopicInput || 'General Knowledge',
+        subtopicId: q.subtopicId || '',
+        subtopic: q.subtopic || strictSubtopicFilter || '',
+        difficulty: q.difficulty || diffLabel || 'Moderate',
+        difficultyLevel: diffLabel || 'Moderate',
+        questionType: q.questionType || 'MCQ',
+        sourceExam: q.sourceExam || '',
+        sourceYear: q.sourceYear || '',
+        paperSetCode: q.paperSetCode || '',
+        sourceDocument: q.sourceDocument || '',
+        sourcePageNumber: q.sourcePageNumber || '',
+        languageAvailability: q.languageAvailability || 'Both',
+        pyqTag: q.pyqTag || '',
+        tags: Array.isArray(q.tags) ? [...q.tags] : [],
+        status: 'verified',
+        verificationStatus: 'verified',
+        verified: true,
+        importSource: q.importSource || 'central_bank',
+        questionHi: q.questionHi || q.questionEn,
+        questionEn: q.questionEn || q.questionHi,
+        optA_Hi: optsHi[0],
+        optB_Hi: optsHi[1],
+        optC_Hi: optsHi[2],
+        optD_Hi: optsHi[3],
+        optA_En: optsEn[0],
+        optB_En: optsEn[1],
+        optC_En: optsEn[2],
+        optD_En: optsEn[3],
+        optionsHi: optsHi,
+        optionsEn: optsEn,
+        correctIndex: corrIdx,
+        correctOptionIndex: corrIdx,
+        explanationHi: q.explanationHi || q.explanationEn || 'विस्तृत व्याख्या उपलब्ध है।',
+        explanationEn: q.explanationEn || q.explanationHi || 'Detailed explanation available.'
+      };
+    });
+
+    const insufficient = requestedCount > 0 && availableEligibleCount < requestedCount;
+    const filterSummaryParts = [];
+    if (examFilter && examFilter !== 'ALL') filterSummaryParts.push(`Exam: ${examFilter}`);
+    if (subjectFilter && subjectFilter.toUpperCase() !== 'ALL') filterSummaryParts.push(`Subject: ${subjectFilter}`);
+    if (strictTopicFilter && strictTopicFilter.toUpperCase() !== 'ALL') filterSummaryParts.push(`Topic: ${strictTopicFilter}`);
+    if (strictSubtopicFilter && strictSubtopicFilter.toUpperCase() !== 'ALL') filterSummaryParts.push(`Subtopic: ${strictSubtopicFilter}`);
+    if (difficultyFilter && difficultyFilter.toUpperCase() !== 'ALL') filterSummaryParts.push(`Difficulty: ${difficultyFilter}`);
+    const filterDesc = filterSummaryParts.length > 0 ? ` (${filterSummaryParts.join(', ')})` : '';
+
+    const warningMessage = insufficient
+      ? `⚠️ Admin Warning: Requested ${requestedCount} question(s), but only ${availableEligibleCount} eligible verified question(s) are available in the Central Question Bank${filterDesc}. ${availableEligibleCount > 0 ? `Selected all ${availableEligibleCount} available unique question(s).` : 'Please import and verify questions in the Central Question Bank first.'}`
+      : '';
+
+    return {
+      questions: selectedQuestions,
+      requestedCount,
+      selectedCount: selectedQuestions.length,
+      availableEligibleCount,
+      insufficient,
+      warningMessage
+    };
+  }
+
+  function generateHighYieldBilingualQuestions(prefix, topic, count, customPrompt, extraFilters) {
+    const selectionResult = selectEligibleQuestionsForTest(Object.assign({
+      testId: prefix,
+      topic,
+      count,
+      customPrompt
+    }, extraFilters || {}));
+    return selectionResult.questions;
   }
 
   function parseBulkQuestionsText(text, fileName) {
@@ -3330,6 +3574,14 @@
       if (globalDoc) {
         state.config = Object.assign({}, state.config, globalDoc);
       }
+      const taxDoc = docs.find((d) => d.id === 'taxonomy' || d.configKey === 'taxonomy');
+      if (taxDoc) {
+        state.customTaxonomy = Object.assign({ customCategories: [], customSubjects: [] }, state.customTaxonomy || {}, taxDoc);
+      }
+    } else if (key === 'questionBank') {
+      state.questionBank = docs;
+    } else if (key === 'examMaster' || key === 'subjectMaster' || key === 'topicMaster' || key === 'subtopicMaster') {
+      state[key] = docs;
     } else if (docs.length > 0) {
       state[key] = docs;
     }
@@ -3918,6 +4170,8 @@
     toast,
     applyBrandingAndSecurity,
     generateHighYieldBilingualQuestions,
+    selectEligibleQuestionsForTest,
+    isQuestionEligibleForAutoSelection,
     openQuestionEditorModal,
     parseBulkQuestionsText,
     handleFirebaseAuthUser,

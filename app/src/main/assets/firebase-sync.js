@@ -10,29 +10,259 @@
   const NAMED_DATABASE_ID = 'ai-studio-android-cgpedia-28065f3c-5ca6-4761-9e70-c46ab8df720d';
 
   const EXAM_CATEGORIES = [
-    { id: 'cgpsc', code: 'CGPSC', nameHi: 'छत्तीसगढ़ पीएससी (CGPSC & CGSSB)', nameEn: 'CGPSC & CGSSB (Vyapam)', icon: '🏛️', badge: 'State Flagship' },
-    { id: 'upsc', code: 'UPSC', nameHi: 'संघ लोक सेवा आयोग (UPSC CSE)', nameEn: 'UPSC Civil Services (IAS/IPS)', icon: '🇮🇳', badge: 'All India' },
-    { id: 'state_psc', code: 'STATE_PSC', nameHi: 'अन्य राज्य पीएससी (MPPSC, UPPSC, BPSC)', nameEn: 'State PSC Examinations', icon: '⚖️', badge: 'State PCS' },
-    { id: 'ssc', code: 'SSC', nameHi: 'एसएससी परीक्षाएं (CGL, CHSL, MTS, GD)', nameEn: 'SSC Examinations (CGL, CHSL, GD)', icon: '📋', badge: 'Central Govt' },
-    { id: 'banking', code: 'BANKING', nameHi: 'बैंकिंग एवं बीमा (IBPS, SBI, RBI)', nameEn: 'Banking & Insurance (IBPS, SBI, RBI)', icon: '🏦', badge: 'Banking' },
-    { id: 'railway', code: 'RAILWAY', nameHi: 'रेलवे भर्ती बोर्ड (RRB NTPC, Group D, ALP)', nameEn: 'Railway (RRB NTPC, Group D, ALP)', icon: '🚆', badge: 'Railways' },
-    { id: 'teaching', code: 'TEACHING', nameHi: 'शिक्षक भर्ती एवं व्याख्याता परीक्षा', nameEn: 'Teaching & Lecturer Exams', icon: '🎓', badge: 'Teaching' },
-    { id: 'ctet_tet', code: 'CTET_TET', nameHi: 'सीटीईटी एवं राज्य टीईटी (CTET, CGTET)', nameEn: 'CTET & State TET (CGTET)', icon: '📖', badge: 'Eligibility' },
-    { id: 'ugc_net', code: 'UGC_NET', nameHi: 'यूजीसी नेट / सेट (UGC NET & CG SET)', nameEn: 'UGC NET / JRF & State SET', icon: '🔬', badge: 'Higher Ed' },
-    { id: 'police', code: 'POLICE', nameHi: 'पुलिस भर्ती (CG Police SI, Constable)', nameEn: 'Police Exams (SI & Constable)', icon: '🚓', badge: 'Uniformed' },
-    { id: 'defence', code: 'DEFENCE', nameHi: 'रक्षा परीक्षाएं (NDA, CDS, AFCAT, Agniveer)', nameEn: 'Defence Exams (NDA, CDS, AFCAT)', icon: '🛡️', badge: 'Defence' },
-    { id: 'other', code: 'OTHER', nameHi: 'अन्य प्रतियोगी परीक्षाएं', nameEn: 'Other Competitive Examinations', icon: '🧭', badge: 'General' }
+    { id: 'exam_cgpsc', examId: 'exam_cgpsc', code: 'CGPSC', nameHi: 'छत्तीसगढ़ पीएससी (CGPSC)', nameEn: 'CGPSC', icon: '🏛️', badge: 'State Flagship', subjectIds: ['sub_cg_gs', 'sub_history', 'sub_geography', 'sub_polity', 'sub_economy', 'sub_science', 'sub_mathematics', 'sub_reasoning', 'sub_hindi', 'sub_english', 'sub_computer', 'sub_current_affairs'] },
+    { id: 'exam_cg_vyapam', examId: 'exam_cg_vyapam', code: 'CG_VYAPAM', nameHi: 'छत्तीसगढ़ व्यापम (CG Vyapam)', nameEn: 'CG Vyapam', icon: '🏢', badge: 'State Board', subjectIds: ['sub_cg_gs', 'sub_history', 'sub_geography', 'sub_polity', 'sub_economy', 'sub_science', 'sub_mathematics', 'sub_reasoning', 'sub_hindi', 'sub_english', 'sub_computer', 'sub_current_affairs'] },
+    { id: 'exam_adeo', examId: 'exam_adeo', code: 'ADEO', nameHi: 'सहायक विकास विस्तार अधिकारी (ADEO)', nameEn: 'ADEO', icon: '🌾', badge: 'Rural Dev', subjectIds: ['sub_cg_gs', 'sub_polity', 'sub_economy', 'sub_hindi', 'sub_reasoning', 'sub_current_affairs'] },
+    { id: 'exam_patwari', examId: 'exam_patwari', code: 'PATWARI', nameHi: 'पटवारी भर्ती परीक्षा (Patwari)', nameEn: 'Patwari', icon: '📐', badge: 'Revenue', subjectIds: ['sub_computer', 'sub_cg_gs', 'sub_mathematics', 'sub_reasoning', 'sub_hindi', 'sub_english', 'sub_history', 'sub_geography', 'sub_polity', 'sub_economy', 'sub_science', 'sub_current_affairs'] },
+    { id: 'exam_sub_inspector', examId: 'exam_sub_inspector', code: 'SUB_INSPECTOR', nameHi: 'उप निरीक्षक भर्ती (Sub Inspector / SI)', nameEn: 'Sub Inspector', icon: '👮', badge: 'Police SI', subjectIds: ['sub_cg_gs', 'sub_history', 'sub_geography', 'sub_polity', 'sub_economy', 'sub_science', 'sub_mathematics', 'sub_reasoning', 'sub_hindi', 'sub_english', 'sub_computer', 'sub_current_affairs'] },
+    { id: 'exam_teacher_recruitment', examId: 'exam_teacher_recruitment', code: 'TEACHER_RECRUITMENT', nameHi: 'शिक्षक भर्ती परीक्षा (Teacher Recruitment)', nameEn: 'Teacher Recruitment', icon: '🏫', badge: 'Teaching', subjectIds: ['sub_pedagogy', 'sub_hindi', 'sub_english', 'sub_mathematics', 'sub_science', 'sub_cg_gs', 'sub_computer', 'sub_history', 'sub_geography', 'sub_polity'] },
+    { id: 'exam_tet', examId: 'exam_tet', code: 'TET', nameHi: 'शिक्षक पात्रता परीक्षा (TET / CGTET / CTET)', nameEn: 'TET', icon: '📖', badge: 'Eligibility', subjectIds: ['sub_pedagogy', 'sub_hindi', 'sub_english', 'sub_mathematics', 'sub_science'] },
+    { id: 'upsc', examId: 'exam_upsc', code: 'UPSC', nameHi: 'संघ लोक सेवा आयोग (UPSC CSE)', nameEn: 'UPSC Civil Services (IAS/IPS)', icon: '🇮🇳', badge: 'All India', subjectIds: ['sub_history', 'sub_geography', 'sub_polity', 'sub_economy', 'sub_science', 'sub_mathematics', 'sub_reasoning', 'sub_english', 'sub_current_affairs'] },
+    { id: 'state_psc', examId: 'exam_state_psc', code: 'STATE_PSC', nameHi: 'अन्य राज्य पीएससी (MPPSC, UPPSC, BPSC)', nameEn: 'State PSC Examinations', icon: '⚖️', badge: 'State PCS', subjectIds: ['sub_history', 'sub_geography', 'sub_polity', 'sub_economy', 'sub_science', 'sub_hindi', 'sub_current_affairs'] },
+    { id: 'ssc', examId: 'exam_ssc', code: 'SSC', nameHi: 'एसएससी परीक्षाएं (CGL, CHSL, MTS, GD)', nameEn: 'SSC Examinations (CGL, CHSL, GD)', icon: '📋', badge: 'Central Govt', subjectIds: ['sub_mathematics', 'sub_reasoning', 'sub_english', 'sub_hindi', 'sub_history', 'sub_geography', 'sub_polity', 'sub_economy', 'sub_science', 'sub_computer', 'sub_current_affairs'] },
+    { id: 'banking', examId: 'exam_banking', code: 'BANKING', nameHi: 'बैंकिंग एवं बीमा (IBPS, SBI, RBI)', nameEn: 'Banking & Insurance (IBPS, SBI, RBI)', icon: '🏦', badge: 'Banking', subjectIds: ['sub_mathematics', 'sub_reasoning', 'sub_english', 'sub_economy', 'sub_computer', 'sub_current_affairs'] },
+    { id: 'railway', examId: 'exam_railway', code: 'RAILWAY', nameHi: 'रेलवे भर्ती बोर्ड (RRB NTPC, Group D, ALP)', nameEn: 'Railway (RRB NTPC, Group D, ALP)', icon: '🚆', badge: 'Railways', subjectIds: ['sub_mathematics', 'sub_reasoning', 'sub_science', 'sub_history', 'sub_geography', 'sub_polity', 'sub_current_affairs'] },
+    { id: 'teaching', examId: 'exam_teaching', code: 'TEACHING', nameHi: 'शिक्षक भर्ती एवं व्याख्याता परीक्षा', nameEn: 'Teaching & Lecturer Exams', icon: '🎓', badge: 'Teaching', subjectIds: ['sub_pedagogy', 'sub_hindi', 'sub_english', 'sub_mathematics', 'sub_science', 'sub_cg_gs', 'sub_computer'] },
+    { id: 'ctet_tet', examId: 'exam_ctet_tet', code: 'CTET_TET', nameHi: 'सीटीईटी एवं राज्य टीईटी (CTET, CGTET)', nameEn: 'CTET & State TET (CGTET)', icon: '📖', badge: 'Eligibility', subjectIds: ['sub_pedagogy', 'sub_hindi', 'sub_english', 'sub_mathematics', 'sub_science'] },
+    { id: 'ugc_net', examId: 'exam_ugc_net', code: 'UGC_NET', nameHi: 'यूजीसी नेट / सेट (UGC NET & CG SET)', nameEn: 'UGC NET / JRF & State SET', icon: '🔬', badge: 'Higher Ed', subjectIds: ['sub_pedagogy', 'sub_reasoning', 'sub_computer', 'sub_history', 'sub_geography', 'sub_polity', 'sub_economy'] },
+    { id: 'police', examId: 'exam_police', code: 'POLICE', nameHi: 'पुलिस भर्ती (CG Police SI, Constable)', nameEn: 'Police Exams (SI & Constable)', icon: '🚓', badge: 'Uniformed', subjectIds: ['sub_cg_gs', 'sub_history', 'sub_geography', 'sub_polity', 'sub_science', 'sub_mathematics', 'sub_reasoning', 'sub_hindi'] },
+    { id: 'defence', examId: 'exam_defence', code: 'DEFENCE', nameHi: 'रक्षा परीक्षाएं (NDA, CDS, AFCAT, Agniveer)', nameEn: 'Defence Exams (NDA, CDS, AFCAT)', icon: '🛡️', badge: 'Defence', subjectIds: ['sub_mathematics', 'sub_english', 'sub_science', 'sub_history', 'sub_geography', 'sub_polity', 'sub_current_affairs'] },
+    { id: 'other', examId: 'exam_other', code: 'OTHER', nameHi: 'अन्य प्रतियोगी परीक्षाएं', nameEn: 'Other Competitive Examinations', icon: '🧭', badge: 'General', subjectIds: ['sub_cg_gs', 'sub_history', 'sub_geography', 'sub_polity', 'sub_economy', 'sub_science', 'sub_mathematics', 'sub_reasoning', 'sub_hindi', 'sub_english', 'sub_computer', 'sub_current_affairs'] }
   ];
 
   const DEFAULT_SUBJECTS = [
-    { id: 'sub_cg_gs', examCode: 'CGPSC', titleHi: 'छत्तीसगढ़ सामान्य अध्ययन (CG GS)', titleEn: 'Chhattisgarh General Studies', topics: ['History of Chhattisgarh', 'Tribes, Art & Culture', 'Geography & Climate of CG', 'Panchayati Raj & Local Administration', 'CG Economy, Forest & Agriculture', 'Chhattisgarh Current Affairs'] },
-    { id: 'sub_polity', examCode: 'ALL', titleHi: 'भारतीय राजव्यवस्था एवं संविधान', titleEn: 'Indian Polity & Constitution', topics: ['Constitutional Framework', 'Fundamental Rights & Duties', 'Parliament & State Legislature', 'Judiciary & Constitutional Bodies'] },
-    { id: 'sub_history', examCode: 'ALL', titleHi: 'भारत का इतिहास एवं राष्ट्रीय आंदोलन', titleEn: 'Indian History & National Movement', topics: ['Ancient India', 'Medieval India', 'Modern History & Freedom Struggle', 'Art & Architecture'] },
-    { id: 'sub_geography', examCode: 'ALL', titleHi: 'भारत एवं विश्व का भूगोल', titleEn: 'Indian & World Geography', topics: ['Physical Geography', 'Rivers, Climate & Monsoon', 'Minerals, Industries & Resources', 'Environment & Biodiversity'] },
-    { id: 'sub_economy', examCode: 'ALL', titleHi: 'भारतीय अर्थव्यवस्था एवं बजट', titleEn: 'Indian Economy & Budget', topics: ['National Income & Planning', 'Banking, RBI & Monetary Policy', 'Union & State Budget, Economic Survey', 'Social Welfare Schemes'] },
-    { id: 'sub_science', examCode: 'ALL', titleHi: 'सामान्य विज्ञान एवं प्रौद्योगिकी', titleEn: 'General Science & Technology', topics: ['Physics & Chemistry in Daily Life', 'Biology & Human Health', 'Space (ISRO), Defence (DRDO) & IT', 'Computer Awareness'] },
-    { id: 'sub_csat', examCode: 'ALL', titleHi: 'सीसैट: गणित, रीजनिंग एवं भाषा', titleEn: 'Aptitude, Reasoning & Language (CSAT)', topics: ['Quantitative Aptitude & Data Interpretation', 'Logical & Analytical Reasoning', 'General Hindi Grammar (सामान्य हिन्दी)', 'General English Comprehension'] },
-    { id: 'sub_pedagogy', examCode: 'CTET_TET', titleHi: 'बाल विकास एवं शिक्षाशास्त्र (CDP)', titleEn: 'Child Development & Pedagogy', topics: ['Learning Theories', 'Inclusive Education', 'Teaching Aptitude & Assessment'] }
+    {
+      id: 'sub_cg_gs',
+      subjectId: 'sub_cg_gs',
+      code: 'CG_GK',
+      examCode: 'CGPSC',
+      titleHi: 'छत्तीसगढ़ सामान्य ज्ञान (Chhattisgarh GK)',
+      titleEn: 'Chhattisgarh General Knowledge',
+      aliases: ['Chhattisgarh General Studies', 'Chhattisgarh GS', 'CG GK', 'CG GS', 'छत्तीसगढ़ सामान्य अध्ययन (CG GS)', 'छत्तीसगढ़ सामान्य ज्ञान'],
+      topics: ['History of Chhattisgarh', 'Tribes, Art & Culture', 'Geography & Climate of CG', 'Panchayati Raj & Local Administration', 'CG Economy, Forest & Agriculture', 'Chhattisgarh Current Affairs']
+    },
+    {
+      id: 'sub_history',
+      subjectId: 'sub_history',
+      code: 'HISTORY',
+      examCode: 'ALL',
+      titleHi: 'इतिहास (History)',
+      titleEn: 'History',
+      aliases: ['Indian History & National Movement', 'Indian History', 'भारत का इतिहास एवं राष्ट्रीय आंदोलन', 'भारत का इतिहास', 'Ancient India', 'Medieval India', 'Modern History'],
+      topics: ['Ancient Indian History', 'Medieval Indian History', 'Modern Indian History', 'Art & Architecture', 'Ancient India', 'Medieval India', 'Modern History & Freedom Struggle']
+    },
+    {
+      id: 'sub_geography',
+      subjectId: 'sub_geography',
+      code: 'GEOGRAPHY',
+      examCode: 'ALL',
+      titleHi: 'भूगोल (Geography)',
+      titleEn: 'Geography',
+      aliases: ['Indian & World Geography', 'Indian Geography', 'भारत एवं विश्व का भूगोल', 'भारत का भूगोल'],
+      topics: ['Indian Geography', 'World Geography', 'Physical Geography', 'Chhattisgarh Geography', 'Rivers, Climate & Monsoon', 'Minerals, Industries & Resources', 'Environment & Biodiversity']
+    },
+    {
+      id: 'sub_polity',
+      subjectId: 'sub_polity',
+      code: 'POLITY',
+      examCode: 'ALL',
+      titleHi: 'भारतीय राजव्यवस्था एवं संविधान (Indian Polity)',
+      titleEn: 'Indian Polity',
+      aliases: ['Indian Polity & Constitution', 'Polity', 'Constitution', 'भारतीय राजव्यवस्था एवं संविधान', 'भारतीय राजव्यवस्था'],
+      topics: ['Constitution', 'Fundamental Rights', 'Directive Principles', 'Parliament', 'President and Governor', 'Constitutional Framework', 'Fundamental Rights & Duties', 'Parliament & State Legislature', 'Judiciary & Constitutional Bodies']
+    },
+    {
+      id: 'sub_economy',
+      subjectId: 'sub_economy',
+      code: 'ECONOMICS',
+      examCode: 'ALL',
+      titleHi: 'अर्थव्यवस्था (Economics)',
+      titleEn: 'Economics',
+      aliases: ['Indian Economy & Budget', 'Indian Economy', 'Economy', 'भारतीय अर्थव्यवस्था एवं बजट', 'भारतीय अर्थव्यवस्था'],
+      topics: ['National Income & Planning', 'Banking, RBI & Monetary Policy', 'Union & State Budget, Economic Survey', 'Social Welfare Schemes']
+    },
+    {
+      id: 'sub_science',
+      subjectId: 'sub_science',
+      code: 'SCIENCE',
+      examCode: 'ALL',
+      titleHi: 'सामान्य विज्ञान (General Science)',
+      titleEn: 'General Science',
+      aliases: ['General Science & Technology', 'Science', 'सामान्य विज्ञान एवं प्रौद्योगिकी'],
+      topics: ['Physics & Chemistry in Daily Life', 'Biology & Human Health', 'Space (ISRO), Defence (DRDO) & IT', 'Environment & Ecology']
+    },
+    {
+      id: 'sub_mathematics',
+      subjectId: 'sub_mathematics',
+      code: 'MATHEMATICS',
+      examCode: 'ALL',
+      titleHi: 'गणित (Mathematics)',
+      titleEn: 'Mathematics',
+      aliases: ['Quantitative Aptitude', 'Quantitative Aptitude & Data Interpretation', 'Maths', 'Aptitude, Reasoning & Language (CSAT)', 'sub_csat'],
+      topics: ['Number System & Simplification', 'Percentage, Profit & Loss, SI & CI', 'Ratio, Time & Work, Speed & Distance', 'Algebra, Geometry & Mensuration', 'Quantitative Aptitude & Data Interpretation']
+    },
+    {
+      id: 'sub_reasoning',
+      subjectId: 'sub_reasoning',
+      code: 'REASONING',
+      examCode: 'ALL',
+      titleHi: 'तर्कशक्ति एवं रीजनिंग (Reasoning)',
+      titleEn: 'Reasoning',
+      aliases: ['Logical & Analytical Reasoning', 'General Intelligence & Reasoning', 'Mental Ability'],
+      topics: ['Coding-Decoding & Series', 'Blood Relations & Direction Sense', 'Syllogism, Statement & Conclusion', 'Puzzles, Seating & Non-Verbal Reasoning', 'Logical & Analytical Reasoning']
+    },
+    {
+      id: 'sub_hindi',
+      subjectId: 'sub_hindi',
+      code: 'HINDI',
+      examCode: 'ALL',
+      titleHi: 'सामान्य हिन्दी (Hindi)',
+      titleEn: 'Hindi',
+      aliases: ['General Hindi', 'General Hindi Grammar (सामान्य हिन्दी)', 'हिन्दी व्याकरण'],
+      topics: ['वर्णमाला, संधि एवं समास (Sandhi & Samas)', 'तत्सम-तद्भव, उपसर्ग एवं प्रत्यय', 'पर्यायवाची, विलोम एवं मुहावरे', 'वाक्य शुद्धि एवं रस-छंद-अलंकार', 'General Hindi Grammar (सामान्य हिन्दी)']
+    },
+    {
+      id: 'sub_english',
+      subjectId: 'sub_english',
+      code: 'ENGLISH',
+      examCode: 'ALL',
+      titleHi: 'सामान्य अंग्रेजी (English)',
+      titleEn: 'English',
+      aliases: ['General English', 'General English Comprehension', 'English Grammar'],
+      topics: ['Parts of Speech, Tenses & Voice', 'Direct/Indirect Speech & Error Spotting', 'Synonyms, Antonyms, Idioms & One-Word', 'Reading Comprehension & Cloze Test', 'General English Comprehension']
+    },
+    {
+      id: 'sub_computer',
+      subjectId: 'sub_computer',
+      code: 'COMPUTER',
+      examCode: 'ALL',
+      titleHi: 'कंप्यूटर ज्ञान (Computer Knowledge)',
+      titleEn: 'Computer Knowledge',
+      aliases: ['Computer Awareness', 'Computer Science', 'Basic Computer'],
+      topics: ['Computer Architecture, Hardware & Memory', 'Operating System & MS Office (Word, Excel, PowerPoint)', 'Internet, Networking, Email & Cyber Security', 'Multimedia, Printers & Antivirus', 'Computer Awareness']
+    },
+    {
+      id: 'sub_pedagogy',
+      subjectId: 'sub_pedagogy',
+      code: 'PEDAGOGY',
+      examCode: 'TET',
+      titleHi: 'बाल विकास एवं शिक्षाशास्त्र (CDP)',
+      titleEn: 'Child Development & Pedagogy',
+      aliases: ['Pedagogy', 'Teaching Aptitude'],
+      topics: ['Learning Theories', 'Inclusive Education', 'Teaching Aptitude & Assessment']
+    },
+    {
+      id: 'sub_current_affairs',
+      subjectId: 'sub_current_affairs',
+      code: 'CURRENT_AFFAIRS',
+      examCode: 'ALL',
+      titleHi: 'समसामयिकी (Current Affairs)',
+      titleEn: 'Current Affairs',
+      aliases: ['Chhattisgarh, National & International Current Affairs'],
+      topics: ['Chhattisgarh Current Affairs', 'National & International Events', 'Awards, Sports & Schemes']
+    }
+  ];
+
+  const DEFAULT_TOPICS = [
+    // History (sub_history)
+    { id: 'top_hist_ancient', topicId: 'top_hist_ancient', subjectId: 'sub_history', titleEn: 'Ancient Indian History', titleHi: 'प्राचीन भारत का इतिहास', aliases: ['Ancient India'], keywords: ['indus', 'harappa', 'mohenjodaro', 'vedic', 'rigveda', 'maurya', 'ashoka', 'chandragupta', 'chankya', 'kautilya', 'gupta', 'samudragupta', 'buddha', 'mahavira', 'jainism', 'buddhism', 'सिंधु', 'हड़प्पा', 'वैदिक', 'ऋग्वेद', 'मौर्य', 'अशोक', 'चन्द्रगुप्त', 'गुप्त', 'बुद्ध', 'महावीर'] },
+    { id: 'top_hist_medieval', topicId: 'top_hist_medieval', subjectId: 'sub_history', titleEn: 'Medieval Indian History', titleHi: 'मध्यकालीन भारत का इतिहास', aliases: ['Medieval India'], keywords: ['sultanate', 'qutbuddin', 'iltutmish', 'alauddin', 'khilji', 'tughlaq', 'lodi', 'mughal', 'babur', 'akbar', 'jahangir', 'shahjahan', 'aurangzeb', 'shivaji', 'vijayanagara', 'bhakti', 'sufi', 'सल्तनत', 'खिलजी', 'तुगलक', 'मुगल', 'अकबर', 'बाबर', 'औरंगजेब', 'शिवाजी', 'भक्ति', 'सूफी'] },
+    { id: 'top_hist_modern', topicId: 'top_hist_modern', subjectId: 'sub_history', titleEn: 'Modern Indian History', titleHi: 'आधुनिक भारत का इतिहास', aliases: ['Modern History & Freedom Struggle', 'Modern History'], keywords: ['1857', 'revolt', 'gandhi', 'congress', 'non-cooperation', 'quit india', 'swadeshi', 'dandi', 'civil disobedience', 'bhagat singh', 'subhash chandra bose', 'viceroy', 'governor general', 'british', 'गांधी', 'कांग्रेस', 'असहयोग', 'भारत छोड़ो', 'स्वदेशी', 'दांडी', '1857 की क्रांति', 'वायसराय', 'गवर्नर जनरल'] },
+    { id: 'top_hist_art', topicId: 'top_hist_art', subjectId: 'sub_history', titleEn: 'Art & Architecture', titleHi: 'कला एवं स्थापत्य', aliases: [], keywords: ['temple', 'stupa', 'ajanta', 'ellora', 'khajuraho', 'sculpture', 'मंदिर', 'स्तूप', 'अजंता', 'एलोरा', 'खजुराहो'] },
+
+    // Geography (sub_geography)
+    { id: 'top_geo_indian', topicId: 'top_geo_indian', subjectId: 'sub_geography', titleEn: 'Indian Geography', titleHi: 'भारत का भूगोल', aliases: ['Rivers, Climate & Monsoon', 'Minerals, Industries & Resources'], keywords: ['himalaya', 'ganga', 'brahmaputra', 'godavari', 'krishna', 'narmada', 'monsoon', 'western ghats', 'eastern ghats', 'thar', 'soil', 'national park', 'census', 'हिमालय', 'गंगा', 'ब्रह्मपुत्र', 'गोदावरी', 'नर्मदा', 'मानसून', 'पूर्वी घाट', 'पश्चिमी घाट', 'मृदा', 'जनगणना'] },
+    { id: 'top_geo_world', topicId: 'top_geo_world', subjectId: 'sub_geography', titleEn: 'World Geography', titleHi: 'विश्व का भूगोल', aliases: [], keywords: ['continent', 'pacific', 'atlantic', 'sahara', 'amazon', 'nile', 'andes', 'equator', 'tropic', 'planet', 'solar system', 'महाद्वीप', 'महासागर', 'प्रशांत', 'अटलांटिक', 'सहारा', 'अमेज़न', 'नील', 'सौरमंडल', 'ग्रह'] },
+    { id: 'top_geo_physical', topicId: 'top_geo_physical', subjectId: 'sub_geography', titleEn: 'Physical Geography', titleHi: 'भौतिक भूगोल', aliases: ['Environment & Biodiversity'], keywords: ['earthquake', 'volcano', 'plate tectonics', 'atmosphere', 'troposphere', 'stratosphere', 'cyclone', 'ocean current', 'igneous', 'sedimentary', 'metamorphic', 'भूकंप', 'ज्वालामुखी', 'वायुमंडल', 'क्षोभमंडल', 'समतापमंडल', 'चक्रवात', 'चट्टान'] },
+    { id: 'top_geo_cg', topicId: 'top_geo_cg', subjectId: 'sub_geography', titleEn: 'Chhattisgarh Geography', titleHi: 'छत्तीसगढ़ का भूगोल', aliases: ['Rivers & Drainage System', 'Physical Divisions', 'Forests & National Parks'], keywords: ['mahanadi', 'indravati', 'shivnath', 'hasdeo', 'sihawa', 'chitrakote', 'tirathgarh', 'bailadila', 'dandakaranya', 'pat region', 'mainpat', 'kanger valley', 'indravati national park', 'महानदी', 'इंद्रावती', 'शिवनाथ', 'हसदेव', 'सिहावा', 'चित्रकोट', 'तीरथगढ़', 'बैलाडीला', 'दण्डकारण्य', 'मैनपाट', 'कांगेर घाटी'] },
+
+    // Indian Polity (sub_polity)
+    { id: 'top_pol_constitution', topicId: 'top_pol_constitution', subjectId: 'sub_polity', titleEn: 'Constitution', titleHi: 'संविधान का विकास एवं विशेषताएँ', aliases: ['Constitutional Framework'], keywords: ['constituent assembly', 'preamble', 'schedule', 'amendment', 'drafting committee', 'ambedkar', 'संविधान सभा', 'प्रस्तावना', 'अनुसूची', 'संशोधन', 'प्रारूप समिति', 'अंबेडकर'] },
+    { id: 'top_pol_fr', topicId: 'top_pol_fr', subjectId: 'sub_polity', titleEn: 'Fundamental Rights', titleHi: 'मौलिक अधिकार', aliases: ['Fundamental Rights & Duties'], keywords: ['fundamental right', 'article 14', 'article 19', 'article 21', 'article 32', 'habeas corpus', 'mandamus', 'writ', 'right to equality', 'right to freedom', 'मौलिक अधिकार', 'अनुच्छेद 14', 'अनुच्छेद 19', 'अनुच्छेद 21', 'अनुच्छेद 32', 'बंदी प्रत्यक्षीकरण', 'परमादेश', 'रिट'] },
+    { id: 'top_pol_dpsp', topicId: 'top_pol_dpsp', subjectId: 'sub_polity', titleEn: 'Directive Principles', titleHi: 'नीति निदेशक तत्व एवं मूल कर्तव्य', aliases: [], keywords: ['directive principles', 'dpsp', 'article 36', 'article 40', 'article 44', 'uniform civil code', 'fundamental duties', 'article 51a', 'swaran singh', 'नीति निदेशक', 'अनुच्छेद 40', 'समान नागरिक संहिता', 'मौलिक कर्तव्य', 'स्वर्ण सिंह'] },
+    { id: 'top_pol_parliament', topicId: 'top_pol_parliament', subjectId: 'sub_polity', titleEn: 'Parliament', titleHi: 'संसद एवं राज्य विधानमंडल', aliases: ['Parliament & State Legislature'], keywords: ['lok sabha', 'rajya sabha', 'speaker', 'money bill', 'joint sitting', 'article 108', 'article 110', 'parliament', 'vidhan sabha', 'लोकसभा', 'राज्यसभा', 'धन विधेयक', 'संयुक्त बैठक', 'संसद', 'विधानसभा'] },
+    { id: 'top_pol_exec', topicId: 'top_pol_exec', subjectId: 'sub_polity', titleEn: 'President and Governor', titleHi: 'राष्ट्रपति, राज्यपाल एवं न्यायपालिका', aliases: ['Judiciary & Constitutional Bodies', 'Panchayati Raj'], keywords: ['president', 'governor', 'prime minister', 'chief minister', 'ordinance', 'impeachment', 'article 52', 'article 61', 'article 72', 'article 123', 'supreme court', 'high court', 'election commission', 'cag', 'upsc', 'राष्ट्रपति', 'राज्यपाल', 'प्रधानमंत्री', 'अध्यादेश', 'महाभियोग', 'सर्वोच्च न्यायालय', 'उच्च न्यायालय', 'निर्वाचन आयोग'] },
+
+    // Chhattisgarh General Knowledge (sub_cg_gs)
+    { id: 'top_cg_history', topicId: 'top_cg_history', subjectId: 'sub_cg_gs', titleEn: 'History of Chhattisgarh', titleHi: 'छत्तीसगढ़ का इतिहास', aliases: ['Ancient & Kalchuri Period', 'Modern History of CG', 'Tribal Revolts'], keywords: ['kalchuri', 'ratanpur', 'kalingaraj', 'ratnadev', 'maratha', 'bimbaji', 'bhonsle', 'halba', 'paralkot', 'gend singh', 'veer narayan singh', 'sonakhan', 'bhumkal', 'gundadhur', 'sirpur', 'sharabhapuriya', 'कलचुरी', 'रतनपुर', 'कलिंगराज', 'रत्नदेव', 'मराठा', 'बिंबाजी', 'भोंसले', 'हल्बा', 'परलकोट', 'वीर नारायण सिंह', 'सोनाखान', 'भूमकाल', 'गुण्डाधूर', 'सिरपुर'] },
+    { id: 'top_cg_culture', topicId: 'top_cg_culture', subjectId: 'sub_cg_gs', titleEn: 'Tribes, Art & Culture', titleHi: 'जनजातियाँ, कला एवं संस्कृति', aliases: [], keywords: ['gond', 'baiga', 'abujhmaria', 'korwa', 'birhor', 'halba', 'oraon', 'kanwar', 'suwa', 'panthi', 'raut nacha', 'karma', 'pandwani', 'teejan bai', 'chakradhar', 'bastar dussehra', 'hareli', 'cherchera', 'गोंड', 'बैगा', 'अबूझमाड़िया', 'कोरवा', 'बिरहोर', 'उरांव', 'सुआ', 'पंथी', 'राउत नाचा', 'करमा', 'पंडवानी', 'तीजन बाई', 'बस्तर दशहरा', 'हरेली', 'छेरछेरा'] },
+    { id: 'top_cg_geo_climate', topicId: 'top_cg_geo_climate', subjectId: 'sub_cg_gs', titleEn: 'Geography & Climate of CG', titleHi: 'छत्तीसगढ़ का भूगोल एवं जलवायु', aliases: [], keywords: ['chhattisgarh capital', 'raipur', 'bilaspur', 'bastar', 'surguja', 'durg', 'mahanadi basin', 'maikal', 'gaurlata', 'छत्तीसगढ़ की राजधानी', 'रायपुर', 'बिलासपुर', 'बस्तर', 'सरगुजा', 'गौरलाटा', 'मैक़ल'] },
+    { id: 'top_cg_admin', topicId: 'top_cg_admin', subjectId: 'sub_cg_gs', titleEn: 'Panchayati Raj & Local Administration', titleHi: 'पंचायती राज एवं स्थानीय प्रशासन', aliases: [], keywords: ['gram sabha', 'janpad panchayat', 'zila panchayat', 'sarpanch', '73rd amendment', 'panchayati raj act 1993', 'municipal', 'ग्राम सभा', 'जनपद पंचायत', 'जिला पंचायत', 'सरपंच', 'पंचायती राज'] },
+    { id: 'top_cg_econ', topicId: 'top_cg_econ', subjectId: 'sub_cg_gs', titleEn: 'CG Economy, Forest & Agriculture', titleHi: 'छत्तीसगढ़ की अर्थव्यवस्था, वन एवं कृषि', aliases: [], keywords: ['paddy', 'msp', 'tendu', 'sal forest', 'tin', 'coal', 'korba', 'bhilai steel plant', 'economic survey', 'धान', 'तेंदूपत्ता', 'साल वन', 'टिन', 'कोयला', 'कोरबा', 'भिलाई इस्पात', 'आर्थिक सर्वेक्षण'] },
+    { id: 'top_cg_ca', topicId: 'top_cg_ca', subjectId: 'sub_cg_gs', titleEn: 'Chhattisgarh Current Affairs', titleHi: 'छत्तीसगढ़ समसामयिकी', aliases: [], keywords: ['mahtari vandana', 'krishak unnati', 'chhattisgarh budget', 'राज्योत्सव', 'महतारी वंदन', 'कृषक उन्नति'] },
+
+    // Economics (sub_economy)
+    { id: 'top_econ_income', topicId: 'top_econ_income', subjectId: 'sub_economy', titleEn: 'National Income & Planning', titleHi: 'राष्ट्रीय आय एवं नियोजन', aliases: [], keywords: ['gdp', 'gnp', 'nnp', 'national income', 'niti aayog', 'five year plan', 'per capita', 'जीडीपी', 'राष्ट्रीय आय', 'नीति आयोग', 'पंचवर्षीय योजना'] },
+    { id: 'top_econ_banking', topicId: 'top_econ_banking', subjectId: 'sub_economy', titleEn: 'Banking, RBI & Monetary Policy', titleHi: 'बैंकिंग, आरबीआई एवं मौद्रिक नीति', aliases: [], keywords: ['rbi', 'repo rate', 'reverse repo', 'crr', 'slr', 'inflation', 'monetary policy', 'nabard', 'sebi', 'आरबीआई', 'रेपो दर', 'मुद्रास्फीति', 'मौद्रिक नीति', 'नाबार्ड'] },
+    { id: 'top_econ_budget', topicId: 'top_econ_budget', subjectId: 'sub_economy', titleEn: 'Union & State Budget, Economic Survey', titleHi: 'केंद्रीय एवं राज्य बजट तथा आर्थिक सर्वेक्षण', aliases: ['Social Welfare Schemes'], keywords: ['fiscal deficit', 'gst', 'finance commission', 'union budget', 'tax', 'राजकोषीय घाटा', 'जीएसटी', 'वित्त आयोग', 'बजट'] },
+
+    // General Science (sub_science)
+    { id: 'top_sci_phys_chem', topicId: 'top_sci_phys_chem', subjectId: 'sub_science', titleEn: 'Physics & Chemistry in Daily Life', titleHi: 'दैनिक जीवन में भौतिकी एवं रसायन', aliases: [], keywords: ['newton', 'ohm', 'lens', 'mirror', 'acid', 'base', 'ph value', 'periodic table', 'atom', 'electron', 'chemical', 'न्यूटन', 'लेंस', 'दर्पण', 'अम्ल', 'क्षार', 'आवर्त सारणी', 'परमाणु'] },
+    { id: 'top_sci_bio', topicId: 'top_sci_bio', subjectId: 'sub_science', titleEn: 'Biology & Human Health', titleHi: 'जीव विज्ञान एवं मानव स्वास्थ्य', aliases: [], keywords: ['cell', 'vitamin', 'protein', 'blood', 'heart', 'dna', 'rna', 'photosynthesis', 'virus', 'bacteria', 'vaccine', 'कोशिका', 'विटामिन', 'प्रोटीन', 'रक्त', 'प्रकाश संश्लेषण', 'जीवाणु', 'विषाणु'] },
+    { id: 'top_sci_tech', topicId: 'top_sci_tech', subjectId: 'sub_science', titleEn: 'Space (ISRO), Defence (DRDO) & IT', titleHi: 'अंतरिक्ष (ISRO), रक्षा (DRDO) एवं प्रौद्योगिकी', aliases: ['Environment & Ecology'], keywords: ['isro', 'chandrayaan', 'gaganyaan', 'drdo', 'missile', 'satellite', 'pslv', 'gslv', 'इसरो', 'चंद्रयान', 'गगनयान', 'डीआरडीओ', 'उपग्रह'] },
+
+    // Mathematics (sub_mathematics)
+    { id: 'top_math_number', topicId: 'top_math_number', subjectId: 'sub_mathematics', titleEn: 'Number System & Simplification', titleHi: 'संख्या पद्धति एवं सरलीकरण', aliases: ['Quantitative Aptitude & Data Interpretation'], keywords: ['lcm', 'hcf', 'prime number', 'divisibility', 'remainder', 'fraction', 'square root', 'लघुत्तम', 'महत्तम', 'अभाज्य संख्या', 'विभाज्यता', 'वर्गमूल'] },
+    { id: 'top_math_arith', topicId: 'top_math_arith', subjectId: 'sub_mathematics', titleEn: 'Percentage, Profit & Loss, SI & CI', titleHi: 'प्रतिशत, लाभ-हानि, साधारण एवं चक्रवृद्धि ब्याज', aliases: [], keywords: ['percentage', 'profit', 'loss', 'discount', 'simple interest', 'compound interest', 'प्रतिशत', 'लाभ', 'हानि', 'साधारण ब्याज', 'चक्रवृद्धि ब्याज'] },
+    { id: 'top_math_ratio_time', topicId: 'top_math_ratio_time', subjectId: 'sub_mathematics', titleEn: 'Ratio, Time & Work, Speed & Distance', titleHi: 'अनुपात, समय-कार्य एवं चाल-दूरी', aliases: [], keywords: ['ratio', 'proportion', 'average', 'time and work', 'train', 'speed', 'distance', 'अनुपात', 'समानुपात', 'औसत', 'समय और कार्य', 'चाल', 'दूरी'] },
+    { id: 'top_math_geom', topicId: 'top_math_geom', subjectId: 'sub_mathematics', titleEn: 'Algebra, Geometry & Mensuration', titleHi: 'बीजगणित, ज्यामिति एवं क्षेत्रमिति', aliases: [], keywords: ['triangle', 'circle', 'cylinder', 'cone', 'sphere', 'area', 'volume', 'perimeter', 'polynomial', 'त्रिभुज', 'वृत्त', 'बेलन', 'शंकु', 'गोला', 'क्षेत्रफल', 'आयतन'] },
+
+    // Reasoning (sub_reasoning)
+    { id: 'top_reas_coding', topicId: 'top_reas_coding', subjectId: 'sub_reasoning', titleEn: 'Coding-Decoding & Series', titleHi: 'कोडिंग-डिकोडिंग एवं श्रृंखला', aliases: ['Logical & Analytical Reasoning'], keywords: ['coding', 'decoding', 'missing number', 'number series', 'alphabet series', 'analogy', 'odd one out', 'कोडिंग', 'डिकोडिंग', 'श्रृंखला', 'लुप्त संख्या', 'सादृश्यता'] },
+    { id: 'top_reas_blood_dir', topicId: 'top_reas_blood_dir', subjectId: 'sub_reasoning', titleEn: 'Blood Relations & Direction Sense', titleHi: 'रक्त संबंध एवं दिशा परीक्षण', aliases: [], keywords: ['blood relation', 'mother', 'father', 'brother', 'north-east', 'direction', 'clockwise', 'रक्त संबंध', 'दिशा', 'दक्षिणावर्त', 'वामावर्त'] },
+    { id: 'top_reas_syllogism', topicId: 'top_reas_syllogism', subjectId: 'sub_reasoning', titleEn: 'Syllogism, Statement & Conclusion', titleHi: 'न्याय निगमन, कथन एवं निष्कर्ष', aliases: ['Puzzles, Seating & Non-Verbal Reasoning'], keywords: ['syllogism', 'statement', 'conclusion', 'assumption', 'venn diagram', 'dice', 'calendar', 'clock', 'कथन', 'निष्कर्ष', 'वेन आरेख', 'पासा', 'कैलेंडर', 'घड़ी'] },
+
+    // Hindi (sub_hindi)
+    { id: 'top_hin_sandhi', topicId: 'top_hin_sandhi', subjectId: 'sub_hindi', titleEn: 'वर्णमाला, संधि एवं समास (Sandhi & Samas)', titleHi: 'वर्णमाला, संधि एवं समास', aliases: ['General Hindi Grammar (सामान्य हिन्दी)'], keywords: ['संधि', 'समास', 'स्वर', 'व्यंजन', 'वर्णमाला', 'बहुव्रीहि', 'तत्पुरुष', 'द्वंद्व', 'कर्मधारय', 'यण संधि', 'गुण संधि'] },
+    { id: 'top_hin_vocab', topicId: 'top_hin_vocab', subjectId: 'sub_hindi', titleEn: 'तत्सम-तद्भव, पर्यायवाची एवं विलोम', titleHi: 'तत्सम-तद्भव, पर्यायवाची, विलोम एवं मुहावरे', aliases: ['तत्सम-तद्भव, उपसर्ग एवं प्रत्यय', 'पर्यायवाची, विलोम एवं मुहावरे', 'वाक्य शुद्धि एवं रस-छंद-अलंकार'], keywords: ['तत्सम', 'तद्भव', 'उपसर्ग', 'प्रत्यय', 'पर्यायवाची', 'विलोम', 'मुहावरा', 'लोकोक्ति', 'अलंकार', 'रस', 'छंद', 'वर्तनी'] },
+
+    // English (sub_english)
+    { id: 'top_eng_grammar', topicId: 'top_eng_grammar', subjectId: 'sub_english', titleEn: 'Parts of Speech, Tenses & Voice', titleHi: 'अंग्रेजी व्याकरण (Tenses, Voice & Narration)', aliases: ['Direct/Indirect Speech & Error Spotting', 'General English Comprehension'], keywords: ['passive voice', 'active voice', 'indirect speech', 'direct speech', 'preposition', 'article', 'tense', 'subject-verb'] },
+    { id: 'top_eng_vocab', topicId: 'top_eng_vocab', subjectId: 'sub_english', titleEn: 'Synonyms, Antonyms, Idioms & One-Word', titleHi: 'शब्दावली (Synonyms, Antonyms & Idioms)', aliases: ['Reading Comprehension & Cloze Test'], keywords: ['synonym', 'antonym', 'idiom', 'phrase', 'one word substitution', 'correctly spelt', 'spelling'] },
+
+    // Computer Knowledge (sub_computer)
+    { id: 'top_comp_hw', topicId: 'top_comp_hw', subjectId: 'sub_computer', titleEn: 'Computer Architecture, Hardware & Memory', titleHi: 'कंप्यूटर संरचना, हार्डवेयर एवं मेमोरी', aliases: ['Computer Awareness'], keywords: ['cpu', 'alu', 'ram', 'rom', 'cache', 'register', 'input device', 'output device', 'printer', 'plotter', 'scanner', 'bit', 'byte', 'सीपीयू', 'रैम', 'रोम', 'मेमोरी', 'प्रिंटर', 'इनपुट', 'आउटपुट'] },
+    { id: 'top_comp_sw', topicId: 'top_comp_sw', subjectId: 'sub_computer', titleEn: 'Operating System & MS Office (Word, Excel, PowerPoint)', titleHi: 'ऑपरेटिंग सिस्टम एवं एमएस ऑफिस', aliases: [], keywords: ['operating system', 'windows', 'linux', 'unix', 'ms word', 'ms excel', 'powerpoint', 'spreadsheet', 'formula', 'shortcut key', 'ऑपरेटिंग सिस्टम', 'एमएस वर्ड', 'एक्सेल', 'पॉवरपॉइंट', 'शॉर्टकट कुंजी'] },
+    { id: 'top_comp_net', topicId: 'top_comp_net', subjectId: 'sub_computer', titleEn: 'Internet, Networking, Email & Cyber Security', titleHi: 'इंटरनेट, नेटवर्किंग एवं साइबर सुरक्षा', aliases: ['Multimedia, Printers & Antivirus'], keywords: ['internet', 'browser', 'http', 'tcp/ip', 'url', 'email', 'virus', 'malware', 'antivirus', 'firewall', 'cyber', 'इंटरनेट', 'ब्राउज़र', 'ईमेल', 'वायरस', 'एंटीवायरस', 'फायरवॉल'] },
+
+    // Child Development & Pedagogy (sub_pedagogy)
+    { id: 'top_ped_theories', topicId: 'top_ped_theories', subjectId: 'sub_pedagogy', titleEn: 'Learning Theories', titleHi: 'अधिगम एवं विकास के सिद्धांत', aliases: ['Inclusive Education', 'Teaching Aptitude & Assessment'], keywords: ['piaget', 'vygotsky', 'kohlberg', 'skinner', 'pavlov', 'thorndike', 'pedagogy', 'inclusive education', 'ncf', 'rte', 'पियाजे', 'वायगोत्स्की', 'कोहलबर्ग', 'अधिगम', 'समावेशी शिक्षा', 'बाल विकास'] },
+
+    // Current Affairs (sub_current_affairs)
+    { id: 'top_ca_events', topicId: 'top_ca_events', subjectId: 'sub_current_affairs', titleEn: 'National & International Events', titleHi: 'राष्ट्रीय एवं अंतर्राष्ट्रीय समसामयिकी', aliases: ['Awards, Sports & Schemes'], keywords: ['nobel prize', 'bharat ratna', 'padma', 'olympics', 'summit', 'g20', 'brics', 'index', 'सूचकांक', 'शिखर सम्मेलन', 'पुरस्कार', 'नोबेल', 'पद्म'] }
+  ];
+
+  const DEFAULT_SUBTOPICS = [
+    // History -> Ancient Indian History (top_hist_ancient)
+    { id: 'subtop_ivc', subtopicId: 'subtop_ivc', topicId: 'top_hist_ancient', subjectId: 'sub_history', titleEn: 'Indus Valley Civilization', titleHi: 'सिंधु घाटी सभ्यता', keywords: ['indus valley', 'harappa', 'mohenjodaro', 'lothal', 'kalibangan', 'dholavira', 'सिंधु घाटी', 'हड़प्पा', 'मोहनजोदड़ो', 'लोथल', 'कालीबंगा', 'धौलावीरा'] },
+    { id: 'subtop_vedic', subtopicId: 'subtop_vedic', topicId: 'top_hist_ancient', subjectId: 'sub_history', titleEn: 'Vedic Period', titleHi: 'वैदिक काल', keywords: ['rigveda', 'samaveda', 'yajurveda', 'atharvaveda', 'upanishad', 'vedic', 'gayatri mantra', 'ऋग्वेद', 'सामवेद', 'यजुर्वेद', 'अथर्ववेद', 'उपनिषद', 'वैदिक'] },
+    { id: 'subtop_maurya', subtopicId: 'subtop_maurya', topicId: 'top_hist_ancient', subjectId: 'sub_history', titleEn: 'Maurya Empire', titleHi: 'मौर्य साम्राज्य', keywords: ['maurya', 'ashoka', 'chandragupta maurya', 'bindusara', 'arthashastra', 'kautilya', 'chanakya', 'megasthenes', 'indica', 'kalinga', 'मौर्य', 'अशोक', 'चन्द्रगुप्त मौर्य', 'बिन्दुसार', 'अर्थशास्त्र', 'कौटिल्य', 'चाणक्य', 'मेगस्थनीज', 'कलिंग'] },
+    { id: 'subtop_gupta', subtopicId: 'subtop_gupta', topicId: 'top_hist_ancient', subjectId: 'sub_history', titleEn: 'Gupta Empire', titleHi: 'गुप्त साम्राज्य', keywords: ['gupta', 'samudragupta', 'chandragupta ii', 'vikramaditya', 'kalidasa', 'aryabhata', 'fa-hien', 'nalanda', 'गुप्त', 'समुद्रगुप्त', 'विक्रमादित्य', 'कालिदास', 'आर्यभट्ट', 'नालंदा'] },
+
+    // History -> Medieval Indian History (top_hist_medieval)
+    { id: 'subtop_delhi_sultanate', subtopicId: 'subtop_delhi_sultanate', topicId: 'top_hist_medieval', subjectId: 'sub_history', titleEn: 'Delhi Sultanate', titleHi: 'दिल्ली सल्तनत', keywords: ['delhi sultanate', 'qutbuddin aibak', 'iltutmish', 'razia', 'balban', 'alauddin khilji', 'muhammad bin tughlaq', 'ibrahim lodi', 'दिल्ली सल्तनत', 'कुतुबुद्दीन ऐबक', 'इल्तुतमिश', 'रजिया', 'बलबन', 'अलाउद्दीन खिलजी', 'तुगलक'] },
+    { id: 'subtop_mughal', subtopicId: 'subtop_mughal', topicId: 'top_hist_medieval', subjectId: 'sub_history', titleEn: 'Mughal Empire', titleHi: 'मुगल साम्राज्य', keywords: ['mughal', 'babur', 'humayun', 'akbar', 'jahangir', 'shah jahan', 'aurangzeb', 'panipat', 'mansabdari', 'मुगल', 'बाबर', 'हुमायूँ', 'अकबर', 'जहाँगीर', 'शाहजहाँ', 'औरंगजेब', 'पानीपत', 'मनसबदारी'] },
+
+    // History -> Modern Indian History (top_hist_modern)
+    { id: 'subtop_1857', subtopicId: 'subtop_1857', topicId: 'top_hist_modern', subjectId: 'sub_history', titleEn: 'Revolt of 1857', titleHi: '1857 की क्रांति', keywords: ['1857', 'mangal pandey', 'rani lakshmibai', 'tatya tope', 'nana sahib', 'bahadur shah zafar', 'मंगल पांडे', 'रानी लक्ष्मीबाई', 'तात्या टोपे', '1857 का विद्रोह'] },
+    { id: 'subtop_national_movement', subtopicId: 'subtop_national_movement', topicId: 'top_hist_modern', subjectId: 'sub_history', titleEn: 'Indian National Movement', titleHi: 'भारतीय राष्ट्रीय आंदोलन', keywords: ['mahatma gandhi', 'non-cooperation', 'civil disobedience', 'quit india', 'dandi march', 'champaran', 'swadeshi', 'महात्मा गांधी', 'असहयोग आंदोलन', 'सविनय अवज्ञा', 'भारत छोड़ो', 'दांडी यात्रा', 'चंपारण'] },
+
+    // Geography -> Chhattisgarh Geography (top_geo_cg)
+    { id: 'subtop_cg_rivers', subtopicId: 'subtop_cg_rivers', topicId: 'top_geo_cg', subjectId: 'sub_geography', titleEn: 'Rivers & Waterfalls of CG', titleHi: 'छत्तीसगढ़ की नदियाँ एवं जलप्रपात', keywords: ['mahanadi', 'indravati', 'shivnath', 'hasdeo', 'chitrakote', 'tirathgarh', 'amritdhara', 'महानदी', 'इंद्रावती', 'शिवनाथ', 'हसदेव', 'चित्रकोट', 'तीरथगढ़'] },
+    { id: 'subtop_cg_forests', subtopicId: 'subtop_cg_forests', topicId: 'top_geo_cg', subjectId: 'sub_geography', titleEn: 'Forests & National Parks of CG', titleHi: 'छत्तीसगढ़ के वन एवं राष्ट्रीय उद्यान', keywords: ['kanger valley', 'guru ghasidas national park', 'indravati national park', 'achanakmar', 'udanti', 'sitanadi', 'कांगेर घाटी', 'गुरु घासीदास राष्ट्रीय उद्यान', 'अचानकमार', 'उदंती', 'सीतानदी'] },
+
+    // Indian Polity -> Topics
+    { id: 'subtop_preamble_sched', subtopicId: 'subtop_preamble_sched', topicId: 'top_pol_constitution', subjectId: 'sub_polity', titleEn: 'Preamble, Schedules & Amendments', titleHi: 'प्रस्तावना, अनुसूचियाँ एवं संविधान संशोधन', keywords: ['preamble', 'schedule', '42nd amendment', '44th amendment', 'प्रस्तावना', 'अनुसूची', '42वां संशोधन', '44वां संशोधन'] },
+    { id: 'subtop_writs', subtopicId: 'subtop_writs', topicId: 'top_pol_fr', subjectId: 'sub_polity', titleEn: 'Constitutional Remedies & Writs (Art 32)', titleHi: 'संवैधानिक उपचार एवं रिट (अनुच्छेद 32)', keywords: ['article 32', 'writ', 'habeas corpus', 'mandamus', 'certiorari', 'अनुच्छेद 32', 'रिट', 'बंदी प्रत्यक्षीकरण', 'परमादेश'] },
+    { id: 'subtop_dpsp_duties', subtopicId: 'subtop_dpsp_duties', topicId: 'top_pol_dpsp', subjectId: 'sub_polity', titleEn: 'DPSP & Fundamental Duties', titleHi: 'नीति निदेशक तत्व एवं मौलिक कर्तव्य', keywords: ['article 40', 'article 44', 'article 51a', 'fundamental duties', 'अनुच्छेद 40', 'अनुच्छेद 44', 'अनुच्छेद 51क', 'मौलिक कर्तव्य'] },
+    { id: 'subtop_loksabha_rajyasabha', subtopicId: 'subtop_loksabha_rajyasabha', topicId: 'top_pol_parliament', subjectId: 'sub_polity', titleEn: 'Lok Sabha & Rajya Sabha', titleHi: 'लोकसभा एवं राज्यसभा', keywords: ['lok sabha', 'rajya sabha', 'speaker', 'money bill', 'लोकसभा', 'राज्यसभा', 'धन विधेयक'] },
+    { id: 'subtop_pres_gov', subtopicId: 'subtop_pres_gov', topicId: 'top_pol_exec', subjectId: 'sub_polity', titleEn: 'President & Governor Powers', titleHi: 'राष्ट्रपति एवं राज्यपाल की शक्तियाँ', keywords: ['president', 'governor', 'ordinance', 'impeachment', 'pardon', 'राष्ट्रपति', 'राज्यपाल', 'अध्यादेश', 'महाभियोग', 'क्षमादान'] },
+
+    // Chhattisgarh GK -> History of Chhattisgarh (top_cg_history)
+    { id: 'subtop_kalchuri', subtopicId: 'subtop_kalchuri', topicId: 'top_cg_history', subjectId: 'sub_cg_gs', titleEn: 'Kalchuri Dynasty', titleHi: 'कलचुरी वंश', keywords: ['kalchuri', 'kalingaraj', 'kamalaraj', 'ratnadev', 'prithvidev', 'jajalladev', 'ratanpur', 'tumman', 'कलचुरी', 'कलिंगराज', 'कमलराज', 'रत्नदेव', 'पृथ्वीदेव', 'जाजल्लदेव', 'रतनपुर', 'तुम्मान'] },
+    { id: 'subtop_maratha_cg', subtopicId: 'subtop_maratha_cg', topicId: 'top_cg_history', subjectId: 'sub_cg_gs', titleEn: 'Maratha Rule in Chhattisgarh', titleHi: 'छत्तीसगढ़ में मराठा एवं सूबा शासन', keywords: ['maratha', 'bimbaji', 'bhonsle', 'vyankoji', 'suba system', 'mahipat rao', 'vithal rao', 'agneu', 'मराठा', 'बिंबाजी', 'भोंसले', 'सूबा शासन', 'महिपत राव', 'एगन्यू'] },
+    { id: 'subtop_tribal_revolts', subtopicId: 'subtop_tribal_revolts', topicId: 'top_cg_history', subjectId: 'sub_cg_gs', titleEn: 'Tribal Revolts & Freedom Struggle in CG', titleHi: 'छत्तीसगढ़ के जनजातीय विद्रोह एवं स्वतंत्रता आंदोलन', keywords: ['halba rebellion', 'ajmer singh', 'paralkot', 'gend singh', 'tarapur', 'muria', 'bhumkal', 'gundadhur', 'veer narayan singh', 'sonakhan', 'हल्बा विद्रोह', 'अजमेर सिंह', 'परलकोट', 'गेंद सिंह', 'भूमकाल', 'गुण्डाधूर', 'वीर नारायण सिंह', 'सोनाखान'] },
+    { id: 'subtop_state_formation', subtopicId: 'subtop_state_formation', topicId: 'top_cg_history', subjectId: 'sub_cg_gs', titleEn: 'State Formation of Chhattisgarh', titleHi: 'छत्तीसगढ़ राज्य का गठन', keywords: ['1 november 2000', '26th state', 'reorganization act', '1 नवंबर 2000', '26वां राज्य', 'पुनर्गठन अधिनियम'] }
   ];
 
   let firebaseApp = null;
@@ -281,6 +511,10 @@
 
     const collectionsToWatch = [
       { col: 'app_config', key: 'configDocs' },
+      { col: 'exams', key: 'examMaster' },
+      { col: 'subjects', key: 'subjectMaster' },
+      { col: 'topics', key: 'topicMaster' },
+      { col: 'subtopics', key: 'subtopicMaster' },
       { col: 'exam_folders', key: 'folders' },
       { col: 'tests', key: 'tests' },
       { col: 'question_bank', key: 'questionBank' },
@@ -340,6 +574,87 @@
       console.warn(`Cloud delete [${collectionName}/${docId}] failed:`, err.message || err);
       return false;
     }
+  }
+
+  async function batchSaveCloudDocs(collectionName, docsArray, onProgress) {
+    const items = Array.isArray(docsArray) ? docsArray.filter((d) => d && d.id) : [];
+    if (items.length === 0) return { committed: 0, failed: 0 };
+    if (!db || typeof db.batch !== 'function') {
+      if (typeof onProgress === 'function') onProgress(100, items.length, items.length);
+      return { committed: items.length, failed: 0, offline: true };
+    }
+    const CHUNK_SIZE = 400; // Safe margin below Firestore 500 operations/batch limit
+    let committed = 0;
+    let failed = 0;
+    const hasServerTs = Boolean(window.firebase && window.firebase.firestore && window.firebase.firestore.FieldValue);
+
+    for (let i = 0; i < items.length; i += CHUNK_SIZE) {
+      const chunk = items.slice(i, i + CHUNK_SIZE);
+      try {
+        const batch = db.batch();
+        chunk.forEach((docObj) => {
+          const cleanPayload = JSON.parse(JSON.stringify(docObj));
+          if (hasServerTs) {
+            cleanPayload.updatedAtTs = window.firebase.firestore.FieldValue.serverTimestamp();
+          }
+          const docRef = db.collection(collectionName).doc(String(docObj.id));
+          batch.set(docRef, cleanPayload, { merge: true });
+        });
+        await batch.commit();
+        committed += chunk.length;
+      } catch (err) {
+        console.warn(`Batch write chunk [${collectionName}] fallback to individual writes:`, err.message || err);
+        for (const docObj of chunk) {
+          const ok = await saveCloudDoc(collectionName, docObj.id, docObj);
+          if (ok) committed += 1;
+          else failed += 1;
+        }
+      }
+      if (typeof onProgress === 'function') {
+        const done = Math.min(items.length, i + chunk.length);
+        const pct = Math.round((done / items.length) * 100);
+        onProgress(pct, done, items.length);
+      }
+    }
+    return { committed, failed };
+  }
+
+  async function batchDeleteCloudDocs(collectionName, docIdsArray, onProgress) {
+    const ids = Array.isArray(docIdsArray) ? docIdsArray.map((id) => String(id || '').trim()).filter(Boolean) : [];
+    if (ids.length === 0) return { deleted: 0, failed: 0 };
+    if (!db || typeof db.batch !== 'function') {
+      if (typeof onProgress === 'function') onProgress(100, ids.length, ids.length);
+      return { deleted: ids.length, failed: 0, offline: true };
+    }
+    const CHUNK_SIZE = 400;
+    let deleted = 0;
+    let failed = 0;
+
+    for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
+      const chunk = ids.slice(i, i + CHUNK_SIZE);
+      try {
+        const batch = db.batch();
+        chunk.forEach((docId) => {
+          const docRef = db.collection(collectionName).doc(docId);
+          batch.delete(docRef);
+        });
+        await batch.commit();
+        deleted += chunk.length;
+      } catch (err) {
+        console.warn(`Batch delete chunk [${collectionName}] fallback:`, err.message || err);
+        for (const docId of chunk) {
+          const ok = await deleteCloudDoc(collectionName, docId);
+          if (ok) deleted += 1;
+          else failed += 1;
+        }
+      }
+      if (typeof onProgress === 'function') {
+        const done = Math.min(ids.length, i + chunk.length);
+        const pct = Math.round((done / ids.length) * 100);
+        onProgress(pct, done, ids.length);
+      }
+    }
+    return { deleted, failed };
   }
 
   async function uploadAnthemAudioFile(file, onProgress, adminEmail) {
@@ -586,15 +901,79 @@
     }
   }
 
+  const _queryCache = new Map();
+
+  async function queryQuestionBankFromCloud(filters) {
+    const flt = filters || {};
+    const cacheKey = JSON.stringify({
+      examId: flt.examId || 'ALL',
+      subjectId: flt.subjectId || 'ALL',
+      topicId: flt.topicId || 'ALL',
+      subtopicId: flt.subtopicId || 'ALL',
+      difficultyLevel: flt.difficultyLevel || 'ALL',
+      verificationStatus: flt.verificationStatus || 'ALL',
+      limit: flt.limit || 200
+    });
+    const cached = _queryCache.get(cacheKey);
+    if (cached && (Date.now() - cached.ts) < 15000 && !flt.forceRefresh) {
+      return cached.docs;
+    }
+    if (!db) return null;
+    try {
+      let queryRef = db.collection('question_bank');
+      if (flt.examId && flt.examId !== 'ALL') {
+        queryRef = queryRef.where('examIds', 'array-contains', String(flt.examId));
+      }
+      if (flt.subjectId && flt.subjectId !== 'ALL') {
+        queryRef = queryRef.where('subjectId', '==', String(flt.subjectId));
+      }
+      if (flt.topicId && flt.topicId !== 'ALL') {
+        queryRef = queryRef.where('topicId', '==', String(flt.topicId));
+      }
+      if (flt.subtopicId && flt.subtopicId !== 'ALL') {
+        queryRef = queryRef.where('subtopicId', '==', String(flt.subtopicId));
+      }
+      if (flt.difficultyLevel && flt.difficultyLevel !== 'ALL') {
+        queryRef = queryRef.where('difficultyLevel', '==', String(flt.difficultyLevel));
+      }
+      if (flt.verificationStatus && flt.verificationStatus !== 'ALL') {
+        queryRef = queryRef.where('verificationStatus', '==', String(flt.verificationStatus));
+      }
+      if (flt.limit && Number(flt.limit) > 0) {
+        queryRef = queryRef.limit(Number(flt.limit));
+      }
+      const snap = await queryRef.get();
+      const docs = [];
+      snap.forEach((doc) => {
+        docs.push(Object.assign({ id: doc.id }, doc.data()));
+      });
+      _queryCache.set(cacheKey, { ts: Date.now(), docs });
+      return docs;
+    } catch (err) {
+      console.warn('Indexed Firestore query fallback to in-memory index:', err.message || err);
+      return null;
+    }
+  }
+
+  function invalidateQuestionBankQueryCache() {
+    _queryCache.clear();
+  }
+
   window.CGpediaCloud = {
     OWNER_ADMIN_EMAIL,
     NAMED_DATABASE_ID,
     EXAM_CATEGORIES,
     DEFAULT_SUBJECTS,
+    DEFAULT_TOPICS,
+    DEFAULT_SUBTOPICS,
     MAX_ANTHEM_FILE_BYTES,
     initFirebaseConnection,
     saveCloudDoc,
     deleteCloudDoc,
+    batchSaveCloudDocs,
+    batchDeleteCloudDocs,
+    queryQuestionBankFromCloud,
+    invalidateQuestionBankQueryCache,
     validateAnthemAudioFile,
     uploadAnthemAudioFile,
     deleteAnthemAudioFile,

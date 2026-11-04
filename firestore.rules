@@ -136,6 +136,16 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
+    match /subtopics/{subtopicId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /migration_logs/{logId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
     match /exam_folders/{folderId} {
       allow get, list: if true;
       allow create, update, delete: if isAdmin();

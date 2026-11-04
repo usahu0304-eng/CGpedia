@@ -1736,4 +1736,193 @@ body.screenshot-restricted {
   line-height: 1;
 }
 
+/* =========================================================================
+   Professional Question Bank Management System (Preview, Validation, Table)
+   ========================================================================= */
+.qb-kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.qb-kpi-box {
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+
+.qb-kpi-box .qb-kpi-num {
+  font-size: 1.3rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.qb-kpi-box .qb-kpi-lbl {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.qb-preview-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  margin-bottom: 10px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.qb-preview-card.status-valid {
+  border-left: 4px solid var(--success);
+}
+
+.qb-preview-card.status-error {
+  border-left: 4px solid var(--danger);
+  background: rgba(220, 38, 38, 0.03);
+}
+
+.qb-preview-card.status-duplicate {
+  border-left: 4px solid var(--warning);
+  background: rgba(217, 119, 6, 0.04);
+}
+
+.qb-preview-card.status-warning {
+  border-left: 4px solid var(--review);
+}
+
+.qb-options-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+  margin-bottom: 8px;
+}
+
+.qb-option-pill {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-alt);
+  font-size: 0.8rem;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.qb-option-pill.is-correct {
+  border-color: var(--success);
+  background: var(--success-soft);
+  color: var(--text);
+  font-weight: 700;
+}
+
+.qb-explanation-box {
+  background: var(--surface-alt);
+  border-left: 3px solid var(--secondary);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  margin-top: 6px;
+}
+
+.qb-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.qb-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.81rem;
+  min-width: 680px;
+}
+
+.qb-table th {
+  background: var(--surface-alt);
+  color: var(--text-secondary);
+  font-weight: 800;
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-strong);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.qb-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.qb-table tr:last-child td {
+  border-bottom: none;
+}
+
+.qb-table tr.row-selected {
+  background: var(--secondary-soft);
+}
+
+.qb-filter-grid {
+  display: grid;
+  grid-template-columns: 2fr repeat(6, minmax(115px, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+@media (max-width: 1100px) {
+  .qb-filter-grid {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+}
+
+.qb-bulk-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--secondary-soft);
+  border: 1px solid var(--secondary);
+  margin-bottom: 12px;
+}
+
+.qb-pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 12px;
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 0.8rem;
+}
+
+.badge-diff-easy {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.badge-diff-moderate {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.badge-diff-difficult {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
 
