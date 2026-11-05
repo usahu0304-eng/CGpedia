@@ -527,7 +527,8 @@
       { col: 'leaderboard', key: 'leaderboard' },
       { col: 'student_queries', key: 'queries' },
       { col: 'question_reports', key: 'questionReports' },
-      { col: 'admin_staff', key: 'adminStaff' }
+      { col: 'admin_staff', key: 'adminStaff' },
+      { col: 'users', key: 'registeredStudents' }
     ];
 
     collectionsToWatch.forEach(({ col, key }) => {

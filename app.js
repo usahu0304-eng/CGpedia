@@ -141,9 +141,11 @@
         appTitle: 'CGpedia',
         appSubtitle: 'Competitive Exam & CBT Test Portal',
         logoImage: 'assets/cgpedia-logo-clean.png',
-        upiId: '9238810070@upi',
+        upiId: '',
         upiQrImage: '',
-        whatsappNumber: '9238810070',
+        whatsappNumber: '',
+        paymentInstructionsHi: 'QR कोड स्कैन करके या UPI ID पर पेमेंट करें, पेमेंट का स्क्रीनशॉट लें और एक्टिवेशन के लिए नीचे दिए गए WhatsApp बटन पर क्लिक करके या पेमेंट रिकॉर्ड सबमिट करके विवरण भेजें।',
+        paymentInstructionsEn: 'Scan the QR Code or pay via the configured UPI ID, take a payment screenshot, and click the WhatsApp button below or submit your payment verification details for package activation.',
         anthemEnabled: false,
         anthemData: {
           title: '',
@@ -186,6 +188,7 @@
       queries: [],
       questionReports: [],
       adminStaff: [],
+      registeredStudents: [],
       customTaxonomy: {
         customCategories: [],
         customSubjects: []
@@ -443,6 +446,7 @@
     'analytics',
     'leaderboard',
     'current-affairs',
+    'payments',
     'notifications',
     'profile',
     'admin'
@@ -542,6 +546,8 @@
       renderLeaderboardView(root);
     } else if (state.activeTab === 'current-affairs') {
       renderCurrentAffairsView(root);
+    } else if (state.activeTab === 'payments') {
+      renderStudentPaymentView(root);
     } else if (state.activeTab === 'notifications') {
       renderNotificationsAndSupport(root);
     } else if (state.activeTab === 'profile') {
@@ -2686,9 +2692,12 @@
     let finalPrice = basePrice;
     let appliedCouponCode = '';
     const validityDays = Number(item.validityDays || 180);
-    const upiId = state.config.upiId || '9238810070@upi';
-    const waNum = String(state.config.whatsappNumber || '9238810070').replace(/\D/g, '');
+    const upiId = String(state.config.upiId || '').trim();
+    const rawWa = String(state.config.whatsappNumber || state.config.whatsappSupportNumber || '').trim();
+    const waNum = rawWa.replace(/\D/g, '');
     const waPhone = waNum.length === 10 ? '91' + waNum : waNum;
+    const instructionsHi = String(state.config.paymentInstructionsHi || 'QR कोड स्कैन करके या UPI ID पर पेमेंट करें, पेमेंट का स्क्रीनशॉट लें और एक्टिवेशन के लिए नीचे दिए गए WhatsApp बटन पर क्लिक करके या पेमेंट रिकॉर्ड सबमिट करके विवरण भेजें।').trim();
+    const instructionsEn = String(state.config.paymentInstructionsEn || 'Scan the QR Code or pay via the configured UPI ID, take a payment screenshot, and click the WhatsApp button below or submit your payment verification details for package activation.').trim();
 
     function renderModalContent() {
       const waText = encodeURIComponent(
@@ -2704,7 +2713,7 @@
 
       modalRoot.innerHTML = `
         <div class="modal-backdrop">
-          <div class="modal-card" style="max-width:520px;">
+          <div class="modal-card" style="max-width:540px;">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
               <div>
                 <span class="badge badge-paid">PREMIUM PACKAGE UNLOCK</span>
@@ -2736,34 +2745,101 @@
                 <img src="${esc(state.config.upiQrImage)}" alt="Admin UPI QR Code" style="max-width:210px;max-height:210px;border-radius:10px;border:2px solid #fff;box-shadow:var(--shadow-sm);margin:0 auto 10px;display:block;" />
                 <a href="${esc(state.config.upiQrImage)}" download="CGpedia-UPI-QR.png" class="btn btn-outline btn-sm" style="margin-bottom:8px;">⬇️ Download QR Image</a>
               ` : `
-                <div style="padding:18px;font-size:0.84rem;color:var(--text-secondary);">
-                  📲 Pay via any UPI App (GPay / PhonePe / Paytm) using the UPI ID below:
+                <div style="padding:14px;font-size:0.82rem;color:var(--text-secondary);">
+                  📲 Pay via any UPI App (GPay / PhonePe / Paytm) using the configured UPI details below:
                 </div>
               `}
-              <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:6px;">
-                <code style="padding:6px 12px;border-radius:6px;background:var(--surface);border:1px solid var(--border);font-weight:800;font-size:0.9rem;">${esc(upiId)}</code>
-                <button class="btn btn-primary btn-sm" id="copyUpiIdBtn">📋 Copy UPI ID</button>
+              ${upiId ? `
+                <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:6px;flex-wrap:wrap;">
+                  <code style="padding:6px 12px;border-radius:6px;background:var(--surface);border:1px solid var(--border);font-weight:800;font-size:0.9rem;">${esc(upiId)}</code>
+                  <button class="btn btn-primary btn-sm" id="copyUpiIdBtn">📋 Copy UPI ID</button>
+                </div>
+              ` : `
+                <div style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;">UPI ID not configured by Admin yet.</div>
+              `}
+            </div>
+
+            <!-- Dynamic Bilingual Payment Instructions Configured by Admin -->
+            <div style="padding:10px 12px;border-radius:8px;background:var(--secondary-soft);font-size:0.8rem;margin-bottom:14px;line-height:1.5;">
+              ${instructionsHi ? `<div><strong>🇮🇳 निर्देश:</strong> ${esc(instructionsHi)}</div>` : ''}
+              ${instructionsEn ? `<div style="margin-top:4px;color:var(--text-secondary);"><strong>🇬🇧 Instructions:</strong> ${esc(instructionsEn)}</div>` : ''}
+            </div>
+
+            <!-- Submit Payment Verification Record (UTR / Transaction Ref) -->
+            <div style="padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);margin-bottom:12px;">
+              <div style="font-size:0.78rem;font-weight:800;margin-bottom:6px;">🧾 Submit Payment Verification Record (Optional UTR / Ref No.)</div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <input class="form-input" id="payModalUtrInput" placeholder="Enter 12-digit UPI UTR / Transaction Ref" style="flex:1;min-width:180px;padding:7px 10px;font-size:0.8rem;" />
+                <button class="btn btn-navy btn-sm" id="submitPayOrderModalBtn">📤 Submit Payment Record</button>
               </div>
             </div>
 
-            <!-- Bilingual Instructions -->
-            <div style="padding:10px 12px;border-radius:8px;background:var(--secondary-soft);font-size:0.8rem;margin-bottom:14px;line-height:1.5;">
-              <div><strong>🇮🇳 निर्देश:</strong> QR कोड स्कैन करके पेमेंट करें, पेमेंट का स्क्रीनशॉट लें और तुरंत एक्टिवेशन के लिए नीचे दिए गए हरे WhatsApp बटन पर क्लिक करके स्क्रीनशॉट भेजें।</div>
-              <div style="margin-top:4px;color:var(--text-secondary);"><strong>🇬🇧 Instructions:</strong> Scan the QR to pay, take a payment screenshot, and click the WhatsApp button below to send the screenshot for instant activation.</div>
-            </div>
-
-            <a href="https://wa.me/${waPhone}?text=${waText}" target="_blank" rel="noopener" class="btn btn-success btn-lg" style="width:100%;">
-              💬 Send Payment Screenshot on WhatsApp (${esc(state.config.whatsappNumber || '9238810070')})
-            </a>
+            ${waPhone ? `
+              <a href="https://wa.me/${waPhone}?text=${waText}" target="_blank" rel="noopener" class="btn btn-success btn-lg" style="width:100%;">
+                💬 Send Payment Screenshot on WhatsApp (${esc(rawWa)})
+              </a>
+            ` : `
+              <button class="btn btn-outline btn-lg" style="width:100%;" id="openPaymentCenterFromModalBtn">
+                💳 Open Student Payment Center
+              </button>
+            `}
           </div>
         </div>
       `;
 
       document.getElementById('closePayModalBtn').onclick = () => { modalRoot.innerHTML = ''; };
-      document.getElementById('copyUpiIdBtn').onclick = () => {
-        try { navigator.clipboard.writeText(upiId); } catch (_) {}
-        toast('📋 UPI ID copied: ' + upiId);
-      };
+      const copyBtn = document.getElementById('copyUpiIdBtn');
+      if (copyBtn) {
+        copyBtn.onclick = () => {
+          try { navigator.clipboard.writeText(upiId); } catch (_) {}
+          toast('📋 UPI ID copied: ' + upiId);
+        };
+      }
+      const openPayCenterBtn = document.getElementById('openPaymentCenterFromModalBtn');
+      if (openPayCenterBtn) {
+        openPayCenterBtn.onclick = () => {
+          modalRoot.innerHTML = '';
+          navigateToTab('payments');
+        };
+      }
+      const submitOrderBtn = document.getElementById('submitPayOrderModalBtn');
+      if (submitOrderBtn) {
+        submitOrderBtn.onclick = () => {
+          const utr = (document.getElementById('payModalUtrInput').value || '').trim();
+          if (!utr) {
+            toast('⚠️ कृपया अपना UPI Transaction ID / UTR नंबर दर्ज करें।');
+            return;
+          }
+          const nowMs = Date.now();
+          const orderObj = {
+            id: 'ord_' + nowMs,
+            uid: state.student.uid || '',
+            studentName: state.student.name || 'Aspirant',
+            studentEmail: (state.student.email || '').toLowerCase(),
+            studentPhone: state.student.phone || '',
+            studentIdentifier: (state.student.email || state.student.uid || '').toLowerCase(),
+            targetId: item.id,
+            targetType: targetType === 'folder' ? 'folder' : 'test',
+            targetTitle: item.titleHi || item.titleEn || 'Paid Package',
+            amountPaid: finalPrice,
+            validityDays,
+            couponCode: appliedCouponCode || '',
+            transactionRef: utr,
+            status: 'pending',
+            createdAtMs: nowMs,
+            createdAtIso: new Date(nowMs).toISOString()
+          };
+          state.orders = state.orders || [];
+          state.orders.unshift(orderObj);
+          saveState();
+          if (window.CGpediaCloud) {
+            window.CGpediaCloud.saveCloudDoc('orders', orderObj.id, orderObj);
+          }
+          toast('✅ Payment verification record submitted! Admin will verify and unlock your package.');
+          modalRoot.innerHTML = '';
+          navigateToTab('payments');
+        };
+      }
       document.getElementById('applyPayCouponBtn').onclick = () => {
         const code = document.getElementById('payCouponInput').value.trim().toUpperCase();
         const found = (state.coupons || []).find((c) => String(c.code).toUpperCase() === code);
@@ -2779,6 +2855,313 @@
     }
 
     renderModalContent();
+  }
+
+  // =========================================================================
+  // Restored Student Panel Payment Center (Dynamic Firebase Config & Orders)
+  // =========================================================================
+  function renderStudentPaymentView(root) {
+    const upiId = String(state.config.upiId || '').trim();
+    const qrImg = String(state.config.upiQrImage || '').trim();
+    const rawWa = String(state.config.whatsappNumber || state.config.whatsappSupportNumber || '').trim();
+    const waNum = rawWa.replace(/\D/g, '');
+    const waPhone = waNum.length === 10 ? '91' + waNum : waNum;
+    const instructionsHi = String(state.config.paymentInstructionsHi || 'QR कोड स्कैन करके या UPI ID पर पेमेंट करें, पेमेंट का स्क्रीनशॉट लें और एक्टिवेशन के लिए नीचे दिए गए WhatsApp बटन पर क्लिक करके या पेमेंट रिकॉर्ड सबमिट करके विवरण भेजें।').trim();
+    const instructionsEn = String(state.config.paymentInstructionsEn || 'Scan the QR Code or pay via the configured UPI ID, take a payment screenshot, and click the WhatsApp button below or submit your payment verification details for package activation.').trim();
+
+    const paidPackages = [
+      ...(state.folders || []).filter((f) => f.isPaid).map((f) => ({
+        id: f.id,
+        type: 'folder',
+        titleHi: f.titleHi,
+        titleEn: f.titleEn,
+        examCode: f.examCode || 'CGPSC',
+        priceInr: Number(f.priceInr || 99),
+        validityDays: Number(f.validityDays || 180)
+      })),
+      ...(state.tests || []).filter((t) => t.status === 'published' && t.isPaid).map((t) => ({
+        id: t.id,
+        type: 'test',
+        titleHi: t.titleHi,
+        titleEn: t.titleEn,
+        examCode: t.examCode || 'CGPSC',
+        priceInr: Number(t.priceInr || 49),
+        validityDays: Number(t.validityDays || 180)
+      }))
+    ];
+
+    const myEmail = String(state.student.email || '').trim().toLowerCase();
+    const myUid = String(state.student.uid || '').trim().toLowerCase();
+
+    const myOrders = (state.orders || []).filter((o) => {
+      const oEmail = String(o.studentEmail || o.studentIdentifier || '').trim().toLowerCase();
+      const oUid = String(o.uid || o.studentIdentifier || '').trim().toLowerCase();
+      return (myEmail && oEmail === myEmail) || (myUid && oUid === myUid);
+    });
+
+    const myActivations = (state.activations || []).filter((a) => {
+      const ident = String(a.studentIdentifier || '').trim().toLowerCase();
+      return (myEmail && ident === myEmail) || (myUid && ident === myUid);
+    });
+
+    const waTextDefault = encodeURIComponent(
+      `नमस्ते CGpedia Admin,\nमैं पेमेंट/पैकेज एक्टिवेशन के संबंध में संपर्क कर रहा हूँ:\n` +
+      `• Student Name: ${state.student.name}\n` +
+      `• Registered Email: ${state.student.email || 'Not set'}\n` +
+      `• User ID: ${state.student.uid}`
+    );
+
+    root.innerHTML = `
+      <div class="section-header">
+        <div>
+          <h2 class="section-title">💳 पेमेंट एवं पैकेज एक्टिवेशन (Student Payment Center)</h2>
+          <p class="section-subtitle">Scan Official UPI QR Code, Copy UPI ID, Contact Admin on WhatsApp &amp; Track Package Unlock Status</p>
+        </div>
+        <button class="btn btn-outline btn-sm" id="studentPayBrowseSeriesBtn">📚 Browse Paid Test Series</button>
+      </div>
+
+      <div class="grid-2">
+        <!-- 1. Official Admin UPI QR Code, UPI ID & WhatsApp Verification Card -->
+        <div class="card">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+            <h3 style="font-size:1.02rem;font-weight:800;">📲 Official UPI QR Code &amp; Payment Details</h3>
+            <span class="badge badge-cloud">Live Firebase Sync</span>
+          </div>
+
+          <div style="text-align:center;padding:18px;border:1.5px dashed var(--border-strong);border-radius:12px;background:var(--surface-alt);margin-bottom:14px;">
+            ${qrImg ? `
+              <img src="${esc(qrImg)}" alt="CGpedia Official UPI QR Code" style="max-width:220px;max-height:220px;border-radius:12px;border:3px solid #fff;box-shadow:var(--shadow-md);margin:0 auto 12px;display:block;object-fit:contain;" />
+              <div style="margin-bottom:10px;">
+                <a href="${esc(qrImg)}" download="CGpedia-Official-UPI-QR.png" class="btn btn-outline btn-sm">⬇️ Download QR Code</a>
+              </div>
+            ` : `
+              <div style="padding:22px 12px;color:var(--text-secondary);font-size:0.85rem;">
+                📷 Official UPI QR Code has not been uploaded by Admin yet.<br/>
+                Please use the configured UPI ID or WhatsApp contact below.
+              </div>
+            `}
+
+            <div style="margin-top:8px;">
+              <div style="font-size:0.75rem;font-weight:700;color:var(--text-secondary);margin-bottom:4px;">Configured Official UPI ID</div>
+              ${upiId ? `
+                <div style="display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;">
+                  <code style="padding:7px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);font-weight:800;font-size:0.95rem;color:var(--primary);">${esc(upiId)}</code>
+                  <button class="btn btn-primary btn-sm" id="studentCopyUpiIdBtn">📋 Copy UPI ID</button>
+                </div>
+              ` : `
+                <div style="font-size:0.82rem;color:var(--text-muted);font-weight:600;">Not configured by Admin yet</div>
+              `}
+            </div>
+          </div>
+
+          <!-- Dynamic Payment Instructions from Admin -->
+          <div style="padding:12px 14px;border-radius:10px;background:var(--secondary-soft);font-size:0.82rem;line-height:1.55;margin-bottom:14px;">
+            <div style="font-weight:800;color:var(--secondary);margin-bottom:4px;">📌 Payment Instructions / पेमेंट निर्देश</div>
+            ${instructionsHi ? `<div style="margin-bottom:4px;"><strong>🇮🇳 हिन्दी:</strong> ${esc(instructionsHi)}</div>` : ''}
+            ${instructionsEn ? `<div style="color:var(--text-secondary);"><strong>🇬🇧 English:</strong> ${esc(instructionsEn)}</div>` : ''}
+          </div>
+
+          <!-- WhatsApp Contact Button -->
+          ${waPhone ? `
+            <a href="https://wa.me/${waPhone}?text=${waTextDefault}" target="_blank" rel="noopener" class="btn btn-success btn-lg" style="width:100%;">
+              💬 Contact Admin / Send Payment Screenshot on WhatsApp (${esc(rawWa)})
+            </a>
+          ` : `
+            <div style="padding:10px 12px;border-radius:8px;background:var(--surface-alt);font-size:0.8rem;color:var(--text-muted);text-align:center;">
+              WhatsApp support number will appear here once configured by Admin.
+            </div>
+          `}
+        </div>
+
+        <!-- 2. Submit Payment Verification Request & Package Selection Card -->
+        <div class="card">
+          <h3 style="font-size:1.02rem;font-weight:800;margin-bottom:8px;">🧾 Submit Payment Verification Details</h3>
+          <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:12px;">
+            After completing your UPI payment, submit your transaction reference / UTR number below so the Admin can verify and approve your package unlock.
+          </p>
+
+          <div class="form-group">
+            <label class="form-label">Select Test Series Package or Test</label>
+            <select class="form-select" id="stuPayPackageSelect">
+              ${paidPackages.length === 0 ? `
+                <option value="custom_package" data-price="99" data-validity="180" data-type="folder" data-title="CGpedia Premium Test Series">CGpedia Premium Test Series — ₹99 (180 Days)</option>
+              ` : paidPackages.map((p) => `
+                <option value="${esc(p.id)}" data-price="${p.priceInr}" data-validity="${p.validityDays}" data-type="${esc(p.type)}" data-title="${esc(p.titleHi)}">
+                  [${esc(p.examCode)}] ${esc(p.titleHi)} — ₹${p.priceInr} (${p.validityDays} Days)
+                </option>
+              `).join('')}
+            </select>
+          </div>
+
+          <div class="grid-2" style="gap:10px;">
+            <div class="form-group">
+              <label class="form-label">Amount Paid (₹)</label>
+              <input type="number" class="form-input" id="stuPayAmountInput" value="${paidPackages[0] ? paidPackages[0].priceInr : 99}" min="1" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Your WhatsApp / Mobile Number</label>
+              <input class="form-input" id="stuPayPhoneInput" value="${esc(state.student.phone || '')}" placeholder="10-digit mobile number" />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">UPI Transaction ID / 12-Digit UTR Number *</label>
+            <input class="form-input" id="stuPayUtrInput" placeholder="e.g., 412345678901" />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Additional Note / Coupon Code Used (Optional)</label>
+            <input class="form-input" id="stuPayNoteInput" placeholder="e.g., Paid via PhonePe / Coupon CGPSC50" />
+          </div>
+
+          <button class="btn btn-primary btn-lg" style="width:100%;" id="stuSubmitPaymentRecordBtn">
+            📤 Submit Payment for Admin Approval
+          </button>
+        </div>
+      </div>
+
+      <!-- 3. Student's Active Unlocked Packages -->
+      <div class="card">
+        <h3 style="font-size:1rem;font-weight:800;margin-bottom:10px;">🔓 My Unlocked Packages (${myActivations.length})</h3>
+        ${myActivations.length === 0 ? `
+          <p style="font-size:0.84rem;color:var(--text-muted);">No active paid package unlocks yet. Once Admin approves your payment, your unlocked packages and validity countdown will appear here.</p>
+        ` : `
+          <div style="display:grid;gap:8px;">
+            ${myActivations.map((act) => {
+              const remMs = Number(act.expiresAtMs || 0) - Date.now();
+              const remDays = Math.max(0, Math.ceil(remMs / 86400000));
+              const expired = remMs <= 0;
+              return `
+                <div style="padding:10px 12px;border:1px solid var(--border);border-radius:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:var(--surface-alt);">
+                  <div>
+                    <span class="badge ${expired ? 'badge-live' : 'badge-free'}">${expired ? 'EXPIRED' : 'ACTIVE • ' + remDays + ' Days Left'}</span>
+                    <strong style="margin-left:6px;">${esc(act.targetTitle || 'Premium Package')}</strong>
+                    <div style="font-size:0.76rem;color:var(--text-secondary);margin-top:2px;">
+                      Amount: ₹${Number(act.amountPaid || 0)} • Activated: ${act.activatedAtMs ? new Date(act.activatedAtMs).toLocaleDateString() : '-'} • Valid till: ${act.expiresAtMs ? new Date(act.expiresAtMs).toLocaleDateString() : '-'}
+                    </div>
+                  </div>
+                  <button class="btn btn-primary btn-sm" data-open-unlocked-series="${esc(act.targetId)}">📚 Open Tests</button>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        `}
+      </div>
+
+      <!-- 4. Student's Submitted Payment Records History -->
+      <div class="card">
+        <h3 style="font-size:1rem;font-weight:800;margin-bottom:10px;">📋 My Payment Verification Records (${myOrders.length})</h3>
+        ${myOrders.length === 0 ? `
+          <p style="font-size:0.84rem;color:var(--text-muted);">You have not submitted any payment verification records yet.</p>
+        ` : `
+          <div style="display:grid;gap:8px;">
+            ${myOrders.map((ord) => {
+              const st = String(ord.status || 'pending').toLowerCase();
+              const badgeCls = st === 'approved' ? 'badge-free' : (st === 'rejected' ? 'badge-live' : 'badge-paid');
+              const statusLabel = st === 'approved' ? 'APPROVED ✅' : (st === 'rejected' ? 'REJECTED ❌' : 'PENDING VERIFICATION ⏳');
+              return `
+                <div style="padding:10px 12px;border:1px solid var(--border);border-radius:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+                  <div>
+                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                      <span class="badge ${badgeCls}">${statusLabel}</span>
+                      <strong>${esc(ord.targetTitle || 'Paid Package')}</strong>
+                      <span style="font-weight:800;color:var(--secondary);">₹${Number(ord.amountPaid || 0)}</span>
+                    </div>
+                    <div style="font-size:0.76rem;color:var(--text-secondary);margin-top:3px;">
+                      UTR / Ref: <code>${esc(ord.transactionRef || '-')}</code> • Submitted: ${ord.createdAtMs ? new Date(ord.createdAtMs).toLocaleString() : '-'}
+                      ${ord.note ? ` • Note: ${esc(ord.note)}` : ''}
+                    </div>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        `}
+      </div>
+    `;
+
+    const browseBtn = document.getElementById('studentPayBrowseSeriesBtn');
+    if (browseBtn) {
+      browseBtn.onclick = () => navigateToTab('test-series');
+    }
+
+    const copyBtn = document.getElementById('studentCopyUpiIdBtn');
+    if (copyBtn && upiId) {
+      copyBtn.onclick = () => {
+        try { navigator.clipboard.writeText(upiId); } catch (_) {}
+        toast('📋 UPI ID copied: ' + upiId);
+      };
+    }
+
+    const pkgSelect = document.getElementById('stuPayPackageSelect');
+    const amtInput = document.getElementById('stuPayAmountInput');
+    if (pkgSelect && amtInput) {
+      pkgSelect.onchange = () => {
+        const opt = pkgSelect.options[pkgSelect.selectedIndex];
+        if (opt && opt.getAttribute('data-price')) {
+          amtInput.value = opt.getAttribute('data-price');
+        }
+      };
+    }
+
+    const submitBtn = document.getElementById('stuSubmitPaymentRecordBtn');
+    if (submitBtn) {
+      submitBtn.onclick = () => {
+        const utr = (document.getElementById('stuPayUtrInput').value || '').trim();
+        if (!utr) {
+          toast('⚠️ कृपया अपना 12-अंकीय UPI Transaction ID / UTR नंबर दर्ज करें।');
+          return;
+        }
+        const opt = pkgSelect ? pkgSelect.options[pkgSelect.selectedIndex] : null;
+        const targetId = pkgSelect ? pkgSelect.value : 'custom_package';
+        const targetTitle = opt ? (opt.getAttribute('data-title') || opt.textContent.trim()) : 'Paid Package';
+        const targetType = opt ? (opt.getAttribute('data-type') || 'folder') : 'folder';
+        const validityDays = opt ? Number(opt.getAttribute('data-validity') || 180) : 180;
+        const amountPaid = Math.max(1, Number((amtInput && amtInput.value) || 99));
+        const phoneVal = (document.getElementById('stuPayPhoneInput').value || '').trim();
+        const noteVal = (document.getElementById('stuPayNoteInput').value || '').trim();
+        if (phoneVal) state.student.phone = phoneVal;
+
+        const nowMs = Date.now();
+        const orderObj = {
+          id: 'ord_' + nowMs,
+          uid: state.student.uid || '',
+          studentName: state.student.name || 'Aspirant',
+          studentEmail: (state.student.email || '').toLowerCase(),
+          studentPhone: phoneVal,
+          studentIdentifier: (state.student.email || state.student.uid || '').toLowerCase(),
+          targetId,
+          targetType,
+          targetTitle,
+          amountPaid,
+          validityDays,
+          transactionRef: utr,
+          note: noteVal,
+          status: 'pending',
+          createdAtMs: nowMs,
+          createdAtIso: new Date(nowMs).toISOString()
+        };
+        state.orders = state.orders || [];
+        state.orders.unshift(orderObj);
+        saveState();
+        if (window.CGpediaCloud) {
+          window.CGpediaCloud.saveCloudDoc('orders', orderObj.id, orderObj);
+        }
+        toast('✅ Payment verification record submitted! Admin will review & unlock your package.');
+        renderApp();
+      };
+    }
+
+    root.querySelectorAll('[data-open-unlocked-series]').forEach((btn) => {
+      btn.onclick = () => {
+        const tid = btn.getAttribute('data-open-unlocked-series');
+        const matchingFolder = (state.folders || []).find((f) => f.id === tid);
+        if (matchingFolder) {
+          state.selectedFolderId = matchingFolder.id;
+        }
+        navigateToTab('test-series');
+      };
+    });
   }
 
   // =========================================================================
@@ -3573,6 +3956,9 @@
       const globalDoc = docs.find((d) => d.id === 'global' || d.configKey === 'global');
       if (globalDoc) {
         state.config = Object.assign({}, state.config, globalDoc);
+        if (globalDoc.whatsappSupportNumber && !globalDoc.whatsappNumber) {
+          state.config.whatsappNumber = globalDoc.whatsappSupportNumber;
+        }
       }
       const taxDoc = docs.find((d) => d.id === 'taxonomy' || d.configKey === 'taxonomy');
       if (taxDoc) {
@@ -3580,6 +3966,8 @@
       }
     } else if (key === 'questionBank') {
       state.questionBank = docs;
+    } else if (key === 'orders' || key === 'activations' || key === 'coupons' || key === 'registeredStudents') {
+      state[key] = docs;
     } else if (key === 'examMaster' || key === 'subjectMaster' || key === 'topicMaster' || key === 'subtopicMaster') {
       state[key] = docs;
     } else if (docs.length > 0) {

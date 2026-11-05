@@ -17,23 +17,87 @@
   let savedAdminNavScrollLeft = 0;
 
   function renderAdminConsole(rootEl, state, api) {
+    if (state.adminSection === 'folders') {
+      state.adminSection = 'tests';
+    }
     const activeSection = state.adminSection || 'overview';
-    const totalStudents = Math.max(1, (state.registeredStudents || []).length);
+
+    // Combine registered students from Firestore, local registry, attempts, orders, and activations
+    let localRegistryAccounts = [];
+    try {
+      const rawReg = localStorage.getItem('cgpedia_registered_accounts_v1');
+      if (rawReg) {
+        const parsedReg = JSON.parse(rawReg);
+        if (Array.isArray(parsedReg)) localRegistryAccounts = parsedReg;
+      }
+    } catch (_) {}
+
+    const studentMap = new Map();
+    const registerStudentEntry = (entry) => {
+      if (!entry) return;
+      const email = String(entry.email || entry.studentEmail || entry.studentIdentifier || '').trim().toLowerCase();
+      const uid = String(entry.uid || entry.id || '').trim();
+      const key = email || uid;
+      if (!key) return;
+      const existing = studentMap.get(key) || {
+        uid: uid || ('STU-' + key.slice(0, 6).toUpperCase()),
+        name: entry.name || entry.displayName || entry.studentName || 'Aspirant',
+        email: email || '',
+        phone: entry.phone || entry.studentPhone || '',
+        targetExams: Array.isArray(entry.targetExams) ? entry.targetExams : ['CGPSC'],
+        createdAtIso: entry.createdAtIso || entry.registeredAtIso || ''
+      };
+      if (entry.name || entry.displayName || entry.studentName) {
+        existing.name = entry.name || entry.displayName || entry.studentName;
+      }
+      if (email) existing.email = email;
+      if (uid && !existing.uid) existing.uid = uid;
+      if (entry.phone || entry.studentPhone) existing.phone = entry.phone || entry.studentPhone;
+      studentMap.set(key, existing);
+    };
+
+    (state.registeredStudents || []).forEach(registerStudentEntry);
+    localRegistryAccounts.forEach(registerStudentEntry);
+    if (state.student && (state.student.email || state.student.uid)) {
+      registerStudentEntry(state.student);
+    }
+    (state.orders || []).forEach(registerStudentEntry);
+    (state.activations || []).forEach((a) => {
+      if (a.studentIdentifier) {
+        registerStudentEntry({
+          email: String(a.studentIdentifier).includes('@') ? a.studentIdentifier : '',
+          uid: !String(a.studentIdentifier).includes('@') ? a.studentIdentifier : '',
+          name: a.studentName || 'Student'
+        });
+      }
+    });
+
+    const allRegisteredStudents = Array.from(studentMap.values());
+    const totalStudents = Math.max(1, allRegisteredStudents.length);
     const publishedTests = (state.tests || []).filter((t) => t.status === 'published').length;
     const draftTests = (state.tests || []).filter((t) => t.status !== 'published').length;
     const totalQBank = (state.questionBank || []).length + (state.tests || []).reduce((acc, t) => acc + ((t.questions || []).length), 0);
     const totalRevenue = (state.activations || []).reduce((acc, a) => acc + Number(a.amountPaid || 0), 0);
 
+    // Original 5 Top-Level Admin Modules in their exact original arrangement and positions
     const subTabs = [
-      { id: 'overview', label: '📊 Dashboard KPIs' },
-      { id: 'folders', label: '🏛️ Exams & Series' },
-      { id: 'tests', label: '📝 Test Builder (Draft/Publish)' },
-      { id: 'qbank', label: '🧠 Question Bank (CSV/AI)' },
-      { id: 'payments', label: '💳 UPI QR, Coupons & Unlocks' },
-      { id: 'stories', label: '⚡ Current Affairs & PDFs' },
-      { id: 'broadcast', label: '📢 Announcements & Queries' },
-      { id: 'branding', label: '⚙️ Branding & Roles' }
+      { id: 'overview', label: '📊 Dashboard KPIs', title: 'Dashboard KPIs' },
+      { id: 'tests', label: '📝 Test Series Builder', title: 'Test Series Builder' },
+      { id: 'qbank', label: '🧠 Question Bank', title: 'Question Bank' },
+      { id: 'students', label: '👥 Student Management', title: 'Student Management' },
+      { id: 'payments', label: '💳 Payment Management', title: 'Payment Management' }
     ];
+
+    const secondaryModuleTitles = {
+      stories: 'Current Affairs & PDFs',
+      broadcast: 'Announcements & Student Queries',
+      branding: 'Branding, Anthem Audio & Staff Roles'
+    };
+
+    const activeModuleObj = subTabs.find((t) => t.id === activeSection);
+    const activeModuleTitle = activeModuleObj
+      ? activeModuleObj.title
+      : (secondaryModuleTitles[activeSection] || 'Dashboard KPIs');
 
     const existingNavRow = rootEl.querySelector('#adminSubTabNavRow');
     const existingBodyEl = rootEl.querySelector('#adminSubSectionBody');
@@ -44,7 +108,7 @@
 
     if (!existingNavRow || !existingBodyEl) {
       rootEl.innerHTML = `
-        <div class="hero-banner" style="padding:18px 20px;margin-bottom:16px;">
+        <div class="hero-banner" style="padding:18px 20px;margin-bottom:14px;">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
             <div style="display:flex;align-items:center;gap:12px;">
               <img src="assets/cgpedia-logo-clean.png" alt="CGpedia" style="width:46px;height:46px;border-radius:50%;object-fit:cover;border:2px solid #93C5FD;" />
@@ -57,18 +121,31 @@
               </div>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button class="btn btn-header-chip" data-admin-util-jump="stories" title="Publish 24-Hour Current Affairs">⚡ Current Affairs</button>
+              <button class="btn btn-header-chip" data-admin-util-jump="broadcast" title="Announcements & Student Queries">📢 Announcements</button>
+              <button class="btn btn-header-chip" data-admin-util-jump="branding" title="Branding, Anthem Audio & Roles">⚙️ Branding &amp; Anthem</button>
               <button class="btn btn-header-chip" id="adminExportBackupBtn">⬇️ Export JSON Backup</button>
               <button class="btn btn-header-chip" id="adminLockBtn">🔒 Exit Admin</button>
             </div>
           </div>
         </div>
 
-        <div class="chip-row" id="adminSubTabNavRow" style="margin-bottom:16px;">
+        <div class="chip-row" id="adminSubTabNavRow" style="margin-bottom:12px;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch;scroll-behavior:auto;">
           ${subTabs.map((t) => `
-            <button class="filter-chip ${activeSection === t.id ? 'active' : ''}" data-admin-subtab="${t.id}">
+            <button type="button" class="filter-chip ${activeSection === t.id ? 'active' : ''}" data-admin-subtab="${t.id}" style="flex:0 0 auto;">
               ${t.label}
             </button>
           `).join('')}
+        </div>
+
+        <div id="adminActiveModuleHeaderBar" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:10px 14px;margin-bottom:14px;border-radius:10px;background:var(--surface);border:1px solid var(--border);box-shadow:var(--shadow-sm);">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span class="badge badge-exam">ACTIVE MODULE</span>
+            <strong id="adminActiveModuleTitleText" style="font-size:0.98rem;font-weight:800;color:var(--text);">${esc(activeModuleTitle)}</strong>
+          </div>
+          <div style="font-size:0.76rem;color:var(--text-secondary);">
+            All existing Firebase data, Test Series &amp; Question Bank records preserved
+          </div>
         </div>
 
         <div id="adminSubSectionBody"></div>
@@ -86,24 +163,53 @@
       if (ownerBadge) {
         ownerBadge.textContent = `Owner: ${state.student.email || ''}`;
       }
+      const activeTitleEl = rootEl.querySelector('#adminActiveModuleTitleText');
+      if (activeTitleEl) {
+        activeTitleEl.textContent = activeModuleTitle;
+      }
       existingNavRow.querySelectorAll('[data-admin-subtab]').forEach((btn) => {
         btn.classList.toggle('active', btn.getAttribute('data-admin-subtab') === activeSection);
       });
       existingNavRow.scrollLeft = savedAdminNavScrollLeft;
+      requestAnimationFrame(() => {
+        if (existingNavRow) existingNavRow.scrollLeft = savedAdminNavScrollLeft;
+      });
     }
 
     const navRowEl = rootEl.querySelector('#adminSubTabNavRow');
     if (navRowEl) {
       navRowEl.querySelectorAll('[data-admin-subtab]').forEach((btn) => {
-        btn.onclick = () => {
+        const captureNavScroll = () => {
           savedAdminNavScrollLeft = navRowEl.scrollLeft;
+        };
+        btn.onpointerdown = captureNavScroll;
+        btn.ontouchstart = captureNavScroll;
+        btn.onclick = (ev) => {
+          if (ev && typeof ev.preventDefault === 'function') ev.preventDefault();
+          const lockedScroll = savedAdminNavScrollLeft || navRowEl.scrollLeft;
+          savedAdminNavScrollLeft = lockedScroll;
           state.adminSection = btn.getAttribute('data-admin-subtab');
           api.saveState();
           renderAdminConsole(rootEl, state, api);
-          navRowEl.scrollLeft = savedAdminNavScrollLeft;
+          const updatedNavRow = rootEl.querySelector('#adminSubTabNavRow');
+          if (updatedNavRow) {
+            updatedNavRow.scrollLeft = lockedScroll;
+            requestAnimationFrame(() => {
+              updatedNavRow.scrollLeft = lockedScroll;
+            });
+          }
         };
       });
     }
+
+    rootEl.querySelectorAll('[data-admin-util-jump]').forEach((btn) => {
+      btn.onclick = () => {
+        if (navRowEl) savedAdminNavScrollLeft = navRowEl.scrollLeft;
+        state.adminSection = btn.getAttribute('data-admin-util-jump');
+        api.saveState();
+        renderAdminConsole(rootEl, state, api);
+      };
+    });
 
     const lockBtn = document.getElementById('adminLockBtn');
     if (lockBtn) {
@@ -131,6 +237,7 @@
     if (!bodyEl) return;
 
     if (activeSection === 'overview') {
+      const pendingOrdersCount = (state.orders || []).filter((o) => String(o.status || 'pending').toLowerCase() === 'pending').length;
       bodyEl.innerHTML = `
         <div class="kpi-grid">
           <div class="kpi-card">
@@ -150,12 +257,12 @@
             <div class="kpi-label">Total Bilingual MCQs</div>
           </div>
           <div class="kpi-card">
-            <div class="kpi-value">${(state.attempts || []).length}</div>
-            <div class="kpi-label">Total Exam Attempts</div>
+            <div class="kpi-value">${totalStudents}</div>
+            <div class="kpi-label">Registered Students (${(state.attempts || []).length} Attempts)</div>
           </div>
           <div class="kpi-card">
             <div class="kpi-value" style="color:var(--secondary);">₹${totalRevenue}</div>
-            <div class="kpi-label">Activated Revenue (${(state.activations || []).length} unlocks)</div>
+            <div class="kpi-label">Activated Revenue (${(state.activations || []).length} unlocks${pendingOrdersCount > 0 ? ` • ${pendingOrdersCount} Pending` : ''})</div>
           </div>
         </div>
 
@@ -163,10 +270,10 @@
           <div class="card">
             <h3 style="font-size:1rem;font-weight:800;margin-bottom:10px;">🚀 Quick Actions</h3>
             <div style="display:grid;gap:8px;">
-              <button class="btn btn-primary" data-quick-jump="folders">➕ Create New Exam Package / Test Series</button>
-              <button class="btn btn-navy" data-quick-jump="tests">📝 Create Manual or AI Bilingual Test (Draft)</button>
-              <button class="btn btn-outline" data-quick-jump="qbank">📂 Bulk Import Questions (CSV / JSON)</button>
-              <button class="btn btn-success" data-quick-jump="payments">🔓 Unlock Paid Package for Student (Email/UID)</button>
+              <button class="btn btn-primary" data-quick-jump="tests">📝 Test Series Builder (Create Series &amp; Tests)</button>
+              <button class="btn btn-outline" data-quick-jump="qbank">🧠 Question Bank (CSV / JSON / Smart PDF Import)</button>
+              <button class="btn btn-navy" data-quick-jump="students">👥 Student Management (${totalStudents} Students)</button>
+              <button class="btn btn-success" data-quick-jump="payments">💳 Payment Management (UPI QR, Records &amp; Unlocks)</button>
             </div>
           </div>
 
@@ -195,6 +302,7 @@
       `;
       bodyEl.querySelectorAll('[data-quick-jump]').forEach((btn) => {
         btn.onclick = () => {
+          if (navRowEl) savedAdminNavScrollLeft = navRowEl.scrollLeft;
           state.adminSection = btn.getAttribute('data-quick-jump');
           api.saveState();
           renderAdminConsole(rootEl, state, api);
@@ -202,136 +310,9 @@
       });
       return;
     }
-
-    if (activeSection === 'folders') {
-      const exams = window.CGpediaCloud ? window.CGpediaCloud.EXAM_CATEGORIES : [];
-      bodyEl.innerHTML = `
-        <div class="card">
-          <h3 style="font-size:1.05rem;font-weight:800;margin-bottom:12px;">🏛️ Create Exam Package / Test Series Folder</h3>
-          <div class="grid-2">
-            <div class="form-group">
-              <label class="form-label">Exam Category / परीक्षा श्रेणी</label>
-              <select class="form-select" id="admFolderExamCat">
-                ${exams.map((ex) => `<option value="${esc(ex.code)}">${esc(ex.icon)} ${esc(ex.nameHi)} (${esc(ex.nameEn)})</option>`).join('')}
-              </select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Package Type</label>
-              <select class="form-select" id="admFolderType">
-                <option value="exam">Exam-Wise Full Test Series</option>
-                <option value="subject">Subject / Topic-Wise Test Series</option>
-                <option value="pyq">Previous Year Paper Series (PYQ)</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Package Title (Hindi / मुख्य नाम)</label>
-              <input class="form-input" id="admFolderTitleHi" placeholder="उदा: CGPSC Prelims 2026 सम्पूर्ण टेस्ट सीरीज़" />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Package Title (English)</label>
-              <input class="form-input" id="admFolderTitleEn" placeholder="e.g., CGPSC Prelims 2026 Complete Test Series" />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Syllabus / Description</label>
-              <input class="form-input" id="admFolderDesc" placeholder="Full GS + CSAT + Current Affairs Bilingual Series" />
-            </div>
-            <div class="form-group" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
-              <div>
-                <label class="form-label">Access</label>
-                <select class="form-select" id="admFolderIsPaid">
-                  <option value="free">FREE</option>
-                  <option value="paid">PAID (₹)</option>
-                </select>
-              </div>
-              <div>
-                <label class="form-label">Price (₹)</label>
-                <input type="number" class="form-input" id="admFolderPrice" value="99" min="0" />
-              </div>
-              <div>
-                <label class="form-label">Validity (Days)</label>
-                <select class="form-select" id="admFolderValidity">
-                  <option value="30">30 Days</option>
-                  <option value="90">90 Days</option>
-                  <option value="180" selected>180 Days</option>
-                  <option value="365">365 Days</option>
-                </select>
-              </div>
-            </div>
-          </div>
-          <button class="btn btn-primary" id="admCreateFolderBtn">➕ Save &amp; Publish Test Series Folder</button>
-        </div>
-
-        <div class="card">
-          <h3 style="font-size:1rem;font-weight:800;margin-bottom:12px;">📂 Existing Test Series Folders (${(state.folders || []).length})</h3>
-          ${(state.folders || []).length === 0 ? `
-            <p style="font-size:0.86rem;color:var(--text-muted);">No Test Series Folders created yet. Create one above.</p>
-          ` : `
-            <div style="display:grid;gap:10px;">
-              ${state.folders.map((f) => `
-                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:10px;flex-wrap:wrap;">
-                  <div>
-                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                      <span class="badge badge-exam">${esc(f.examCode || 'CGPSC')}</span>
-                      <span class="badge ${f.isPaid ? 'badge-paid' : 'badge-free'}">${f.isPaid ? 'PAID ₹' + f.priceInr + ' (' + f.validityDays + 'd)' : 'FREE'}</span>
-                    </div>
-                    <div style="font-weight:800;margin-top:4px;">${esc(f.titleHi)}</div>
-                    <div style="font-size:0.78rem;color:var(--text-muted);">${esc(f.titleEn)}</div>
-                  </div>
-                  <button class="btn btn-danger btn-sm" data-del-folder="${esc(f.id)}">🗑️ Delete</button>
-                </div>
-              `).join('')}
-            </div>
-          `}
-        </div>
-      `;
-
-      document.getElementById('admCreateFolderBtn').onclick = () => {
-        const titleHi = document.getElementById('admFolderTitleHi').value.trim();
-        const titleEn = document.getElementById('admFolderTitleEn').value.trim() || titleHi;
-        if (!titleHi) {
-          api.toast('कृपया टेस्ट सीरीज़ फ़ोल्डर का नाम दर्ज करें।');
-          return;
-        }
-        const isPaid = document.getElementById('admFolderIsPaid').value === 'paid';
-        const folderObj = {
-          id: 'fld_' + Date.now(),
-          examCode: document.getElementById('admFolderExamCat').value || 'CGPSC',
-          folderType: document.getElementById('admFolderType').value || 'exam',
-          titleHi,
-          titleEn,
-          descriptionHi: document.getElementById('admFolderDesc').value.trim() || titleHi,
-          descriptionEn: document.getElementById('admFolderDesc').value.trim() || titleEn,
-          isPaid,
-          isFreeFolder: !isPaid,
-          priceInr: isPaid ? Math.max(1, Number(document.getElementById('admFolderPrice').value || 99)) : 0,
-          validityDays: Number(document.getElementById('admFolderValidity').value || 180),
-          visibility: 'published',
-          createdAtIso: new Date().toISOString()
-        };
-        state.folders.unshift(folderObj);
-        api.saveState();
-        if (window.CGpediaCloud) {
-          window.CGpediaCloud.saveCloudDoc('exam_folders', folderObj.id, folderObj);
-        }
-        api.toast('✅ Test Series Folder created & synced to Firebase!');
-        renderAdminConsole(rootEl, state, api);
-      };
-
-      bodyEl.querySelectorAll('[data-del-folder]').forEach((btn) => {
-        btn.onclick = () => {
-          const fid = btn.getAttribute('data-del-folder');
-          state.folders = state.folders.filter((f) => f.id !== fid);
-          api.saveState();
-          if (window.CGpediaCloud) window.CGpediaCloud.deleteCloudDoc('exam_folders', fid);
-          api.toast('🗑️ Folder removed.');
-          renderAdminConsole(rootEl, state, api);
-        };
-      });
-      return;
-    }
-
     if (activeSection === 'tests') {
       const catalog = getTaxonomyCatalog(state);
+      const exams = catalog.examCategories;
       const tbState = state._testBuilderUiState || {
         examCode: 'CGPSC',
         subjectFilter: 'ALL',
@@ -531,6 +512,80 @@
             </div>
           `}
         </div>
+
+        <!-- Integrated Test Series Package / Folder Manager inside Test Series Builder -->
+        <div class="card">
+          <h3 style="font-size:1.02rem;font-weight:800;margin-bottom:10px;">🏛️ Create &amp; Manage Test Series Packages / Folders (${(state.folders || []).length})</h3>
+          <div class="grid-2">
+            <div class="form-group">
+              <label class="form-label">Exam Category / परीक्षा श्रेणी</label>
+              <select class="form-select" id="admFolderExamCat">
+                ${exams.map((ex) => `<option value="${esc(ex.code)}">${esc(ex.icon || '🏛️')} ${esc(ex.nameHi)} (${esc(ex.nameEn)})</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Package Type</label>
+              <select class="form-select" id="admFolderType">
+                <option value="exam">Exam-Wise Full Test Series</option>
+                <option value="subject">Subject / Topic-Wise Test Series</option>
+                <option value="pyq">Previous Year Paper Series (PYQ)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Package Title (Hindi / मुख्य नाम)</label>
+              <input class="form-input" id="admFolderTitleHi" placeholder="उदा: CGPSC Prelims 2026 सम्पूर्ण टेस्ट सीरीज़" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Package Title (English)</label>
+              <input class="form-input" id="admFolderTitleEn" placeholder="e.g., CGPSC Prelims 2026 Complete Test Series" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Syllabus / Description</label>
+              <input class="form-input" id="admFolderDesc" placeholder="Full GS + CSAT + Current Affairs Bilingual Series" />
+            </div>
+            <div class="form-group" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+              <div>
+                <label class="form-label">Access</label>
+                <select class="form-select" id="admFolderIsPaid">
+                  <option value="free">FREE</option>
+                  <option value="paid">PAID (₹)</option>
+                </select>
+              </div>
+              <div>
+                <label class="form-label">Price (₹)</label>
+                <input type="number" class="form-input" id="admFolderPrice" value="99" min="0" />
+              </div>
+              <div>
+                <label class="form-label">Validity (Days)</label>
+                <select class="form-select" id="admFolderValidity">
+                  <option value="30">30 Days</option>
+                  <option value="90">90 Days</option>
+                  <option value="180" selected>180 Days</option>
+                  <option value="365">365 Days</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <button class="btn btn-primary" id="admCreateFolderBtn" style="margin-bottom:14px;">➕ Save &amp; Publish Test Series Folder</button>
+
+          ${(state.folders || []).length > 0 ? `
+            <div style="display:grid;gap:8px;border-top:1px solid var(--border);padding-top:12px;">
+              ${state.folders.map((f) => `
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;flex-wrap:wrap;">
+                  <div>
+                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                      <span class="badge badge-exam">${esc(f.examCode || 'CGPSC')}</span>
+                      <span class="badge ${f.isPaid ? 'badge-paid' : 'badge-free'}">${f.isPaid ? 'PAID ₹' + f.priceInr + ' (' + f.validityDays + 'd)' : 'FREE'}</span>
+                    </div>
+                    <div style="font-weight:800;margin-top:4px;">${esc(f.titleHi)}</div>
+                    <div style="font-size:0.78rem;color:var(--text-muted);">${esc(f.titleEn)}</div>
+                  </div>
+                  <button class="btn btn-danger btn-sm" data-del-folder="${esc(f.id)}">🗑️ Delete</button>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
+        </div>
       `;
 
       const updateLiveEligibleBadge = () => {
@@ -718,11 +773,177 @@
           api.openQuestionEditorModal(tid, () => renderAdminConsole(rootEl, state, api));
         };
       });
+
+      const createFolderBtn = document.getElementById('admCreateFolderBtn');
+      if (createFolderBtn) {
+        createFolderBtn.onclick = () => {
+          const titleHi = document.getElementById('admFolderTitleHi').value.trim();
+          const titleEn = document.getElementById('admFolderTitleEn').value.trim() || titleHi;
+          if (!titleHi) {
+            api.toast('कृपया टेस्ट सीरीज़ फ़ोल्डर का नाम दर्ज करें।');
+            return;
+          }
+          const isPaid = document.getElementById('admFolderIsPaid').value === 'paid';
+          const folderObj = {
+            id: 'fld_' + Date.now(),
+            examCode: document.getElementById('admFolderExamCat').value || 'CGPSC',
+            folderType: document.getElementById('admFolderType').value || 'exam',
+            titleHi,
+            titleEn,
+            descriptionHi: document.getElementById('admFolderDesc').value.trim() || titleHi,
+            descriptionEn: document.getElementById('admFolderDesc').value.trim() || titleEn,
+            isPaid,
+            isFreeFolder: !isPaid,
+            priceInr: isPaid ? Math.max(1, Number(document.getElementById('admFolderPrice').value || 99)) : 0,
+            validityDays: Number(document.getElementById('admFolderValidity').value || 180),
+            visibility: 'published',
+            createdAtIso: new Date().toISOString()
+          };
+          state.folders.unshift(folderObj);
+          api.saveState();
+          if (window.CGpediaCloud) {
+            window.CGpediaCloud.saveCloudDoc('exam_folders', folderObj.id, folderObj);
+          }
+          api.toast('✅ Test Series Folder created & synced to Firebase!');
+          renderAdminConsole(rootEl, state, api);
+        };
+      }
+
+      bodyEl.querySelectorAll('[data-del-folder]').forEach((btn) => {
+        btn.onclick = () => {
+          const fid = btn.getAttribute('data-del-folder');
+          state.folders = state.folders.filter((f) => f.id !== fid);
+          api.saveState();
+          if (window.CGpediaCloud) window.CGpediaCloud.deleteCloudDoc('exam_folders', fid);
+          api.toast('🗑️ Folder removed.');
+          renderAdminConsole(rootEl, state, api);
+        };
+      });
       return;
     }
 
     if (activeSection === 'qbank') {
       renderQuestionBankManagement(bodyEl, rootEl, state, api);
+      return;
+    }
+
+    if (activeSection === 'students') {
+      const stuSearch = String(state._adminStudentSearch || '').trim().toLowerCase();
+      const filteredStudents = allRegisteredStudents.filter((s) => {
+        if (!stuSearch) return true;
+        return (
+          String(s.name || '').toLowerCase().includes(stuSearch) ||
+          String(s.email || '').toLowerCase().includes(stuSearch) ||
+          String(s.uid || '').toLowerCase().includes(stuSearch) ||
+          String(s.phone || '').toLowerCase().includes(stuSearch)
+        );
+      });
+
+      bodyEl.innerHTML = `
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <div class="kpi-value">${allRegisteredStudents.length}</div>
+            <div class="kpi-label">Registered Students</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-value" style="color:var(--success);">${(state.activations || []).length}</div>
+            <div class="kpi-label">Active Package Unlocks</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-value" style="color:var(--secondary);">${(state.attempts || []).length}</div>
+            <div class="kpi-label">Total CBT Exam Attempts</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-value" style="color:var(--warning);">${(state.queries || []).length}</div>
+            <div class="kpi-label">Student Support Queries</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+            <div>
+              <h3 style="font-size:1.05rem;font-weight:800;">👥 Registered Student Directory &amp; Access Control (${filteredStudents.length})</h3>
+              <p style="font-size:0.78rem;color:var(--text-secondary);">View student accounts, exam attempts, unlocked packages, and grant package access.</p>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;min-width:260px;">
+              <input class="form-input" id="admStudentSearchInput" value="${esc(state._adminStudentSearch || '')}" placeholder="🔍 Search student by Name, Email, UID or Phone..." style="padding:7px 11px;font-size:0.82rem;" />
+            </div>
+          </div>
+
+          ${filteredStudents.length === 0 ? `
+            <p style="font-size:0.85rem;color:var(--text-muted);padding:16px 0;">No matching student records found.</p>
+          ` : `
+            <div style="display:grid;gap:10px;">
+              ${filteredStudents.map((stu) => {
+                const emailLow = String(stu.email || '').toLowerCase();
+                const uidLow = String(stu.uid || '').toLowerCase();
+                const stuActivations = (state.activations || []).filter((a) => {
+                  const idLow = String(a.studentIdentifier || '').toLowerCase();
+                  return (emailLow && idLow === emailLow) || (uidLow && idLow === uidLow);
+                });
+                const stuOrders = (state.orders || []).filter((o) => {
+                  const oEmail = String(o.studentEmail || o.studentIdentifier || '').toLowerCase();
+                  const oUid = String(o.uid || o.studentIdentifier || '').toLowerCase();
+                  return (emailLow && oEmail === emailLow) || (uidLow && oUid === uidLow);
+                });
+                const stuAttempts = (state.attempts || []).filter((at) => {
+                  const atEmail = String(at.studentEmail || '').toLowerCase();
+                  const atUid = String(at.studentUid || at.uid || '').toLowerCase();
+                  return (emailLow && atEmail === emailLow) || (uidLow && atUid === uidLow);
+                });
+
+                return `
+                  <div style="padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--surface-alt);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+                    <div>
+                      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                        <strong style="font-size:0.94rem;">${esc(stu.name || 'Aspirant')}</strong>
+                        <span class="badge badge-cloud">UID: ${esc(stu.uid || '-')}</span>
+                        ${stuActivations.length > 0 ? `<span class="badge badge-free">🔓 ${stuActivations.length} Unlocked Package(s)</span>` : `<span class="badge badge-draft">Free Tier</span>`}
+                        ${stuOrders.some((o) => String(o.status || 'pending').toLowerCase() === 'pending') ? `<span class="badge badge-paid">⏳ Pending Payment</span>` : ''}
+                      </div>
+                      <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:4px;">
+                        📧 Email: <strong>${esc(stu.email || 'Not provided')}</strong>
+                        ${stu.phone ? ` • 📱 Phone: <strong>${esc(stu.phone)}</strong>` : ''}
+                        • 📝 Attempts: <strong>${stuAttempts.length}</strong>
+                      </div>
+                      ${stuActivations.length > 0 ? `
+                        <div style="font-size:0.74rem;color:var(--success);margin-top:3px;font-weight:700;">
+                          Active Packages: ${stuActivations.map((a) => esc(a.targetTitle)).join(', ')}
+                        </div>
+                      ` : ''}
+                    </div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                      <button class="btn btn-success btn-sm" data-stu-quick-unlock="${esc(stu.email || stu.uid)}">🔓 Unlock Package</button>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          `}
+        </div>
+      `;
+
+      const stuSearchInput = document.getElementById('admStudentSearchInput');
+      if (stuSearchInput) {
+        stuSearchInput.oninput = () => {
+          state._adminStudentSearch = stuSearchInput.value;
+          renderAdminConsole(rootEl, state, api);
+          const reInput = document.getElementById('admStudentSearchInput');
+          if (reInput) {
+            reInput.focus();
+            reInput.setSelectionRange(reInput.value.length, reInput.value.length);
+          }
+        };
+      }
+
+      bodyEl.querySelectorAll('[data-stu-quick-unlock]').forEach((btn) => {
+        btn.onclick = () => {
+          state._prefillUnlockStudent = btn.getAttribute('data-stu-quick-unlock') || '';
+          state.adminSection = 'payments';
+          api.saveState();
+          renderAdminConsole(rootEl, state, api);
+        };
+      });
       return;
     }
 
@@ -732,38 +953,93 @@
         ...(state.tests || []).filter((t) => t.isPaid).map((t) => ({ id: t.id, title: `[Test] ${t.titleHi}`, price: t.priceInr, validityDays: t.validityDays || 180 }))
       ];
 
+      const currentQrImage = String(state.config.upiQrImage || '').trim();
+      const currentUpiId = String(state.config.upiId || '').trim();
+      const currentWhatsapp = String(state.config.whatsappNumber || state.config.whatsappSupportNumber || '').trim();
+      const currentInstrHi = String(state.config.paymentInstructionsHi || 'QR कोड स्कैन करके या UPI ID पर पेमेंट करें, पेमेंट का स्क्रीनशॉट लें और एक्टिवेशन के लिए नीचे दिए गए WhatsApp बटन पर क्लिक करके या पेमेंट रिकॉर्ड सबमिट करके विवरण भेजें।').trim();
+      const currentInstrEn = String(state.config.paymentInstructionsEn || 'Scan the QR Code or pay via the configured UPI ID, take a payment screenshot, and click the WhatsApp button below or submit your payment verification details for package activation.').trim();
+
+      const payFilter = state._adminPayRecordFilter || 'ALL';
+      const allOrders = Array.isArray(state.orders) ? state.orders : [];
+      const filteredOrders = allOrders.filter((ord) => {
+        if (payFilter === 'ALL') return true;
+        return String(ord.status || 'pending').toLowerCase() === payFilter.toLowerCase();
+      });
+
+      const pendingCount = allOrders.filter((o) => String(o.status || 'pending').toLowerCase() === 'pending').length;
+      const approvedCount = allOrders.filter((o) => String(o.status || '').toLowerCase() === 'approved').length;
+      const rejectedCount = allOrders.filter((o) => String(o.status || '').toLowerCase() === 'rejected').length;
+
       bodyEl.innerHTML = `
         <div class="grid-2">
-          <!-- UPI QR Upload from Gallery + WhatsApp Config -->
+          <!-- 1. Complete Payment Configuration (QR Upload, Preview, Replace/Delete, UPI ID + Copy, WhatsApp, Instructions) -->
           <div class="card">
-            <h3 style="font-size:1rem;font-weight:800;margin-bottom:10px;">📲 Admin UPI QR Upload (Gallery + URL) &amp; WhatsApp Payment Setup</h3>
-            <div class="form-group">
-              <label class="form-label">Upload UPI QR Code Image Directly from Device Gallery</label>
-              <input type="file" accept="image/*" class="form-input" id="admQrGalleryFileInput" />
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+              <h3 style="font-size:1rem;font-weight:800;">📲 Payment Configuration (UPI QR, UPI ID, WhatsApp &amp; Instructions)</h3>
+              <span class="badge badge-cloud">Dynamic Firebase Sync</span>
             </div>
-            <div class="form-group">
-              <label class="form-label">Or Paste UPI QR Image URL</label>
-              <input class="form-input" id="admQrUrlInput" value="${esc(state.config.upiQrImage || '')}" placeholder="https://..." />
+
+            <!-- Live QR Code Preview + Upload / Replace / Delete Controls -->
+            <div style="padding:12px;border:1.5px dashed var(--border-strong);border-radius:10px;background:var(--surface-alt);text-align:center;margin-bottom:12px;">
+              <div style="font-size:0.76rem;font-weight:800;color:var(--text-secondary);margin-bottom:8px;">UPI QR Code Preview (Shown to Students)</div>
+              <div id="admQrLivePreviewBox">
+                ${currentQrImage ? `
+                  <img src="${esc(currentQrImage)}" alt="Uploaded UPI QR Code Preview" style="max-width:185px;max-height:185px;border-radius:10px;border:2px solid #fff;box-shadow:var(--shadow-sm);margin:0 auto 10px;display:block;object-fit:contain;" />
+                ` : `
+                  <div style="padding:18px 10px;font-size:0.8rem;color:var(--text-muted);">
+                    No UPI QR Code image uploaded yet. Upload an image below or paste an image URL.
+                  </div>
+                `}
+              </div>
+              <div style="display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:6px;">
+                <label class="btn btn-outline btn-sm" style="cursor:pointer;margin:0;">
+                  ${currentQrImage ? '🔄 Replace QR Code Image' : '📤 Upload UPI QR Code Image'}
+                  <input type="file" accept="image/*" id="admQrGalleryFileInput" style="display:none;" />
+                </label>
+                ${currentQrImage ? `
+                  <button type="button" class="btn btn-danger btn-sm" id="admDeleteQrCodeBtn">🗑️ Delete QR Code</button>
+                ` : ''}
+              </div>
             </div>
+
+            <div class="form-group">
+              <label class="form-label">UPI QR Image URL / Data URL</label>
+              <input class="form-input" id="admQrUrlInput" value="${esc(currentQrImage)}" placeholder="Paste QR Code Image URL or upload from device above..." />
+            </div>
+
             <div class="grid-2" style="gap:8px;">
               <div class="form-group">
                 <label class="form-label">Official UPI ID</label>
-                <input class="form-input" id="admUpiIdInput" value="${esc(state.config.upiId || '9238810070@upi')}" />
+                <div style="display:flex;gap:6px;">
+                  <input class="form-input" id="admUpiIdInput" value="${esc(currentUpiId)}" placeholder="e.g., merchant@upi" />
+                  <button type="button" class="btn btn-outline btn-sm" id="admCopyUpiIdBtn" title="Copy UPI ID">📋 Copy</button>
+                </div>
               </div>
               <div class="form-group">
-                <label class="form-label">WhatsApp Verification Number</label>
-                <input class="form-input" id="admWhatsappInput" value="${esc(state.config.whatsappNumber || '9238810070')}" />
+                <label class="form-label">WhatsApp Contact Number</label>
+                <input class="form-input" id="admWhatsappInput" value="${esc(currentWhatsapp)}" placeholder="e.g., 10-digit WhatsApp number" />
               </div>
             </div>
-            <button class="btn btn-primary" id="admSavePaymentConfigBtn">💾 Save UPI QR &amp; Payment Settings</button>
+
+            <div class="form-group">
+              <label class="form-label">Payment Instructions for Students (Hindi / हिन्दी निर्देश)</label>
+              <textarea class="form-textarea" id="admPayInstrHiInput" rows="2" placeholder="छात्रों के लिए पेमेंट निर्देश (हिन्दी में)...">${esc(currentInstrHi)}</textarea>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Payment Instructions for Students (English)</label>
+              <textarea class="form-textarea" id="admPayInstrEnInput" rows="2" placeholder="Payment instructions for students in English...">${esc(currentInstrEn)}</textarea>
+            </div>
+
+            <button class="btn btn-primary" id="admSavePaymentConfigBtn" style="width:100%;">💾 Save &amp; Update Payment Settings in Firebase</button>
           </div>
 
-          <!-- Strict Activation-Based Validity Unlock for Student -->
+          <!-- 2. Strict Activation-Based Validity Unlock for Student -->
           <div class="card">
             <h3 style="font-size:1rem;font-weight:800;margin-bottom:10px;">🔓 Activate Paid Package for Student (Countdown Starts Now)</h3>
             <div class="form-group">
               <label class="form-label">Student Registered Email ID or User ID</label>
-              <input class="form-input" id="admUnlockStudentIdentifier" placeholder="student@gmail.com or STU-XXXX" />
+              <input class="form-input" id="admUnlockStudentIdentifier" value="${esc(state._prefillUnlockStudent || '')}" placeholder="student@gmail.com or STU-XXXX" />
             </div>
             <div class="form-group">
               <label class="form-label">Select Paid Test Series or Test</label>
@@ -781,39 +1057,100 @@
                 <input type="number" class="form-input" id="admUnlockAmountPaid" value="99" min="0" />
               </div>
             </div>
-            <button class="btn btn-success" id="admActivateStudentAccessBtn">✅ Activate Student Access Now</button>
+            <button class="btn btn-success" id="admActivateStudentAccessBtn" style="width:100%;">✅ Activate Student Access Now</button>
+
+            <!-- Discount Coupons Manager inside right column -->
+            <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:14px;">
+              <h4 style="font-size:0.94rem;font-weight:800;margin-bottom:8px;">🎟️ Discount Coupons Manager</h4>
+              <div style="display:grid;grid-template-columns:1fr 90px 1fr auto;gap:6px;align-items:end;margin-bottom:10px;">
+                <div>
+                  <label class="form-label" style="font-size:0.74rem;">Code</label>
+                  <input class="form-input" id="admCouponCode" placeholder="CGPSC50" style="padding:6px 8px;font-size:0.8rem;" />
+                </div>
+                <div>
+                  <label class="form-label" style="font-size:0.74rem;">Discount %</label>
+                  <input type="number" class="form-input" id="admCouponPercent" value="25" min="1" max="100" style="padding:6px 8px;font-size:0.8rem;" />
+                </div>
+                <div>
+                  <label class="form-label" style="font-size:0.74rem;">Description</label>
+                  <input class="form-input" id="admCouponDesc" placeholder="Scholarship Offer" style="padding:6px 8px;font-size:0.8rem;" />
+                </div>
+                <button class="btn btn-navy btn-sm" id="admCreateCouponBtn">➕ Add</button>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                ${(state.coupons || []).map((c) => `
+                  <span class="badge badge-paid" style="padding:5px 10px;font-size:0.76rem;">
+                    🎟️ <strong>${esc(c.code)}</strong> (${c.discountPercent}% OFF)
+                    <button data-del-coupon="${esc(c.id)}" style="background:none;border:none;color:var(--danger);cursor:pointer;margin-left:5px;font-weight:800;">✕</button>
+                  </span>
+                `).join('')}
+              </div>
+            </div>
           </div>
         </div>
 
-        <!-- Discount Coupons Manager -->
+        <!-- 3. Student Payment Records & Verification Workflow (Pending / Approved / Rejected) -->
         <div class="card">
-          <h3 style="font-size:1rem;font-weight:800;margin-bottom:10px;">🎟️ Discount Coupons Manager</h3>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:end;margin-bottom:12px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
             <div>
-              <label class="form-label">Coupon Code</label>
-              <input class="form-input" id="admCouponCode" placeholder="CGPSC50" />
+              <h3 style="font-size:1.02rem;font-weight:800;">🧾 Student Payment Records &amp; Approval Workflow (${allOrders.length})</h3>
+              <p style="font-size:0.78rem;color:var(--text-secondary);">Verify student UPI transaction references (UTR) and manage Pending, Approved, or Rejected payment records.</p>
             </div>
-            <div>
-              <label class="form-label">Discount %</label>
-              <input type="number" class="form-input" id="admCouponPercent" value="25" min="1" max="100" />
+            <div class="chip-row" style="margin:0;">
+              <button class="filter-chip ${payFilter === 'ALL' ? 'active' : ''}" data-pay-status-filter="ALL">All (${allOrders.length})</button>
+              <button class="filter-chip ${payFilter === 'pending' ? 'active' : ''}" data-pay-status-filter="pending">⏳ Pending (${pendingCount})</button>
+              <button class="filter-chip ${payFilter === 'approved' ? 'active' : ''}" data-pay-status-filter="approved">✅ Approved (${approvedCount})</button>
+              <button class="filter-chip ${payFilter === 'rejected' ? 'active' : ''}" data-pay-status-filter="rejected">❌ Rejected (${rejectedCount})</button>
             </div>
-            <div>
-              <label class="form-label">Description</label>
-              <input class="form-input" id="admCouponDesc" placeholder="Festive Aspirant Scholarship Offer" />
-            </div>
-            <button class="btn btn-navy" id="admCreateCouponBtn">➕ Add Coupon</button>
           </div>
-          <div style="display:flex;flex-wrap:wrap;gap:8px;">
-            ${(state.coupons || []).map((c) => `
-              <span class="badge badge-paid" style="padding:6px 12px;font-size:0.78rem;">
-                🎟️ <strong>${esc(c.code)}</strong> (${c.discountPercent}% OFF)
-                <button data-del-coupon="${esc(c.id)}" style="background:none;border:none;color:var(--danger);cursor:pointer;margin-left:6px;font-weight:800;">✕</button>
-              </span>
-            `).join('')}
-          </div>
+
+          ${filteredOrders.length === 0 ? `
+            <p style="font-size:0.84rem;color:var(--text-muted);">No student payment records in this status filter.</p>
+          ` : `
+            <div style="display:grid;gap:10px;">
+              ${filteredOrders.map((ord) => {
+                const st = String(ord.status || 'pending').toLowerCase();
+                const badgeCls = st === 'approved' ? 'badge-free' : (st === 'rejected' ? 'badge-live' : 'badge-paid');
+                const stText = st === 'approved' ? 'APPROVED ✅' : (st === 'rejected' ? 'REJECTED ❌' : 'PENDING ⏳');
+                return `
+                  <div style="padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--surface-alt);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+                    <div>
+                      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                        <span class="badge ${badgeCls}">${stText}</span>
+                        <strong>${esc(ord.targetTitle || 'Paid Package')}</strong>
+                        <span class="badge badge-exam">₹${Number(ord.amountPaid || 0)}</span>
+                        ${ord.validityDays ? `<span class="badge badge-draft">${Number(ord.validityDays)} Days</span>` : ''}
+                      </div>
+                      <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:4px;">
+                        👤 Student: <strong>${esc(ord.studentName || 'Student')}</strong>
+                        • 📧 Email/ID: <strong>${esc(ord.studentEmail || ord.studentIdentifier || ord.uid || '-')}</strong>
+                        ${ord.studentPhone ? ` • 📱 Phone: <strong>${esc(ord.studentPhone)}</strong>` : ''}
+                      </div>
+                      <div style="font-size:0.76rem;color:var(--text-secondary);margin-top:2px;">
+                        🔢 UTR / Ref: <code>${esc(ord.transactionRef || '-')}</code>
+                        • 🕒 Date: ${ord.createdAtMs ? new Date(ord.createdAtMs).toLocaleString() : (ord.createdAtIso || '-')}
+                        ${ord.note ? ` • Note: ${esc(ord.note)}` : ''}
+                      </div>
+                    </div>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                      ${st !== 'approved' ? `
+                        <button class="btn btn-success btn-sm" data-order-status-action="approved" data-order-id="${esc(ord.id)}">✅ Approve &amp; Unlock</button>
+                      ` : ''}
+                      ${st !== 'pending' ? `
+                        <button class="btn btn-outline btn-sm" data-order-status-action="pending" data-order-id="${esc(ord.id)}">⏳ Mark Pending</button>
+                      ` : ''}
+                      ${st !== 'rejected' ? `
+                        <button class="btn btn-danger btn-sm" data-order-status-action="rejected" data-order-id="${esc(ord.id)}">❌ Reject</button>
+                      ` : ''}
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          `}
         </div>
 
-        <!-- Active Student Unlocks Table -->
+        <!-- 4. Active Student Unlocks Table -->
         <div class="card">
           <h3 style="font-size:1rem;font-weight:800;margin-bottom:10px;">📋 Active Student Unlocks &amp; Exact Validity Countdowns (${(state.activations || []).length})</h3>
           ${(state.activations || []).length === 0 ? `
@@ -830,7 +1167,7 @@
                       <span class="badge ${expired ? 'badge-live' : 'badge-free'}">${expired ? 'EXPIRED' : 'ACTIVE • ' + remDays + ' Days Left'}</span>
                       <strong style="margin-left:6px;">${esc(act.targetTitle)}</strong>
                       <div style="font-size:0.76rem;color:var(--text-secondary);margin-top:2px;">
-                        Student: <strong>${esc(act.studentIdentifier)}</strong> • Activated: ${new Date(act.activatedAtMs).toLocaleString()} • Expires: ${new Date(act.expiresAtMs).toLocaleDateString()}
+                        Student: <strong>${esc(act.studentIdentifier)}</strong> • Amount: ₹${Number(act.amountPaid || 0)} • Activated: ${new Date(act.activatedAtMs).toLocaleString()} • Expires: ${new Date(act.expiresAtMs).toLocaleDateString()}
                       </div>
                     </div>
                     <button class="btn btn-danger btn-sm" data-revoke-activation="${esc(act.id)}">Revoke</button>
@@ -849,22 +1186,121 @@
           const reader = new FileReader();
           reader.onload = (ev) => {
             state.config.upiQrImage = String(ev.target.result || '');
-            document.getElementById('admQrUrlInput').value = state.config.upiQrImage;
+            const urlInp = document.getElementById('admQrUrlInput');
+            if (urlInp) urlInp.value = state.config.upiQrImage;
             api.saveState();
-            api.toast('📷 QR Code image loaded from device gallery! Click Save to publish.');
+            if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('app_config', 'global', state.config);
+            api.toast('📷 UPI QR Code uploaded, preview updated & synced to Firebase!');
+            renderAdminConsole(rootEl, state, api);
           };
           reader.readAsDataURL(qrFileInput.files[0]);
         };
       }
 
+      const qrUrlInput = document.getElementById('admQrUrlInput');
+      if (qrUrlInput) {
+        qrUrlInput.oninput = () => {
+          const val = qrUrlInput.value.trim();
+          const previewBox = document.getElementById('admQrLivePreviewBox');
+          if (previewBox) {
+            previewBox.innerHTML = val
+              ? `<img src="${esc(val)}" alt="Uploaded UPI QR Code Preview" style="max-width:185px;max-height:185px;border-radius:10px;border:2px solid #fff;box-shadow:var(--shadow-sm);margin:0 auto 10px;display:block;object-fit:contain;" />`
+              : `<div style="padding:18px 10px;font-size:0.8rem;color:var(--text-muted);">No UPI QR Code image uploaded yet. Upload an image below or paste an image URL.</div>`;
+          }
+        };
+      }
+
+      const delQrBtn = document.getElementById('admDeleteQrCodeBtn');
+      if (delQrBtn) {
+        delQrBtn.onclick = () => {
+          state.config.upiQrImage = '';
+          api.saveState();
+          if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('app_config', 'global', state.config);
+          api.toast('🗑️ UPI QR Code deleted from configuration.');
+          renderAdminConsole(rootEl, state, api);
+        };
+      }
+
+      const copyUpiBtn = document.getElementById('admCopyUpiIdBtn');
+      if (copyUpiBtn) {
+        copyUpiBtn.onclick = () => {
+          const val = (document.getElementById('admUpiIdInput').value || '').trim();
+          if (!val) {
+            api.toast('⚠️ No UPI ID entered yet.');
+            return;
+          }
+          try { navigator.clipboard.writeText(val); } catch (_) {}
+          api.toast('📋 UPI ID copied: ' + val);
+        };
+      }
+
       document.getElementById('admSavePaymentConfigBtn').onclick = () => {
         state.config.upiQrImage = document.getElementById('admQrUrlInput').value.trim();
-        state.config.upiId = document.getElementById('admUpiIdInput').value.trim() || '9238810070@upi';
-        state.config.whatsappNumber = document.getElementById('admWhatsappInput').value.trim() || '9238810070';
+        state.config.upiId = document.getElementById('admUpiIdInput').value.trim();
+        state.config.whatsappNumber = document.getElementById('admWhatsappInput').value.trim();
+        state.config.whatsappSupportNumber = state.config.whatsappNumber;
+        state.config.paymentInstructionsHi = document.getElementById('admPayInstrHiInput').value.trim();
+        state.config.paymentInstructionsEn = document.getElementById('admPayInstrEnInput').value.trim();
         api.saveState();
         if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('app_config', 'global', state.config);
-        api.toast('✅ UPI QR Code & WhatsApp Payment Settings saved!');
+        api.toast('✅ Payment Settings (QR Code, UPI ID, WhatsApp & Instructions) saved to Firebase!');
+        renderAdminConsole(rootEl, state, api);
       };
+
+      bodyEl.querySelectorAll('[data-pay-status-filter]').forEach((btn) => {
+        btn.onclick = () => {
+          state._adminPayRecordFilter = btn.getAttribute('data-pay-status-filter') || 'ALL';
+          renderAdminConsole(rootEl, state, api);
+        };
+      });
+
+      bodyEl.querySelectorAll('[data-order-status-action]').forEach((btn) => {
+        btn.onclick = () => {
+          const actionStatus = btn.getAttribute('data-order-status-action');
+          const ordId = btn.getAttribute('data-order-id');
+          const ord = (state.orders || []).find((o) => o.id === ordId);
+          if (!ord) return;
+          ord.status = actionStatus;
+          ord.updatedAtMs = Date.now();
+          if (window.CGpediaCloud) {
+            window.CGpediaCloud.saveCloudDoc('orders', ord.id, ord);
+          }
+
+          if (actionStatus === 'approved') {
+            const studentId = String(ord.studentEmail || ord.studentIdentifier || ord.uid || '').trim().toLowerCase();
+            const validityDays = Math.max(1, Number(ord.validityDays || 180));
+            const nowMs = Date.now();
+            const alreadyUnlocked = (state.activations || []).some(
+              (a) => String(a.studentIdentifier || '').toLowerCase() === studentId && a.targetId === ord.targetId && Number(a.expiresAtMs || 0) > nowMs
+            );
+            if (studentId && !alreadyUnlocked) {
+              const actObj = {
+                id: 'act_' + nowMs,
+                studentIdentifier: studentId,
+                targetId: ord.targetId || 'custom_package',
+                targetTitle: ord.targetTitle || 'Paid Package',
+                validityDays,
+                amountPaid: Number(ord.amountPaid || 0),
+                orderId: ord.id,
+                activatedAtMs: nowMs,
+                expiresAtMs: nowMs + validityDays * 86400000
+              };
+              state.activations = state.activations || [];
+              state.activations.unshift(actObj);
+              if (window.CGpediaCloud) {
+                window.CGpediaCloud.saveCloudDoc('purchases', actObj.id, actObj);
+              }
+            }
+            api.toast(`✅ Payment approved & package unlocked for ${studentId || ord.studentName}!`);
+          } else if (actionStatus === 'rejected') {
+            api.toast('❌ Payment record marked as Rejected.');
+          } else {
+            api.toast('⏳ Payment record marked as Pending.');
+          }
+          api.saveState();
+          renderAdminConsole(rootEl, state, api);
+        };
+      });
 
       document.getElementById('admActivateStudentAccessBtn').onclick = () => {
         const studentId = document.getElementById('admUnlockStudentIdentifier').value.trim().toLowerCase();
@@ -888,6 +1324,7 @@
           expiresAtMs: nowMs + validityDays * 86400000
         };
         state.activations.unshift(actObj);
+        state._prefillUnlockStudent = '';
         api.saveState();
         if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('purchases', actObj.id, actObj);
         api.toast(`🔓 Access activated for ${studentId}! Validity (${validityDays} days) countdown started.`);
@@ -2991,7 +3428,146 @@
       .replace(/[^\p{L}\p{N}\p{P}\p{Z}\n\r]/gu, ' ');
   }
 
-  function parseAnswerKeyMap(answerKeyText) {
+  function parseMultiSetAnswerKeyFromPdf(answerKeyText, preferredSetCode) {
+    const targetSet = String(preferredSetCode || 'A').trim().toUpperCase().replace(/^SET[\s\-_]*/i, '') || 'A';
+    const raw = extractReadableTextFromPdfStream(String(answerKeyText || ''));
+    const columnMaps = {
+      A: new Map(),
+      B: new Map(),
+      C: new Map(),
+      D: new Map()
+    };
+    const detectedColumnsSet = new Set();
+    const ambiguousQuestions = new Set();
+
+    if (!raw.trim()) {
+      return {
+        selectedSetColumn: targetSet,
+        detectedColumns: ['A', 'B', 'C', 'D'],
+        selectedMap: new Map(),
+        columnMaps,
+        ambiguousQuestions: []
+      };
+    }
+
+    const optionLetterToIdx = {
+      A: 0, B: 1, C: 2, D: 3,
+      '0': 0, '1': 1, '2': 2, '3': 3,
+      'अ': 0, 'ब': 1, 'स': 2, 'द': 3,
+      'क': 0, 'ख': 1, 'ग': 2, 'घ': 3
+    };
+
+    const normalizeOpt = (tok) => {
+      const clean = String(tok || '').trim().toUpperCase().replace(/[()[\].]/g, '');
+      return optionLetterToIdx[clean] !== undefined ? optionLetterToIdx[clean] : null;
+    };
+
+    const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    let activeColumnOrder = ['A', 'B', 'C', 'D'];
+    let currentSectionSet = null;
+
+    lines.forEach((line) => {
+      // 1. Detect multi-column table header row such as: "Q.No | Set A | Set B | Set C | Set D" or "A B C D"
+      const headerMatches = [];
+      const setHeaderRegex = /\b(?:SET[\s\-_]*|SERIES[\s\-_]*)?([ABCD])\b/gi;
+      if (/(?:set|series|q\.?\s*no|ques|अ|ब|स|द)/i.test(line) && !/^\d+\s*[-:=.)]/.test(line)) {
+        let hm;
+        while ((hm = setHeaderRegex.exec(line)) !== null) {
+          const colLetter = hm[1].toUpperCase();
+          if (!headerMatches.includes(colLetter)) headerMatches.push(colLetter);
+        }
+        if (headerMatches.length >= 2) {
+          activeColumnOrder = headerMatches;
+          headerMatches.forEach((c) => detectedColumnsSet.add(c));
+          currentSectionSet = null;
+          return;
+        }
+      }
+
+      // 2. Detect single-set section header e.g., "SET - B" or "Answer Key Set B"
+      const singleSetHeader = line.match(/^(?:ANSWER\s*KEY\s*(?:FOR)?\s*)?(?:SET|SERIES|PAPER\s*SET)[\s\-_:]*([ABCD])\b[:\-]?$/i);
+      if (singleSetHeader) {
+        currentSectionSet = singleSetHeader[1].toUpperCase();
+        detectedColumnsSet.add(currentSectionSet);
+        return;
+      }
+
+      // 3. Detect tabular multi-set row: e.g. "1   A   B   C   D" or "1 | C | B | A | D" or "1. (A) (C) (B) (D)"
+      const tabularRowMatch = line.match(/^(?:Q\.?\s*)?(\d{1,3})\s*[|.:\-]?\s*\(?([A-Da-dअ-दक-घ])\)?[\s|,;]+\(?([A-Da-dअ-दक-घ])\)?(?:[\s|,;]+\(?([A-Da-dअ-दक-घ])\)?)?(?:[\s|,;]+\(?([A-Da-dअ-दक-घ])\)?)?\s*$/);
+      if (tabularRowMatch) {
+        const qNum = Number(tabularRowMatch[1]);
+        const ansTokens = [tabularRowMatch[2], tabularRowMatch[3], tabularRowMatch[4], tabularRowMatch[5]].filter(Boolean);
+        if (qNum > 0 && ansTokens.length >= 2) {
+          ansTokens.forEach((tok, idx) => {
+            const setCol = activeColumnOrder[idx] || ['A', 'B', 'C', 'D'][idx];
+            const optIdx = normalizeOpt(tok);
+            if (setCol && optIdx !== null) {
+              detectedColumnsSet.add(setCol);
+              if (columnMaps[setCol].has(qNum) && columnMaps[setCol].get(qNum) !== optIdx) {
+                if (setCol === targetSet) ambiguousQuestions.add(qNum);
+              }
+              columnMaps[setCol].set(qNum, optIdx);
+            }
+          });
+          return;
+        }
+      }
+
+      // 4. Detect inline explicit Set-tagged pairs e.g. "Set B: 1-A, 2-C"
+      const inlineSetPrefix = line.match(/^(?:SET|SERIES)[\s\-_]*([ABCD])\s*[:\-]\s*(.+)$/i);
+      if (inlineSetPrefix) {
+        const sCol = inlineSetPrefix[1].toUpperCase();
+        detectedColumnsSet.add(sCol);
+        const pairRegex = /(?:^|[\s,;|\n\r])(?:Q\.?\s*|प्रश्न\s*|प्र\.?\s*)?(\d{1,3})\s*(?:[-:=.)>]+|\s+)\s*\(?([A-Da-d0-3अ-दक-घ])\)?(?=$|[\s,;|\n\r.)])/g;
+        let pm;
+        while ((pm = pairRegex.exec(inlineSetPrefix[2])) !== null) {
+          const qNum = Number(pm[1]);
+          const optIdx = normalizeOpt(pm[2]);
+          if (qNum > 0 && optIdx !== null) {
+            columnMaps[sCol].set(qNum, optIdx);
+          }
+        }
+        return;
+      }
+
+      // 5. Standard pairs ("1-A, 2-B, 3-C"): assign to currentSectionSet if active, otherwise to targetSet
+      const pairRegex = /(?:^|[\s,;|\n\r])(?:Q\.?\s*|प्रश्न\s*|प्र\.?\s*)?(\d{1,3})\s*(?:[-:=.)>]+|\s+)\s*\(?([A-Da-d0-3अ-दक-घ])\)?(?=$|[\s,;|\n\r.)])/g;
+      let match;
+      while ((match = pairRegex.exec(line)) !== null) {
+        const qNum = Number(match[1]);
+        const optIdx = normalizeOpt(match[2]);
+        if (qNum > 0 && optIdx !== null) {
+          const destSet = currentSectionSet || targetSet;
+          detectedColumnsSet.add(destSet);
+          if (columnMaps[destSet].has(qNum) && columnMaps[destSet].get(qNum) !== optIdx) {
+            if (destSet === targetSet) ambiguousQuestions.add(qNum);
+          }
+          columnMaps[destSet].set(qNum, optIdx);
+        }
+      }
+    });
+
+    const detectedColumns = detectedColumnsSet.size > 0
+      ? ['A', 'B', 'C', 'D'].filter((c) => detectedColumnsSet.has(c))
+      : ['A', 'B', 'C', 'D'];
+
+    const selectedMap = columnMaps[targetSet] && columnMaps[targetSet].size > 0
+      ? columnMaps[targetSet]
+      : new Map();
+
+    return {
+      selectedSetColumn: targetSet,
+      detectedColumns: detectedColumns.length > 0 ? detectedColumns : ['A', 'B', 'C', 'D'],
+      selectedMap,
+      columnMaps,
+      ambiguousQuestions: Array.from(ambiguousQuestions)
+    };
+  }
+
+  function parseAnswerKeyMap(answerKeyText, preferredSetCode) {
+    if (preferredSetCode) {
+      return parseMultiSetAnswerKeyFromPdf(answerKeyText, preferredSetCode).selectedMap;
+    }
     const keyMap = new Map();
     const raw = String(answerKeyText || '');
     if (!raw.trim()) return keyMap;
@@ -3033,10 +3609,18 @@
     return { hi: clean, en: clean };
   }
 
-  function parsePdfOcrAndMatchAnswerKey(rawContent, fileName, answerKeyOverride) {
+  function parsePdfOcrAndMatchAnswerKey(rawContent, fileName, answerKeyOverride, paperSetCodeOverride, answerKeySetColOverride) {
     const structureErrors = [];
     const rawItems = [];
     const readableText = extractReadableTextFromPdfStream(rawContent);
+
+    // Detect Question Paper Set Code from user selection or PDF header
+    let detectedPaperSet = String(paperSetCodeOverride || '').trim().toUpperCase().replace(/^SET[\s\-_]*/i, '');
+    if (!['A', 'B', 'C', 'D'].includes(detectedPaperSet)) {
+      const headerSetMatch = readableText.slice(0, 600).match(/\b(?:SET|SERIES|PAPER\s*SET|सेट)[\s\-_:]*([ABCD])\b/i);
+      detectedPaperSet = headerSetMatch ? headerSetMatch[1].toUpperCase() : 'A';
+    }
+    const selectedAnswerKeyColumn = String(answerKeySetColOverride || detectedPaperSet || 'A').trim().toUpperCase().replace(/^SET[\s\-_]*/i, '') || detectedPaperSet;
 
     if (!readableText.trim()) {
       structureErrors.push({
@@ -3045,7 +3629,15 @@
         errorType: 'Empty PDF / OCR Stream',
         reason: 'No readable text or OCR content could be extracted from the PDF file.'
       });
-      return { fileType: 'PDF', structureErrors, rawItems, answerKeyMapSize: 0 };
+      return {
+        fileType: 'PDF',
+        structureErrors,
+        rawItems,
+        answerKeyMapSize: 0,
+        paperSetCode: detectedPaperSet,
+        detectedAnswerKeyColumns: ['A', 'B', 'C', 'D'],
+        selectedAnswerKeyColumn
+      };
     }
 
     let bodyText = readableText;
@@ -3056,7 +3648,13 @@
       bodyText = readableText.slice(0, akHeaderMatch.index);
     }
 
-    const combinedAnswerKeyMap = parseAnswerKeyMap(embeddedAnswerKeySection + '\n' + String(answerKeyOverride || ''));
+    // Parse Answer Key strictly for the selected Set Column (ignoring other sets A/B/C/D)
+    const multiSetParsed = parseMultiSetAnswerKeyFromPdf(
+      embeddedAnswerKeySection + '\n' + String(answerKeyOverride || ''),
+      selectedAnswerKeyColumn
+    );
+    const combinedAnswerKeyMap = multiSetParsed.selectedMap;
+    const ambiguousSet = new Set(multiSetParsed.ambiguousQuestions || []);
 
     const lines = bodyText.split(/\r?\n/);
     const questionBlocks = [];
@@ -3097,7 +3695,15 @@
         errorType: 'No Numbered Questions Found in PDF',
         reason: 'Could not detect numbered questions (e.g., "1. Question...", "Q1. ...") in the uploaded PDF.'
       });
-      return { fileType: 'PDF', structureErrors, rawItems, answerKeyMapSize: combinedAnswerKeyMap.size };
+      return {
+        fileType: 'PDF',
+        structureErrors,
+        rawItems,
+        answerKeyMapSize: combinedAnswerKeyMap.size,
+        paperSetCode: detectedPaperSet,
+        detectedAnswerKeyColumns: multiSetParsed.detectedColumns,
+        selectedAnswerKeyColumn
+      };
     }
 
     questionBlocks.forEach((block, idx) => {
@@ -3167,15 +3773,16 @@
         optsEn.push(splitOpt.en);
       }
 
-      const matchedFromKey = combinedAnswerKeyMap.has(block.questionNumber)
+      const isAmbiguous = ambiguousSet.has(block.questionNumber);
+      const matchedFromKey = !isAmbiguous && combinedAnswerKeyMap.has(block.questionNumber)
         ? combinedAnswerKeyMap.get(block.questionNumber)
-        : inlineAnswer;
+        : (!isAmbiguous ? inlineAnswer : null);
 
       const finalExpHi = explanationHi || explanationEn || (matchedFromKey !== undefined && matchedFromKey !== null
-        ? `सही उत्तर विकल्प ${['A', 'B', 'C', 'D'][matchedFromKey]} है।`
+        ? `सही उत्तर विकल्प ${['A', 'B', 'C', 'D'][matchedFromKey]} (Set ${selectedAnswerKeyColumn}) है।`
         : '');
       const finalExpEn = explanationEn || explanationHi || (matchedFromKey !== undefined && matchedFromKey !== null
-        ? `Correct answer is Option ${['A', 'B', 'C', 'D'][matchedFromKey]}.`
+        ? `Correct answer is Option ${['A', 'B', 'C', 'D'][matchedFromKey]} (Set ${selectedAnswerKeyColumn}).`
         : '');
 
       rawItems.push({
@@ -3188,6 +3795,8 @@
         optionsEn: optsEn,
         rawCorrectIndex: matchedFromKey !== null && matchedFromKey !== undefined ? matchedFromKey : '',
         answerKeyMatched: matchedFromKey !== null && matchedFromKey !== undefined,
+        answerKeySetColumn: selectedAnswerKeyColumn,
+        paperSetCode: `Set ${detectedPaperSet}`,
         explanationHi: finalExpHi,
         explanationEn: finalExpEn,
         examCode,
@@ -3200,10 +3809,10 @@
         sourceDocument: fileName || 'uploaded_paper.pdf',
         sourcePageNumber: String(block.pageNumber || 1),
         languageAvailability: 'Both',
-        pyqTag: 'PDF Import',
-        tags: ['PDF Import', 'OCR Verified'],
-        status: 'verified',
-        adminVerified: true,
+        pyqTag: `PDF Import (Set ${detectedPaperSet})`,
+        tags: ['PDF Import', `Set ${detectedPaperSet}`, 'OCR Verified'],
+        status: matchedFromKey !== null && matchedFromKey !== undefined ? 'verified' : 'unverified',
+        adminVerified: matchedFromKey !== null && matchedFromKey !== undefined,
         importSource: 'pdf_ocr_answer_key'
       });
     });
@@ -3212,11 +3821,14 @@
       fileType: 'PDF',
       structureErrors,
       rawItems,
-      answerKeyMapSize: combinedAnswerKeyMap.size
+      answerKeyMapSize: combinedAnswerKeyMap.size,
+      paperSetCode: detectedPaperSet,
+      detectedAnswerKeyColumns: multiSetParsed.detectedColumns,
+      selectedAnswerKeyColumn
     };
   }
 
-  function parseRawImportFile(rawText, fileName, answerKeyText) {
+  function parseRawImportFile(rawText, fileName, answerKeyText, paperSetCode, answerKeySetCol) {
     const cleanText = String(rawText || '').trim();
     const lowName = String(fileName || '').toLowerCase();
     const isPdfFile = lowName.endsWith('.pdf') || cleanText.startsWith('%PDF-') || /^Method:\s*PDF_OCR/i.test(cleanText);
@@ -3235,7 +3847,7 @@
     }
 
     if (isPdfFile) {
-      return parsePdfOcrAndMatchAnswerKey(cleanText, fileName, answerKeyText);
+      return parsePdfOcrAndMatchAnswerKey(cleanText, fileName, answerKeyText, paperSetCode, answerKeySetCol);
     }
 
     if (isJsonFile) {
@@ -3482,23 +4094,47 @@
       ? batchDefaults.examIds
       : [defaultExamCode];
 
+    const effectivePaperSetCode = String(
+      (batchDefaults && batchDefaults.paperSetCode) ||
+      (qbState.previewSession && qbState.previewSession.paperSetCode) ||
+      'A'
+    ).trim().toUpperCase().replace(/^SET[\s\-_]*/i, '') || 'A';
+
+    const effectiveAnswerKeySetCol = String(
+      (batchDefaults && batchDefaults.answerKeySetColumn) ||
+      (qbState.previewSession && qbState.previewSession.selectedAnswerKeyColumn) ||
+      effectivePaperSetCode
+    ).trim().toUpperCase().replace(/^SET[\s\-_]*/i, '') || effectivePaperSetCode;
+
+    let detectedAnswerKeyCols = (qbState.previewSession && qbState.previewSession.detectedAnswerKeyColumns) || ['A', 'B', 'C', 'D'];
+
     if (Array.isArray(existingPreviewRecords)) {
       sourceRecords = existingPreviewRecords;
       fileType = (qbState.previewSession && qbState.previewSession.fileType) || 'CSV';
       structureErrors = (qbState.previewSession && qbState.previewSession.fileStructureErrors) || [];
-      if (fileType === 'PDF' && answerKeyText !== undefined) {
-        const keyMap = parseAnswerKeyMap(effectiveAnswerKeyText);
+      if (fileType === 'PDF' && (answerKeyText !== undefined || (batchDefaults && batchDefaults.answerKeySetColumn))) {
+        const multiParsed = parseMultiSetAnswerKeyFromPdf(effectiveAnswerKeyText, effectiveAnswerKeySetCol);
+        detectedAnswerKeyCols = multiParsed.detectedColumns;
+        const keyMap = multiParsed.selectedMap;
         sourceRecords.forEach((rec) => {
+          rec.paperSetCode = `Set ${effectivePaperSetCode}`;
+          rec.answerKeySetColumn = effectiveAnswerKeySetCol;
           if (keyMap.has(Number(rec.questionNumber))) {
             rec.rawCorrectIndex = keyMap.get(Number(rec.questionNumber));
             rec.answerKeyMatched = true;
+          } else if (multiParsed.detectedColumns.length > 0 && effectiveAnswerKeyText.trim()) {
+            rec.rawCorrectIndex = '';
+            rec.answerKeyMatched = false;
           }
         });
       }
     } else {
-      const parsed = parseRawImportFile(rawText, fileName, effectiveAnswerKeyText);
+      const parsed = parseRawImportFile(rawText, fileName, effectiveAnswerKeyText, effectivePaperSetCode, effectiveAnswerKeySetCol);
       fileType = parsed.fileType;
       structureErrors = parsed.structureErrors;
+      if (parsed.detectedAnswerKeyColumns) {
+        detectedAnswerKeyCols = parsed.detectedAnswerKeyColumns;
+      }
       sourceRecords = parsed.rawItems.map((item) => {
         // Section 6: Automatic Categorisation During PDF Import
         if (fileType === 'PDF' && !(batchDefaults && batchDefaults.overrideAll)) {
@@ -3515,8 +4151,8 @@
             categorisationConfidence: predicted.categorisationConfidence,
             needsCategorisation: predicted.needsCategorisation,
             verificationStatus: predicted.verificationStatus,
-            status: predicted.needsCategorisation ? 'needs_categorisation' : 'verified',
-            adminVerified: !predicted.needsCategorisation,
+            status: predicted.needsCategorisation ? 'needs_categorisation' : (item.answerKeyMatched ? 'verified' : 'unverified'),
+            adminVerified: !predicted.needsCategorisation && Boolean(item.answerKeyMatched),
             duplicateResolution: 'merge_exams'
           });
         }
@@ -3929,6 +4565,9 @@
       targetTestId: targetTestId || 'central_bank',
       rawText,
       answerKeyText: effectiveAnswerKeyText,
+      paperSetCode: effectivePaperSetCode,
+      detectedAnswerKeyColumns: detectedAnswerKeyCols,
+      selectedAnswerKeyColumn: effectiveAnswerKeySetCol,
       fileStructureErrors: structureErrors,
       records: validatedRecords,
       unknownTaxonomy: uniqueUnknownTaxonomy,
@@ -3940,6 +4579,8 @@
         subtopic: '',
         difficulty: 'Moderate',
         tagsText: '',
+        paperSetCode: effectivePaperSetCode,
+        answerKeySetColumn: effectiveAnswerKeySetCol,
         overrideAll: false
       },
       previewFilter: (qbState.previewSession && qbState.previewSession.previewFilter) || 'all',
@@ -5143,14 +5784,31 @@
             </label>
           </div>
 
-          <div class="form-group">
-            <label class="form-label">Select CSV / JSON / PDF File from Device</label>
-            <input type="file" accept=".csv,.json,.pdf,text/csv,application/json,application/pdf" class="form-input" id="admBulkFileInput" />
+          <div class="grid-2" style="gap:8px;margin-bottom:8px;">
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">1. Select CSV / JSON / Question Paper PDF</label>
+              <input type="file" accept=".csv,.json,.pdf,text/csv,application/json,application/pdf" class="form-input" id="admBulkFileInput" />
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">Question Paper Set Code (Single-Set PDF Import)</label>
+              <select class="form-select" id="admPdfPaperSetSelect">
+                <option value="A" ${((ps && ps.paperSetCode) || 'A') === 'A' ? 'selected' : ''}>Set A (केवल सेट A)</option>
+                <option value="B" ${((ps && ps.paperSetCode) || '') === 'B' ? 'selected' : ''}>Set B (केवल सेट B)</option>
+                <option value="C" ${((ps && ps.paperSetCode) || '') === 'C' ? 'selected' : ''}>Set C (केवल सेट C)</option>
+                <option value="D" ${((ps && ps.paperSetCode) || '') === 'D' ? 'selected' : ''}>Set D (केवल सेट D)</option>
+              </select>
+            </div>
           </div>
 
-          <div class="form-group">
-            <label class="form-label" style="font-size:0.75rem;">🔑 Smart PDF Answer Key Matching (Optional — e.g. <code>1-A, 2-B, 3-C, 4-D</code> or auto-detected from PDF)</label>
-            <input class="form-input" id="admPdfAnswerKeyInput" value="${esc((ps && ps.answerKeyText) || '')}" placeholder="e.g., 1-A, 2-B, 3-C, 4-D, 5-A (automatically matched to PDF OCR questions)" style="padding:7px 9px;font-size:0.8rem;" />
+          <div class="grid-2" style="gap:8px;margin-bottom:10px;">
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label" style="font-size:0.75rem;">2. Upload Answer Key PDF (Multi-Set A/B/C/D Table Supported)</label>
+              <input type="file" accept=".pdf,.txt,.csv,application/pdf,text/plain" class="form-input" id="admPdfAnswerKeyFileInput" />
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label" style="font-size:0.75rem;">🔑 Or Paste Answer Key Text / Table (Auto-Filters Selected Set Column)</label>
+              <input class="form-input" id="admPdfAnswerKeyInput" value="${esc((ps && ps.answerKeyText) || '')}" placeholder="e.g., 1-A, 2-B or Multi-Set Table (Set A/B/C/D)" style="padding:7px 9px;font-size:0.8rem;" />
+            </div>
           </div>
 
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
@@ -5299,6 +5957,28 @@
               <div class="qb-kpi-lbl">Duplicates (Canonical Merge Ready)</div>
             </div>
           </div>
+
+          <!-- Single-Set PDF Import & Answer Key Set Column Admin Confirmation Banner -->
+          ${ps.fileType === 'PDF' ? `
+            <div style="padding:12px 14px;border-radius:10px;background:var(--secondary-soft);border:1.5px solid var(--secondary);margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+              <div>
+                <div style="font-weight:800;font-size:0.88rem;color:var(--primary);">
+                  🎯 Single-Set Smart PDF Import — Answer Key Column Confirmation
+                </div>
+                <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:0.8rem;margin-top:4px;color:var(--text);">
+                  <span>• <strong>Question Paper Set:</strong> <span class="badge badge-exam">Set ${esc(ps.paperSetCode || 'A')}</span></span>
+                  <span>• <strong>Detected Answer Key Columns:</strong> <code>${esc((ps.detectedAnswerKeyColumns || ['A', 'B', 'C', 'D']).join(', '))}</code></span>
+                  <span>• <strong>Selected Answer Key Column:</strong> <span class="badge badge-free">Set ${esc(ps.selectedAnswerKeyColumn || ps.paperSetCode || 'A')}</span> (Other sets ignored)</span>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                <label style="font-size:0.76rem;font-weight:800;">Override Answer Key Column:</label>
+                <select class="form-select" id="qbOverrideAnswerKeySetColSelect" style="width:auto;padding:5px 10px;font-size:0.8rem;">
+                  ${['A', 'B', 'C', 'D'].map((col) => `<option value="${col}" ${(ps.selectedAnswerKeyColumn || ps.paperSetCode || 'A') === col ? 'selected' : ''}>Column Set ${col}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+          ` : ''}
 
           <!-- New / Unrecognized Category, Subject or Topic Confirmation Banner -->
           ${ps.unknownTaxonomy && ps.unknownTaxonomy.length > 0 ? `
@@ -6317,6 +6997,9 @@
       const answerKeyText = document.getElementById('admPdfAnswerKeyInput')
         ? document.getElementById('admPdfAnswerKeyInput').value.trim()
         : '';
+      const selectedSetCode = document.getElementById('admPdfPaperSetSelect')
+        ? document.getElementById('admPdfPaperSetSelect').value
+        : 'A';
       const batchDefaults = {
         examCode: document.getElementById('admBulkDefaultExam').value || 'CGPSC',
         subjectTag: document.getElementById('admBulkDefaultSubject').value.trim() || 'Chhattisgarh General Knowledge',
@@ -6324,6 +7007,8 @@
         subtopic: document.getElementById('admBulkDefaultSubtopic').value.trim(),
         difficulty: document.getElementById('admBulkDefaultDifficulty').value || 'Moderate',
         tagsText: document.getElementById('admBulkDefaultTags').value.trim(),
+        paperSetCode: selectedSetCode,
+        answerKeySetColumn: selectedSetCode,
         overrideAll: Boolean(document.getElementById('admBulkOverrideAllChk').checked)
       };
 
@@ -6340,7 +7025,7 @@
           answerKeyText
         );
         qbState.lastImportReport = null;
-        api.toast(`📋 Loaded ${qbState.previewSession.records.length} question(s) into Import Preview (${qbState.previewSession.fileType}). Review & click "Validate and Continue" to import.`);
+        api.toast(`📋 Loaded ${qbState.previewSession.records.length} question(s) into Import Preview (${qbState.previewSession.fileType} • Set ${qbState.previewSession.paperSetCode}).`);
         renderAdminConsole(rootEl, state, api);
       };
       reader.readAsText(file);
@@ -6355,12 +7040,74 @@
       };
     }
 
+    const akFileInput = document.getElementById('admPdfAnswerKeyFileInput');
+    if (akFileInput) {
+      akFileInput.onchange = () => {
+        if (!akFileInput.files || !akFileInput.files[0]) return;
+        const akReader = new FileReader();
+        akReader.onload = (ev) => {
+          const rawAk = extractReadableTextFromPdfStream(String(ev.target.result || ''));
+          const akInp = document.getElementById('admPdfAnswerKeyInput');
+          if (akInp) akInp.value = rawAk;
+          const selectedSetCode = document.getElementById('admPdfPaperSetSelect')
+            ? document.getElementById('admPdfPaperSetSelect').value
+            : ((qbState.previewSession && qbState.previewSession.paperSetCode) || 'A');
+          if (qbState.previewSession) {
+            qbState.previewSession.answerKeyText = rawAk;
+            qbState.previewSession = buildAndValidatePreviewSession(
+              qbState.previewSession.rawText,
+              qbState.previewSession.fileName,
+              qbState.previewSession.targetTestId,
+              Object.assign({}, qbState.previewSession.batchDefaults, {
+                paperSetCode: selectedSetCode,
+                answerKeySetColumn: selectedSetCode
+              }),
+              qbState.previewSession.records,
+              state,
+              rawAk
+            );
+            renderAdminConsole(rootEl, state, api);
+          }
+          api.toast(`🔑 Answer Key PDF loaded! Automatically selected Set ${selectedSetCode} column.`);
+        };
+        akReader.readAsText(akFileInput.files[0]);
+      };
+    }
+
+    const paperSetSelect = document.getElementById('admPdfPaperSetSelect');
+    if (paperSetSelect) {
+      paperSetSelect.onchange = () => {
+        const newSet = paperSetSelect.value || 'A';
+        if (qbState.previewSession && qbState.previewSession.fileType === 'PDF') {
+          qbState.previewSession.paperSetCode = newSet;
+          qbState.previewSession.selectedAnswerKeyColumn = newSet;
+          qbState.previewSession = buildAndValidatePreviewSession(
+            qbState.previewSession.rawText,
+            qbState.previewSession.fileName,
+            qbState.previewSession.targetTestId,
+            Object.assign({}, qbState.previewSession.batchDefaults, {
+              paperSetCode: newSet,
+              answerKeySetColumn: newSet
+            }),
+            qbState.previewSession.records,
+            state,
+            qbState.previewSession.answerKeyText
+          );
+          api.toast(`🎯 Switched Question Paper & Answer Key column to Set ${newSet}.`);
+          renderAdminConsole(rootEl, state, api);
+        }
+      };
+    }
+
     const processBulkBtn = document.getElementById('admProcessBulkUploadBtn');
     if (processBulkBtn) {
       processBulkBtn.onclick = () => {
         const answerKeyText = document.getElementById('admPdfAnswerKeyInput')
           ? document.getElementById('admPdfAnswerKeyInput').value.trim()
           : '';
+        const selectedSetCode = document.getElementById('admPdfPaperSetSelect')
+          ? document.getElementById('admPdfPaperSetSelect').value
+          : 'A';
         if (bulkFileInput && bulkFileInput.files && bulkFileInput.files[0]) {
           startFilePreviewFromInput(bulkFileInput.files[0]);
         } else if (qbState.previewSession) {
@@ -6375,6 +7122,8 @@
               subtopic: document.getElementById('admBulkDefaultSubtopic').value.trim(),
               difficulty: document.getElementById('admBulkDefaultDifficulty').value || 'Moderate',
               tagsText: document.getElementById('admBulkDefaultTags').value.trim(),
+              paperSetCode: selectedSetCode,
+              answerKeySetColumn: (qbState.previewSession && qbState.previewSession.selectedAnswerKeyColumn) || selectedSetCode,
               overrideAll: Boolean(document.getElementById('admBulkOverrideAllChk').checked)
             },
             qbState.previewSession.records,
@@ -6390,6 +7139,28 @@
 
     // Wire Preview Stage Controls if Preview Session is Active
     if (ps) {
+      const overrideColSel = document.getElementById('qbOverrideAnswerKeySetColSelect');
+      if (overrideColSel) {
+        overrideColSel.onchange = () => {
+          const newCol = overrideColSel.value || ps.paperSetCode || 'A';
+          ps.selectedAnswerKeyColumn = newCol;
+          qbState.previewSession = buildAndValidatePreviewSession(
+            ps.rawText,
+            ps.fileName,
+            ps.targetTestId,
+            Object.assign({}, ps.batchDefaults, {
+              paperSetCode: ps.paperSetCode || 'A',
+              answerKeySetColumn: newCol
+            }),
+            ps.records,
+            state,
+            ps.answerKeyText
+          );
+          api.toast(`🔑 Selected Answer Key Column updated to Set ${newCol} (Other columns ignored).`);
+          renderAdminConsole(rootEl, state, api);
+        };
+      }
+
       const cancelImport = () => {
         qbState.previewSession = null;
         api.toast('🚫 Import cancelled. No questions were saved to the database.');
