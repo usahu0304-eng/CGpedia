@@ -15,10 +15,31 @@
   }
 
   let savedAdminNavScrollLeft = 0;
+  const VALID_ADMIN_SECTIONS = ['overview', 'tests', 'qbank', 'students', 'payments', 'stories', 'broadcast', 'branding'];
+
+  function switchAdminSection(rootEl, state, api, nextSection) {
+    if (!nextSection) return;
+    const navRowEl = rootEl.querySelector('#adminSubTabNavRow');
+    const lockedScroll = navRowEl ? navRowEl.scrollLeft : savedAdminNavScrollLeft;
+    savedAdminNavScrollLeft = lockedScroll;
+    state.adminSection = VALID_ADMIN_SECTIONS.includes(nextSection) ? nextSection : 'overview';
+    api.saveState();
+    renderAdminConsole(rootEl, state, api);
+    const updatedNavRow = rootEl.querySelector('#adminSubTabNavRow');
+    if (updatedNavRow) {
+      updatedNavRow.scrollLeft = lockedScroll;
+      requestAnimationFrame(() => {
+        updatedNavRow.scrollLeft = lockedScroll;
+      });
+    }
+  }
 
   function renderAdminConsole(rootEl, state, api) {
     if (state.adminSection === 'folders') {
       state.adminSection = 'tests';
+    }
+    if (!VALID_ADMIN_SECTIONS.includes(state.adminSection)) {
+      state.adminSection = 'overview';
     }
     const activeSection = state.adminSection || 'overview';
 
@@ -121,11 +142,11 @@
               </div>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
-              <button class="btn btn-header-chip" data-admin-util-jump="stories" title="Publish 24-Hour Current Affairs">⚡ Current Affairs</button>
-              <button class="btn btn-header-chip" data-admin-util-jump="broadcast" title="Announcements & Student Queries">📢 Announcements</button>
-              <button class="btn btn-header-chip" data-admin-util-jump="branding" title="Branding, Anthem Audio & Roles">⚙️ Branding &amp; Anthem</button>
-              <button class="btn btn-header-chip" id="adminExportBackupBtn">⬇️ Export JSON Backup</button>
-              <button class="btn btn-header-chip" id="adminLockBtn">🔒 Exit Admin</button>
+              <button type="button" class="btn btn-header-chip" data-admin-util-jump="stories" title="Publish 24-Hour Current Affairs">⚡ Current Affairs</button>
+              <button type="button" class="btn btn-header-chip" data-admin-util-jump="broadcast" title="Announcements & Student Queries">📢 Announcements</button>
+              <button type="button" class="btn btn-header-chip" data-admin-util-jump="branding" title="Branding, Anthem Audio & Roles">⚙️ Branding &amp; Anthem</button>
+              <button type="button" class="btn btn-header-chip" id="adminExportBackupBtn">⬇️ Export JSON Backup</button>
+              <button type="button" class="btn btn-header-chip" id="adminLockBtn">🔒 Exit Admin</button>
             </div>
           </div>
         </div>
@@ -161,7 +182,7 @@
     } else {
       const ownerBadge = rootEl.querySelector('#adminOwnerEmailBadge');
       if (ownerBadge) {
-        ownerBadge.textContent = `Owner: ${state.student.email || ''}`;
+        ownerBadge.textContent = `Owner: ${(state.student && state.student.email) || ''}`;
       }
       const activeTitleEl = rootEl.querySelector('#adminActiveModuleTitleText');
       if (activeTitleEl) {
@@ -178,36 +199,24 @@
 
     const navRowEl = rootEl.querySelector('#adminSubTabNavRow');
     if (navRowEl) {
-      navRowEl.querySelectorAll('[data-admin-subtab]').forEach((btn) => {
-        const captureNavScroll = () => {
-          savedAdminNavScrollLeft = navRowEl.scrollLeft;
-        };
-        btn.onpointerdown = captureNavScroll;
-        btn.ontouchstart = captureNavScroll;
-        btn.onclick = (ev) => {
-          if (ev && typeof ev.preventDefault === 'function') ev.preventDefault();
-          const lockedScroll = savedAdminNavScrollLeft || navRowEl.scrollLeft;
-          savedAdminNavScrollLeft = lockedScroll;
-          state.adminSection = btn.getAttribute('data-admin-subtab');
-          api.saveState();
-          renderAdminConsole(rootEl, state, api);
-          const updatedNavRow = rootEl.querySelector('#adminSubTabNavRow');
-          if (updatedNavRow) {
-            updatedNavRow.scrollLeft = lockedScroll;
-            requestAnimationFrame(() => {
-              updatedNavRow.scrollLeft = lockedScroll;
-            });
-          }
-        };
-      });
+      navRowEl.onclick = (ev) => {
+        const btn = ev.target && typeof ev.target.closest === 'function'
+          ? ev.target.closest('[data-admin-subtab]')
+          : null;
+        if (!btn) return;
+        const targetSubTab = btn.getAttribute('data-admin-subtab');
+        if (targetSubTab) {
+          switchAdminSection(rootEl, state, api, targetSubTab);
+        }
+      };
     }
 
     rootEl.querySelectorAll('[data-admin-util-jump]').forEach((btn) => {
       btn.onclick = () => {
-        if (navRowEl) savedAdminNavScrollLeft = navRowEl.scrollLeft;
-        state.adminSection = btn.getAttribute('data-admin-util-jump');
-        api.saveState();
-        renderAdminConsole(rootEl, state, api);
+        const targetUtil = btn.getAttribute('data-admin-util-jump');
+        if (targetUtil) {
+          switchAdminSection(rootEl, state, api, targetUtil);
+        }
       };
     });
 
@@ -215,9 +224,13 @@
     if (lockBtn) {
       lockBtn.onclick = () => {
         state.adminUnlocked = false;
-        state.activeTab = 'dashboard';
-        api.saveState();
-        api.renderApp();
+        if (api && typeof api.navigateToTab === 'function') {
+          api.navigateToTab('dashboard');
+        } else {
+          state.activeTab = 'dashboard';
+          api.saveState();
+          api.renderApp();
+        }
       };
     }
 
@@ -236,6 +249,7 @@
     const bodyEl = document.getElementById('adminSubSectionBody');
     if (!bodyEl) return;
 
+    try {
     if (activeSection === 'overview') {
       const pendingOrdersCount = (state.orders || []).filter((o) => String(o.status || 'pending').toLowerCase() === 'pending').length;
       bodyEl.innerHTML = `
@@ -302,10 +316,10 @@
       `;
       bodyEl.querySelectorAll('[data-quick-jump]').forEach((btn) => {
         btn.onclick = () => {
-          if (navRowEl) savedAdminNavScrollLeft = navRowEl.scrollLeft;
-          state.adminSection = btn.getAttribute('data-quick-jump');
-          api.saveState();
-          renderAdminConsole(rootEl, state, api);
+          const targetJump = btn.getAttribute('data-quick-jump');
+          if (targetJump) {
+            switchAdminSection(rootEl, state, api, targetJump);
+          }
         };
       });
       return;
@@ -2197,6 +2211,22 @@
           api.toast('🗑️ Anthem audio deleted from Firebase Storage.');
           renderAdminConsole(rootEl, state, api);
         };
+      }
+    }
+    } catch (adminRenderErr) {
+      console.error('Admin module render error:', adminRenderErr);
+      bodyEl.innerHTML = `
+        <div class="card" style="border-left:4px solid var(--danger);">
+          <h3 style="font-size:1rem;font-weight:800;margin-bottom:6px;">⚠️ Module View Recovery</h3>
+          <p style="font-size:0.84rem;color:var(--text-secondary);margin-bottom:10px;">
+            An unexpected display issue occurred while loading this module (${esc(adminRenderErr && adminRenderErr.message ? adminRenderErr.message : 'Unknown error')}).
+          </p>
+          <button type="button" class="btn btn-primary btn-sm" id="admRecoverToOverviewBtn">🔄 Return to Dashboard KPIs</button>
+        </div>
+      `;
+      const recBtn = document.getElementById('admRecoverToOverviewBtn');
+      if (recBtn) {
+        recBtn.onclick = () => switchAdminSection(rootEl, state, api, 'overview');
       }
     }
   }

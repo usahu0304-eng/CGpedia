@@ -101,7 +101,7 @@
           <div>
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
               <span class="badge" id="heroStudentGreetingBadge" style="background:rgba(255,255,255,0.18);color:#fff;">नमस्ते, Aspirant 👋</span>
-              <span class="badge" id="heroOwnerAdminBadge" style="background:#EA580C;color:#fff;display:none;">🛡️ Owner Admin Verified</span>
+              <span class="badge" id="heroOwnerAdminBadge" role="button" tabindex="0" title="Open Master Admin Console" style="background:#EA580C;color:#fff;display:none;cursor:pointer;">🛡️ Owner Admin Verified</span>
             </div>
             <h1 style="font-size:1.35rem;font-weight:800;margin-top:4px;">CGpedia Competitive Exam Preparation</h1>
             <p style="font-size:0.84rem;color:#DBEAFE;">UPSC • CGPSC &amp; State PSC • SSC • Banking • Railway • CTET • UGC NET • Police &amp; Defence</p>
@@ -132,15 +132,15 @@
 
     <!-- 3. Main Horizontal Navigation Bar Directly Below the Hero Card -->
     <nav class="nav-tabs nav-tabs-below-hero" id="mainNavTabs" aria-label="Main Navigation">
-      <button class="nav-tab active" data-tab="dashboard">🏠 Home</button>
-      <button class="nav-tab" data-tab="test-series">📚 Test Series</button>
-      <button class="nav-tab" data-tab="practice">🎯 Practice &amp; PYQs</button>
-      <button class="nav-tab" data-tab="analytics">📊 Analytics</button>
-      <button class="nav-tab" data-tab="leaderboard">🏆 Leaderboard</button>
-      <button class="nav-tab" data-tab="current-affairs">⚡ Current Affairs</button>
-      <button class="nav-tab" data-tab="payments">💳 Payment</button>
-      <button class="nav-tab" data-tab="notifications">📢 Updates</button>
-      <button class="nav-tab admin-nav-tab" data-tab="admin" id="adminNavTabBtn" style="display:none;">🛡️ Admin Panel</button>
+      <button type="button" class="nav-tab active" data-tab="dashboard">🏠 Home</button>
+      <button type="button" class="nav-tab" data-tab="test-series">📚 Test Series</button>
+      <button type="button" class="nav-tab" data-tab="practice">🎯 Practice &amp; PYQs</button>
+      <button type="button" class="nav-tab" data-tab="analytics">📊 Analytics</button>
+      <button type="button" class="nav-tab" data-tab="leaderboard">🏆 Leaderboard</button>
+      <button type="button" class="nav-tab" data-tab="current-affairs">⚡ Current Affairs</button>
+      <button type="button" class="nav-tab" data-tab="payments">💳 Payment</button>
+      <button type="button" class="nav-tab" data-tab="notifications">📢 Updates</button>
+      <button type="button" class="nav-tab admin-nav-tab" data-tab="admin" id="adminNavTabBtn" style="display:none;">🛡️ Admin Panel</button>
     </nav>
   </section>
 
@@ -149,29 +149,33 @@
 
   <!-- Mobile Bottom Navigation Bar (Sticky on Handheld Screens) -->
   <nav class="mobile-bottom-nav" id="mobileBottomNav" style="display:none;" aria-label="Bottom Navigation">
-    <button class="bottom-nav-item active" data-tab="dashboard">
+    <button type="button" class="bottom-nav-item active" data-tab="dashboard">
       <span class="bottom-nav-icon">🏠</span>
       <span class="bottom-nav-label">Home</span>
     </button>
-    <button class="bottom-nav-item" data-tab="test-series">
+    <button type="button" class="bottom-nav-item" data-tab="test-series">
       <span class="bottom-nav-icon">📚</span>
       <span class="bottom-nav-label">Test Series</span>
     </button>
-    <button class="bottom-nav-item" data-tab="practice">
+    <button type="button" class="bottom-nav-item" data-tab="practice">
       <span class="bottom-nav-icon">🎯</span>
       <span class="bottom-nav-label">Practice</span>
     </button>
-    <button class="bottom-nav-item" data-tab="analytics">
+    <button type="button" class="bottom-nav-item" data-tab="analytics">
       <span class="bottom-nav-icon">📊</span>
       <span class="bottom-nav-label">Analytics</span>
     </button>
-    <button class="bottom-nav-item" data-tab="payments">
+    <button type="button" class="bottom-nav-item" data-tab="payments">
       <span class="bottom-nav-icon">💳</span>
       <span class="bottom-nav-label">Payment</span>
     </button>
-    <button class="bottom-nav-item" data-tab="leaderboard">
+    <button type="button" class="bottom-nav-item" data-tab="leaderboard">
       <span class="bottom-nav-icon">🏆</span>
       <span class="bottom-nav-label">Ranks</span>
+    </button>
+    <button type="button" class="bottom-nav-item" data-tab="admin" id="mobileAdminNavBtn" style="display:none;">
+      <span class="bottom-nav-icon">🛡️</span>
+      <span class="bottom-nav-label">Admin</span>
     </button>
   </nav>
 

@@ -373,6 +373,11 @@
     const ownerAdminBadge = document.getElementById('heroOwnerAdminBadge');
     if (ownerAdminBadge) {
       ownerAdminBadge.style.display = isCurrentUserAdmin() ? 'inline-flex' : 'none';
+      ownerAdminBadge.onclick = () => {
+        if (isCurrentUserAdmin()) {
+          navigateToTab('admin');
+        }
+      };
     }
     const heroSearchInput = document.getElementById('globalHomeSearchInput');
     if (heroSearchInput && document.activeElement !== heroSearchInput) {
@@ -382,6 +387,10 @@
     const adminTabBtn = document.getElementById('adminNavTabBtn');
     if (adminTabBtn) {
       adminTabBtn.style.display = isCurrentUserAdmin() ? 'inline-flex' : 'none';
+    }
+    const mobileAdminBtn = document.getElementById('mobileAdminNavBtn');
+    if (mobileAdminBtn) {
+      mobileAdminBtn.style.display = isCurrentUserAdmin() ? 'flex' : 'none';
     }
 
     const anthemBtn = document.getElementById('anthemToggleBtn');
@@ -452,6 +461,53 @@
     'admin'
   ];
 
+  let initialHashSynced = false;
+  let suppressNextHashChange = false;
+
+  function syncUrlHashWithActiveTab(tabId, usePushState) {
+    const cleanTab = PROTECTED_TABS.includes(tabId) ? tabId : 'dashboard';
+    const desiredHash = '#' + cleanTab;
+    if (window.location.hash === desiredHash) return;
+    suppressNextHashChange = true;
+    try {
+      if (usePushState && typeof window.history.pushState === 'function') {
+        window.history.pushState({ tab: cleanTab, authenticated: true }, '', desiredHash);
+      } else if (typeof window.history.replaceState === 'function') {
+        window.history.replaceState({ tab: cleanTab, authenticated: true }, '', desiredHash);
+      } else {
+        window.location.hash = desiredHash;
+      }
+    } catch (_) {
+      try {
+        window.location.hash = desiredHash;
+      } catch (_e) {}
+    }
+    setTimeout(() => {
+      suppressNextHashChange = false;
+    }, 50);
+  }
+
+  function navigateToTab(targetTab, adminSectionOverride) {
+    if (!isStudentAuthenticated()) {
+      renderApp();
+      return false;
+    }
+    const cleanTab = String(targetTab || 'dashboard').trim().toLowerCase();
+    if (cleanTab === 'admin' && !isCurrentUserAdmin()) {
+      toast('🔒 Access Denied: Admin Panel is restricted to authorized administrators.');
+      return false;
+    }
+    state.activeTab = PROTECTED_TABS.includes(cleanTab) ? cleanTab : 'dashboard';
+    if (cleanTab === 'admin' && adminSectionOverride) {
+      state.adminSection = adminSectionOverride;
+    }
+    initialHashSynced = true;
+    syncUrlHashWithActiveTab(state.activeTab, true);
+    saveState();
+    renderApp();
+    return true;
+  }
+
   function enforceRouteUrlProtection() {
     const rawHash = String(window.location.hash || '').replace(/^#\/?/, '').trim().toLowerCase();
     if (!isStudentAuthenticated()) {
@@ -468,29 +524,29 @@
       return false;
     }
 
-    // User is authenticated: prevent non-admin students from accessing #admin
-    if (rawHash === 'admin' && !isCurrentUserAdmin()) {
-      state.activeTab = 'dashboard';
-      try {
-        window.history.replaceState({ tab: 'dashboard', authenticated: true }, '', '#dashboard');
-      } catch (_) {}
-      toast('🔒 Access Denied: Admin Panel is restricted to authorized administrators.');
-      return true;
+    // Only adopt the URL hash on initial boot before any in-app navigation occurs
+    if (!initialHashSynced) {
+      initialHashSynced = true;
+      if (rawHash === 'admin' && !isCurrentUserAdmin()) {
+        state.activeTab = 'dashboard';
+        syncUrlHashWithActiveTab('dashboard', false);
+        toast('🔒 Access Denied: Admin Panel is restricted to authorized administrators.');
+        return true;
+      }
+      if (PROTECTED_TABS.includes(rawHash)) {
+        state.activeTab = rawHash;
+      }
     }
 
-    if (PROTECTED_TABS.includes(rawHash)) {
-      state.activeTab = rawHash;
+    // Ensure state.activeTab is always valid and role-checked, and sync URL hash TO state.activeTab
+    const targetTab = PROTECTED_TABS.includes(state.activeTab) ? state.activeTab : 'dashboard';
+    if (targetTab === 'admin' && !isCurrentUserAdmin()) {
+      state.activeTab = 'dashboard';
+      toast('🔒 Access Denied: Admin Panel is restricted to authorized administrators.');
     } else {
-      const targetTab = PROTECTED_TABS.includes(state.activeTab) ? state.activeTab : 'dashboard';
-      if (targetTab === 'admin' && !isCurrentUserAdmin()) {
-        state.activeTab = 'dashboard';
-      } else {
-        state.activeTab = targetTab;
-      }
-      try {
-        window.history.replaceState({ tab: state.activeTab, authenticated: true }, '', '#' + state.activeTab);
-      } catch (_) {}
+      state.activeTab = targetTab;
     }
+    syncUrlHashWithActiveTab(state.activeTab, false);
     return true;
   }
 
@@ -509,13 +565,13 @@
   // =========================================================================
   function renderApp() {
     applyBrandingAndSecurity();
-    syncNavHighlight();
 
     const root = document.getElementById('appRoot');
     if (!root) return;
 
     // Show loading screen while Firebase Authentication status is being determined
     if (!authStateCheckComplete && !isStudentAuthenticated()) {
+      syncNavHighlight();
       renderAuthVerificationLoading(root);
       return;
     }
@@ -523,6 +579,7 @@
     // Mandatory Authentication Gate: Unauthenticated users always see the Login / Welcome Page
     if (!isStudentAuthenticated()) {
       enforceRouteUrlProtection();
+      syncNavHighlight();
       const cbtRoot = document.getElementById('cbtExamContainer');
       if (cbtRoot) cbtRoot.innerHTML = '';
       renderStudentAuthPortal(root, false);
@@ -530,6 +587,7 @@
     }
 
     enforceRouteUrlProtection();
+    syncNavHighlight();
 
     // Check if there is an unsubmitted CBT session for the current student UID
     const savedSession = window.CGpediaCBT && window.CGpediaCBT.getSavedActiveSession();
@@ -555,9 +613,10 @@
     } else if (state.activeTab === 'admin') {
       if (!isCurrentUserAdmin()) {
         state.activeTab = 'dashboard';
+        syncNavHighlight();
         saveState();
         renderHomeDashboard(root, savedSession);
-      } else {
+      } else if (window.CGpediaAdmin && typeof window.CGpediaAdmin.renderAdminConsole === 'function') {
         window.CGpediaAdmin.renderAdminConsole(root, state, publicApi);
       }
     }
@@ -752,26 +811,19 @@
     const goAdmin = document.getElementById('homeGoAdminBtn');
     if (goAdmin) {
       goAdmin.onclick = () => {
-        state.activeTab = 'admin';
-        saveState();
-        renderApp();
+        navigateToTab('admin');
       };
     }
     const emptyGoAdmin = document.getElementById('emptyStateGoAdminBtn');
     if (emptyGoAdmin) {
       emptyGoAdmin.onclick = () => {
-        state.activeTab = 'admin';
-        state.adminSection = 'tests';
-        saveState();
-        renderApp();
+        navigateToTab('admin', 'tests');
       };
     }
     const emptyTryPractice = document.getElementById('emptyStateTryPracticeBtn');
     if (emptyTryPractice) {
       emptyTryPractice.onclick = () => {
-        state.activeTab = 'practice';
-        saveState();
-        renderApp();
+        navigateToTab('practice');
       };
     }
     const editOnboard = document.getElementById('homeEditOnboardingBtn');
@@ -784,9 +836,7 @@
     if (searchBtn && searchInput) {
       searchBtn.onclick = () => {
         state.searchQuery = searchInput.value.trim();
-        state.activeTab = 'test-series';
-        saveState();
-        renderApp();
+        navigateToTab('test-series');
       };
     }
 
@@ -816,9 +866,7 @@
 
     document.querySelectorAll('[data-goto-tab]').forEach((el) => {
       el.onclick = () => {
-        state.activeTab = el.getAttribute('data-goto-tab');
-        saveState();
-        renderApp();
+        navigateToTab(el.getAttribute('data-goto-tab'));
       };
     });
 
@@ -2437,6 +2485,7 @@
           </div>
 
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            ${isCurrentUserAdmin() ? `<button class="btn btn-warning btn-sm" id="profOpenAdminPanelBtn">🛡️ Open Admin Panel</button>` : ''}
             <button class="btn btn-primary btn-sm" id="profSwitchAccountBtn">🔄 Switch / Login Account</button>
             <button class="btn btn-navy btn-sm" id="profCreateNewAccBtn">➕ Create New Account</button>
             <button class="btn btn-outline btn-sm" id="profResetPasswordBtn">🔑 Reset Password</button>
@@ -2617,6 +2666,11 @@
 
     const targBtn = document.getElementById('profTargetExamsBtn');
     if (targBtn) targBtn.onclick = () => openOnboardingModal();
+
+    const profAdminBtn = document.getElementById('profOpenAdminPanelBtn');
+    if (profAdminBtn) {
+      profAdminBtn.onclick = () => navigateToTab('admin');
+    }
 
     const logoutBtn1 = document.getElementById('profLogoutBtn');
     if (logoutBtn1) logoutBtn1.onclick = () => performStudentLogout();
@@ -4350,6 +4404,13 @@
                     👤 Account Details
                   </button>
                 </div>
+                ${isCurrentUserAdmin() ? `
+                  <div style="margin-top:8px;">
+                    <button type="button" class="btn btn-warning btn-sm" id="drawerOpenAdminPanelBtn" style="width:100%;font-weight:800;">
+                      🛡️ Open Master Admin Panel
+                    </button>
+                  </div>
+                ` : ''}
 
                 ${settingsProfileEditExpanded ? `
                   <div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);display:grid;gap:8px;">
@@ -4487,9 +4548,15 @@
     if (openFullProfBtn) {
       openFullProfBtn.onclick = () => {
         closeSettingsDrawer();
-        state.activeTab = 'profile';
-        saveState();
-        renderApp();
+        navigateToTab('profile');
+      };
+    }
+
+    const openAdminDrawerBtn = document.getElementById('drawerOpenAdminPanelBtn');
+    if (openAdminDrawerBtn) {
+      openAdminDrawerBtn.onclick = () => {
+        closeSettingsDrawer();
+        navigateToTab('admin');
       };
     }
 
@@ -4555,6 +4622,7 @@
   const publicApi = {
     saveState,
     renderApp,
+    navigateToTab,
     toast,
     applyBrandingAndSecurity,
     generateHighYieldBilingualQuestions,
@@ -4594,11 +4662,17 @@
         try {
           window.history.replaceState({ authGate: 'login' }, '', '#login');
         } catch (_) {}
+      } else {
+        const rawHash = String(window.location.hash || '').replace(/^#\/?/, '').trim().toLowerCase();
+        if (PROTECTED_TABS.includes(rawHash)) {
+          state.activeTab = (rawHash === 'admin' && !isCurrentUserAdmin()) ? 'dashboard' : rawHash;
+        }
       }
       renderApp();
     });
 
     window.addEventListener('hashchange', () => {
+      if (suppressNextHashChange) return;
       const rawHash = String(window.location.hash || '').replace(/^#\/?/, '').trim().toLowerCase();
       if (!isStudentAuthenticated()) {
         if (rawHash !== 'login' && rawHash !== 'register' && rawHash !== 'reset') {
@@ -4613,52 +4687,43 @@
         if (rawHash === 'admin' && !isCurrentUserAdmin()) {
           toast('🔒 Access Denied: Admin Panel is restricted to authorized administrators.');
           state.activeTab = 'dashboard';
-          try {
-            window.history.replaceState({ tab: 'dashboard', authenticated: true }, '', '#dashboard');
-          } catch (_) {}
+          syncUrlHashWithActiveTab('dashboard', false);
         } else {
           state.activeTab = rawHash;
         }
+        initialHashSynced = true;
         saveState();
         renderApp();
       }
     });
 
-    // Top & Bottom Navigation Click Handlers (with authentication & admin route guard)
-    document.querySelectorAll('#mainNavTabs .nav-tab, #mobileBottomNav .bottom-nav-item').forEach((btn) => {
-      btn.onclick = () => {
-        if (!isStudentAuthenticated()) {
-          renderApp();
-          return;
-        }
-        const targetTab = btn.getAttribute('data-tab');
-        if (targetTab === 'admin' && !isCurrentUserAdmin()) {
-          toast('🔒 Access Denied: Admin Panel is restricted to authorized administrators.');
-          return;
-        }
-        state.activeTab = targetTab;
-        try {
-          window.history.pushState({ tab: targetTab, authenticated: true }, '', '#' + targetTab);
-        } catch (_) {}
-        saveState();
-        renderApp();
-      };
-    });
+    // Delegated + Direct Top & Bottom Navigation Click Handlers
+    const handleNavContainerClick = (ev) => {
+      const btn = ev.target && typeof ev.target.closest === 'function'
+        ? ev.target.closest('[data-tab]')
+        : null;
+      if (!btn) return;
+      ev.preventDefault();
+      const targetTab = btn.getAttribute('data-tab');
+      if (targetTab) {
+        navigateToTab(targetTab);
+      }
+    };
+
+    const mainNavContainer = document.getElementById('mainNavTabs');
+    if (mainNavContainer) {
+      mainNavContainer.addEventListener('click', handleNavContainerClick);
+    }
+    const mobileNavContainer = document.getElementById('mobileBottomNav');
+    if (mobileNavContainer) {
+      mobileNavContainer.addEventListener('click', handleNavContainerClick);
+    }
 
     // Brand Home Trigger
     const brandHome = document.getElementById('brandHomeTrigger');
     if (brandHome) {
       brandHome.onclick = () => {
-        if (!isStudentAuthenticated()) {
-          renderApp();
-          return;
-        }
-        state.activeTab = 'dashboard';
-        try {
-          window.history.pushState({ tab: 'dashboard', authenticated: true }, '', '#dashboard');
-        } catch (_) {}
-        saveState();
-        renderApp();
+        navigateToTab('dashboard');
       };
     }
 
@@ -4696,12 +4761,7 @@
     if (notifBtn) {
       notifBtn.onclick = () => {
         if (!isStudentAuthenticated()) return;
-        state.activeTab = 'notifications';
-        try {
-          window.history.pushState({ tab: 'notifications', authenticated: true }, '', '#notifications');
-        } catch (_) {}
-        saveState();
-        renderApp();
+        navigateToTab('notifications');
       };
     }
 
@@ -4711,12 +4771,7 @@
       const triggerHeroSearch = () => {
         if (!isStudentAuthenticated()) return;
         state.searchQuery = heroSearchInput.value.trim();
-        state.activeTab = 'test-series';
-        try {
-          window.history.pushState({ tab: 'test-series', authenticated: true }, '', '#test-series');
-        } catch (_) {}
-        saveState();
-        renderApp();
+        navigateToTab('test-series');
       };
       heroSearchBtn.onclick = triggerHeroSearch;
       heroSearchInput.onkeydown = (e) => {
