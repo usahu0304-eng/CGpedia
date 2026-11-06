@@ -4331,6 +4331,7 @@
   }
 
   let tesseractLoaderPromise = null;
+  let cachedTesseractWorkerPromise = null;
   function ensureTesseractLoaded() {
     if (typeof window !== 'undefined' && window.Tesseract) {
       return Promise.resolve(window.Tesseract);
@@ -4359,6 +4360,36 @@
     return tesseractLoaderPromise;
   }
 
+  async function recognizeWithCachedTesseract(imageSource) {
+    const Tesseract = await ensureTesseractLoaded();
+    if (!Tesseract) return '';
+    try {
+      if (typeof Tesseract.createWorker === 'function') {
+        if (!cachedTesseractWorkerPromise) {
+          cachedTesseractWorkerPromise = (async () => {
+            const worker = await Tesseract.createWorker('hin+eng');
+            return worker;
+          })().catch((err) => {
+            cachedTesseractWorkerPromise = null;
+            throw err;
+          });
+        }
+        const worker = await cachedTesseractWorkerPromise;
+        if (worker && typeof worker.recognize === 'function') {
+          const res = await worker.recognize(imageSource);
+          return res && res.data && res.data.text ? String(res.data.text) : '';
+        }
+      }
+      if (typeof Tesseract.recognize === 'function') {
+        const res = await Tesseract.recognize(imageSource, 'hin+eng');
+        return res && res.data && res.data.text ? String(res.data.text) : '';
+      }
+    } catch (_) {
+      cachedTesseractWorkerPromise = null;
+    }
+    return '';
+  }
+
   async function openPdfDocumentSafely(pdfjsLib, uint8) {
     const baseParams = {
       data: uint8.slice(0),
@@ -4380,9 +4411,7 @@
   async function renderPdfPageToCanvasAndOcr(page) {
     if (typeof document === 'undefined' || typeof document.createElement !== 'function') return '';
     try {
-      const Tesseract = await ensureTesseractLoaded();
-      if (!Tesseract || typeof Tesseract.recognize !== 'function') return '';
-      const viewport = page.getViewport({ scale: 2.0 });
+      const viewport = page.getViewport({ scale: 1.55 });
       const canvas = document.createElement('canvas');
       canvas.width = Math.max(1, Math.floor(viewport.width));
       canvas.height = Math.max(1, Math.floor(viewport.height));
@@ -4391,8 +4420,7 @@
       ctx.fillStyle = '#FFFFFF';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       await page.render({ canvasContext: ctx, viewport }).promise;
-      const result = await Tesseract.recognize(canvas, 'hin+eng');
-      const ocrText = result && result.data && result.data.text ? String(result.data.text) : '';
+      const ocrText = await recognizeWithCachedTesseract(canvas);
       return sanitizeExtractedPdfText(ocrText);
     } catch (_) {
       return '';
@@ -4503,8 +4531,10 @@
     return outLines;
   }
 
-  async function extractTextFromUploadedFile(file, onProgressToast) {
+  async function extractTextFromUploadedFile(file, onProgressToast, options) {
     if (!file) return '';
+    const opts = options && typeof options === 'object' ? options : {};
+    const skipCanvasOcr = Boolean(opts.skipCanvasOcr);
     const fileName = String(file.name || '').toLowerCase();
 
     const arrayBuffer = await new Promise((resolve, reject) => {
@@ -4532,6 +4562,7 @@
       (headerAscii.startsWith('RIFF') && headerAscii.includes('WEBP'));
 
     if (isImg) {
+      if (skipCanvasOcr) return '';
       const hasNativeImgAi = Boolean(
         window.AndroidBridge &&
         typeof window.AndroidBridge.analyzeQuestionImageWithAi === 'function'
@@ -4541,12 +4572,9 @@
         if (typeof onProgressToast === 'function') {
           onProgressToast('⏳ इमेज फ़ाइल को Smart Hindi+English OCR से स्कैन किया जा रहा है...');
         }
-        const Tesseract = await ensureTesseractLoaded();
-        if (Tesseract && typeof Tesseract.recognize === 'function') {
-          const res = await Tesseract.recognize(file, 'hin+eng');
-          const txt = res && res.data && res.data.text ? sanitizeExtractedPdfText(res.data.text) : '';
-          if (txt.trim()) return 'Method: PDF_OCR\nPage: 1\n' + txt;
-        }
+        const ocrRaw = await recognizeWithCachedTesseract(file);
+        const txt = ocrRaw ? sanitizeExtractedPdfText(ocrRaw) : '';
+        if (txt.trim()) return 'Method: PDF_OCR\nPage: 1\n' + txt;
       } catch (_) {}
       return '';
     }
@@ -4563,7 +4591,7 @@
       return convertKrutiDevInText(utf8Text.replace(/^\uFEFF/, ''));
     }
 
-    // 1. Primary PDF.js page-by-page extraction with Blob Worker / disableWorker fallback + KrutiDev + Canvas OCR
+    // 1. Primary PDF.js page-by-page extraction with Blob Worker / disableWorker fallback + KrutiDev + optional Canvas OCR
     try {
       const pdfjsLib = await ensurePdfJsLoaded();
       if (pdfjsLib && typeof pdfjsLib.getDocument === 'function') {
@@ -4626,8 +4654,8 @@
             typeof window.AndroidBridge.analyzePdfPagesWithAi === 'function'
           );
 
-          // If page text is empty (Scanned PDF) or garbled font/glyph code, run Canvas OCR (hin+eng) when not using native Android PDF Vision
-          if (isExtractedPageGarbledOrEmpty(cleanPage) && p <= 15 && !hasNativePdfVisionBridge) {
+          // Only run Canvas OCR inside extractTextFromUploadedFile if skipCanvasOcr is false
+          if (!skipCanvasOcr && isExtractedPageGarbledOrEmpty(cleanPage) && p <= 15 && !hasNativePdfVisionBridge) {
             if (typeof onProgressToast === 'function') {
               onProgressToast(`⏳ PDF पेज ${p}/${pdfDoc.numPages} को Smart Hindi+English OCR से पढ़ा जा रहा है...`);
             }
@@ -6807,13 +6835,14 @@
     });
   }
 
-  async function extractAnswerKeyWithAiFallback(akFile, paperSetCode, onProgress) {
+  async function extractAnswerKeyWithAiFallback(akFile, paperSetCode, onProgress, options) {
     if (!akFile) return '';
+    const opts = options && typeof options === 'object' ? options : {};
     const akKind = await detectUploadedFileKind(akFile, '');
     let extractedAk = '';
     if (akKind !== 'image') {
       try {
-        extractedAk = await extractTextFromUploadedFile(akFile);
+        extractedAk = await extractTextFromUploadedFile(akFile, onProgress, { skipCanvasOcr: Boolean(opts.skipCanvasOcr) });
       } catch (_) {}
     }
     const cleanAk = extractReadableTextFromPdfStream(extractedAk || '');
@@ -6821,7 +6850,10 @@
     if (testMap && testMap.size > 0) {
       return cleanAk;
     }
-    // If Answer Key PDF/Image is scanned and has no selectable text, use AI Vision to extract the Answer Key!
+    if (opts.skipCanvasOcr) {
+      return cleanAk;
+    }
+    // If Answer Key PDF/Image is scanned and has no selectable text, use AI Vision or fast OCR to extract the Answer Key!
     const isPdf = akKind === 'pdf';
     const isImg = akKind === 'image';
     const akPrompt = `You are reading an official competitive exam Answer Key (Target Set: Set ${paperSetCode || 'A'}).
@@ -6858,6 +6890,11 @@ Return ONLY a JSON array of strings like: ["1-A", "2-C", "3-B", "4-D"]`;
         const resJson = await callAndroidAiBridge(akPrompt, dataUrl);
         const arr = parseAiJsonArraySafely(resJson);
         if (arr.length > 0) return arr.join(', ');
+      } else if (isPdf || isImg) {
+        if (onProgress) onProgress(`🔑 उत्तर कुंजी (${akFile.name}) को Smart OCR से पढ़ा जा रहा है...`);
+        const ocrAkText = await extractTextFromUploadedFile(akFile, onProgress, { skipCanvasOcr: false });
+        const cleanOcrAk = extractReadableTextFromPdfStream(ocrAkText || '');
+        if (cleanOcrAk.trim()) return cleanOcrAk;
       }
     } catch (akAiErr) {
       console.warn('Answer Key AI Vision fallback error:', akAiErr);
@@ -6873,23 +6910,16 @@ Return ONLY a JSON array of strings like: ["1-A", "2-C", "3-B", "4-D"]`;
     forcedSubjectTag,
     forcedTopic,
     state,
-    onProgress
+    onProgress,
+    onLiveSaveDocs
   }) {
     const catalog = getTaxonomyCatalog(state);
+    const allExamCodes = ['ALL', ...catalog.examCategories.map((e) => e.code)];
     const subjectTopicGuide = catalog.subjects.map((s) => {
       const topics = catalog.getTopicsForSubject(s.subjectId).map((t) => t.titleEn).slice(0, 12);
       return `- Subject: "${s.titleEn}" (${s.titleHi}) -> Topics: [${topics.join(', ')}]`;
     }).join('\n');
 
-    // Step 1: Run local multi-stage parser first so we always have a fallback baseline
-    const localParsed = parseRawImportFile(
-      rawQuestionText || '',
-      (questionFile && questionFile.name) || 'questions.pdf',
-      answerKeyText || '',
-      paperSetCode || 'A',
-      paperSetCode || 'A'
-    );
-    const localRows = Array.isArray(localParsed.rows) ? localParsed.rows : [];
     const parsedKeyMap = parseAnswerKeyMap(answerKeyText || '', paperSetCode || 'A');
     const keyEntries = parsedKeyMap instanceof Map
       ? Array.from(parsedKeyMap.entries())
@@ -6904,6 +6934,183 @@ Return ONLY a JSON array of strings like: ["1-A", "2-C", "3-B", "4-D"]`;
       .slice(0, 250)
       .map(([qn, optIdx]) => `${qn}:${['A', 'B', 'C', 'D'][optIdx] || 'A'}`)
       .join(', ');
+
+    // Helper: Convert any array of raw items into normalized Question Bank documents
+    const convertRawItemsToDocs = (itemsList, baseIndexOffset) => {
+      const nowIso = new Date().toISOString();
+      const outDocs = [];
+      (itemsList || []).forEach((rawItem, idx) => {
+        if (!rawItem || typeof rawItem !== 'object') return;
+        const qNum = Number(rawItem.questionNumber || (baseIndexOffset || 0) + idx + 1);
+        const rawHi = convertKrutiDevInText(String(rawItem.questionHi || '').trim());
+        const rawEn = convertKrutiDevInText(String(rawItem.questionEn || '').trim());
+        const qHi = rawHi || rawEn;
+        const qEn = rawEn || rawHi;
+        if (!qHi && !qEn) return;
+
+        const rawOptsHi = Array.isArray(rawItem.optionsHi)
+          ? rawItem.optionsHi
+          : [rawItem.optA_Hi || '', rawItem.optB_Hi || '', rawItem.optC_Hi || '', rawItem.optD_Hi || ''];
+        const rawOptsEn = Array.isArray(rawItem.optionsEn)
+          ? rawItem.optionsEn
+          : [rawItem.optA_En || '', rawItem.optB_En || '', rawItem.optC_En || '', rawItem.optD_En || ''];
+
+        const optsHi = [0, 1, 2, 3].map((i) =>
+          convertKrutiDevInText(String(rawOptsHi[i] || rawOptsEn[i] || `विकल्प ${['A', 'B', 'C', 'D'][i]}`).trim())
+        );
+        const optsEn = [0, 1, 2, 3].map((i) =>
+          convertKrutiDevInText(String(rawOptsEn[i] || rawOptsHi[i] || `Option ${['A', 'B', 'C', 'D'][i]}`).trim())
+        );
+
+        let corrIdx = 0;
+        const keyMappedAns = getKeyAnswerForQ(qNum);
+        if (keyMappedAns !== undefined && keyMappedAns >= 0 && keyMappedAns <= 3) {
+          corrIdx = Number(keyMappedAns);
+        } else if (rawItem.correctOptionIndex !== undefined && rawItem.correctOptionIndex !== null && rawItem.correctOptionIndex !== '') {
+          const parsedCorr = parseCorrectIndexValue(rawItem.correctOptionIndex, optsHi, optsEn, false);
+          corrIdx = parsedCorr !== null ? parsedCorr : 0;
+        } else if (rawItem.rawCorrectIndex !== undefined && rawItem.rawCorrectIndex !== null && rawItem.rawCorrectIndex !== '') {
+          const parsedCorr = parseCorrectIndexValue(rawItem.rawCorrectIndex, optsHi, optsEn, false);
+          corrIdx = parsedCorr !== null ? parsedCorr : 0;
+        }
+
+        const autoCat = autoCategorizeQuestionFromMaster(
+          {
+            questionHi: qHi,
+            questionEn: qEn,
+            optionsHi: optsHi,
+            optionsEn: optsEn,
+            explanationHi: rawItem.explanationHi || '',
+            explanationEn: rawItem.explanationEn || '',
+            subjectTag: forcedSubjectTag || rawItem.subjectTag || '',
+            topic: forcedTopic || rawItem.topic || ''
+          },
+          catalog,
+          allExamCodes
+        );
+
+        const finalSubjName = forcedSubjectTag ||
+          (rawItem.subjectTag && rawItem.subjectTag !== 'Needs Categorisation' ? String(rawItem.subjectTag).trim() : '') ||
+          (autoCat.subjectTag && autoCat.subjectTag !== 'Needs Categorisation' ? autoCat.subjectTag : 'Chhattisgarh General Knowledge');
+
+        const matchedSubObj = catalog.findSubject(finalSubjName);
+        const defaultTopicForSub = matchedSubObj && catalog.getTopicsForSubject(matchedSubObj.subjectId)[0]
+          ? catalog.getTopicsForSubject(matchedSubObj.subjectId)[0].titleEn
+          : 'General Topic';
+
+        const finalTopicName = forcedTopic ||
+          (rawItem.topic && rawItem.topic !== 'Needs Categorisation' ? String(rawItem.topic).trim() : '') ||
+          (autoCat.topic && autoCat.topic !== 'Needs Categorisation' ? autoCat.topic : defaultTopicForSub);
+
+        addCustomTaxonomyEntry(state, null, {
+          examCode: 'CGPSC',
+          subjectName: finalSubjName,
+          topicName: finalTopicName,
+          subtopicName: ''
+        });
+        const updatedCat = getTaxonomyCatalog(state);
+        const resolved = resolveCanonicalQuestionHierarchy(
+          {
+            examCode: 'ALL',
+            examIds: allExamCodes,
+            subjectTag: finalSubjName,
+            topic: finalTopicName,
+            subtopic: ''
+          },
+          updatedCat
+        );
+
+        const corrLetter = ['A', 'B', 'C', 'D'][corrIdx] || 'A';
+        const expHi = convertKrutiDevInText(String(rawItem.explanationHi || rawItem.explanationEn || '').trim()) ||
+          `सही उत्तर विकल्प (${corrLetter}) ${optsHi[corrIdx] || ''} है।`;
+        const expEn = convertKrutiDevInText(String(rawItem.explanationEn || rawItem.explanationHi || '').trim()) ||
+          `Correct answer is Option (${corrLetter}) ${optsEn[corrIdx] || ''}.`;
+        const diffVal = normalizeDifficultyValue(rawItem.difficulty || rawItem.difficultyLevel) || 'Moderate';
+
+        const qDoc = {
+          id: '',
+          questionId: '',
+          examCode: 'ALL',
+          examIds: allExamCodes,
+          subjectId: resolved.subjectId || makeSlugId('sub', finalSubjName),
+          subjectTag: resolved.subjectTag || finalSubjName,
+          topicId: resolved.topicId || makeSlugId('top', finalTopicName),
+          topic: resolved.topic || finalTopicName,
+          subtopicId: '',
+          subtopic: '',
+          difficulty: diffVal,
+          difficultyLevel: diffVal,
+          questionType: 'MCQ',
+          sourceDocument: (questionFile && questionFile.name) || 'AI_Scan',
+          paperSetCode: paperSetCode || 'A',
+          categorisationConfidence: 98,
+          needsCategorisation: false,
+          verificationStatus: 'verified',
+          status: 'verified',
+          verified: true,
+          adminVerified: true,
+          isDeleted: false,
+          languageAvailability: detectLanguageAvailability(rawHi, rawEn),
+          questionHi: qHi,
+          questionEn: qEn,
+          optA_Hi: optsHi[0],
+          optB_Hi: optsHi[1],
+          optC_Hi: optsHi[2],
+          optD_Hi: optsHi[3],
+          optA_En: optsEn[0],
+          optB_En: optsEn[1],
+          optC_En: optsEn[2],
+          optD_En: optsEn[3],
+          optionsHi: optsHi,
+          optionsEn: optsEn,
+          correctIndex: corrIdx,
+          correctOptionIndex: corrIdx,
+          explanationHi: expHi,
+          explanationEn: expEn,
+          createdAt: nowIso,
+          updatedAt: nowIso,
+          createdAtIso: nowIso,
+          updatedAtIso: nowIso
+        };
+        qDoc.id = computeDeterministicQuestionId(qDoc);
+        qDoc.questionId = qDoc.id;
+        outDocs.push(qDoc);
+      });
+      return outDocs;
+    };
+
+    const finalDocs = [];
+    const seenDocIds = new Set();
+    const emitLiveBatch = async (rawItemsBatch, pageLabel) => {
+      if (!Array.isArray(rawItemsBatch) || rawItemsBatch.length === 0) return [];
+      const converted = convertRawItemsToDocs(rawItemsBatch, finalDocs.length);
+      const newDocs = [];
+      converted.forEach((doc) => {
+        const normKey = doc.id + '::' + normalizeTextForComparison(doc.questionHi || doc.questionEn);
+        if (!seenDocIds.has(doc.id) && !seenDocIds.has(normKey)) {
+          seenDocIds.add(doc.id);
+          seenDocIds.add(normKey);
+          finalDocs.push(doc);
+          newDocs.push(doc);
+        }
+      });
+      if (newDocs.length > 0 && typeof onLiveSaveDocs === 'function') {
+        await onLiveSaveDocs(newDocs, finalDocs, pageLabel);
+      }
+      return newDocs;
+    };
+
+    // Step 1: Run local multi-stage parser on any instant selectable text first (NOTE: parseRawImportFile returns .rawItems!)
+    const localParsed = parseRawImportFile(
+      rawQuestionText || '',
+      (questionFile && questionFile.name) || 'questions.pdf',
+      answerKeyText || '',
+      paperSetCode || 'A',
+      paperSetCode || 'A'
+    );
+    const localRows = Array.isArray(localParsed.rawItems)
+      ? localParsed.rawItems
+      : (Array.isArray(localParsed.rows) ? localParsed.rows : []);
 
     const fileName = (questionFile && questionFile.name) || '';
     const detectedKind = await detectUploadedFileKind(questionFile, rawQuestionText);
@@ -6957,9 +7164,64 @@ Return ONLY a valid JSON array of objects with this exact schema (if a page has 
   }
 ]`;
 
-    const aiExtractedItems = [];
+    // If instant digital extraction already found questions (e.g. digital PDF, CSV, JSON), Live-Save them immediately!
+    if (localRows.length > 0 && !(isPdfFile && hasAiBridge && hasNativePdfVision)) {
+      if (!hasAiBridge) {
+        await emitLiveBatch(localRows, 'डिजिटल टेक्स्ट स्कैन');
+      } else {
+        const batchSize = 15;
+        for (let i = 0; i < localRows.length; i += batchSize) {
+          const batch = localRows.slice(i, i + batchSize);
+          if (onProgress) {
+            onProgress(`🤖 AI द्वारा प्रश्न ${i + 1} से ${Math.min(localRows.length, i + batchSize)} स्कैन और लाइव सेव किए जा रहे हैं (${finalDocs.length} सेव हो चुके)...`);
+          }
+          const compactBatch = batch.map((r, idx) => {
+            const qNum = Number(r.questionNumber || i + idx + 1);
+            const keyAns = getKeyAnswerForQ(qNum);
+            const akIdx = keyAns !== undefined ? keyAns : r.rawCorrectIndex;
+            const oHi = Array.isArray(r.optionsHi) ? r.optionsHi : [r.optA_Hi || '', r.optB_Hi || '', r.optC_Hi || '', r.optD_Hi || ''];
+            const oEn = Array.isArray(r.optionsEn) ? r.optionsEn : [r.optA_En || '', r.optB_En || '', r.optC_En || '', r.optD_En || ''];
+            return {
+              qNum,
+              qHi: r.questionHi || '',
+              qEn: r.questionEn || '',
+              optsHi: [oHi[0] || '', oHi[1] || '', oHi[2] || '', oHi[3] || ''],
+              optsEn: [oEn[0] || '', oEn[1] || '', oEn[2] || '', oEn[3] || ''],
+              ansIndexFromKeyOrPaper: akIdx !== '' && akIdx !== undefined && akIdx !== null ? Number(akIdx) : null,
+              expHi: r.explanationHi || '',
+              expEn: r.explanationEn || ''
+            };
+          });
+          const prompt = `You are an expert bilingual (Hindi + English) competitive exam AI Question Bank processor.
+Clean up these extracted questions (fix any broken OCR or KrutiDev characters into pure Devanagari Hindi and clean English), ensure all 4 options exist in both Hindi and English.
+For "correctOptionIndex" (0=A, 1=B, 2=C, 3=D): if "ansIndexFromKeyOrPaper" is 0, 1, 2, or 3, use it; if it is null, check if the answer is mentioned inside the question text, and if not, SOLVE the question accurately yourself and set "correctOptionIndex" (0..3).
+Write a short explanation in Hindi & English, and classify each question into the exact Subject ("subjectTag") and Topic ("topic") folder.
+${forcedSubjectTag ? `Force Subject Folder: "${forcedSubjectTag}"` : ''}
+${forcedTopic ? `Force Topic Folder: "${forcedTopic}"` : ''}
+Available Subject & Topic Folders:
+${subjectTopicGuide}
 
-    if (hasAiBridge) {
+Input Questions JSON:
+${JSON.stringify(compactBatch)}
+
+Return ONLY a JSON array where each element has:
+{"questionNumber": number, "subjectTag": string, "topic": string, "difficulty": "Easy"|"Moderate"|"Hard", "questionHi": string, "questionEn": string, "optionsHi": [string,string,string,string], "optionsEn": [string,string,string,string], "correctOptionIndex": 0|1|2|3, "explanationHi": string, "explanationEn": string}`;
+          try {
+            const aiJsonStr = await callAndroidAiBridge(prompt, null);
+            const parsedBatch = parseAiJsonArraySafely(aiJsonStr);
+            if (parsedBatch.length > 0) {
+              await emitLiveBatch(parsedBatch, `प्रश्न ${i + 1}-${Math.min(localRows.length, i + batchSize)}`);
+            } else {
+              await emitLiveBatch(batch, `प्रश्न ${i + 1}-${Math.min(localRows.length, i + batchSize)}`);
+            }
+          } catch (_batchErr) {
+            await emitLiveBatch(batch, `प्रश्न ${i + 1}-${Math.min(localRows.length, i + batchSize)}`);
+          }
+        }
+      }
+    }
+
+    if (hasAiBridge && finalDocs.length === 0) {
       try {
         if (isPdfFile && hasNativePdfVision) {
           if (onProgress) {
@@ -6968,13 +7230,13 @@ Return ONLY a valid JSON array of objects with this exact schema (if a page has 
           const uploadedPdf = await uploadPdfToAndroidBridge(questionFile);
           if (uploadedPdf && uploadedPdf.pageCount > 0) {
             try {
-              const totalPages = Math.min(uploadedPdf.pageCount, 30);
+              const totalPages = Math.min(uploadedPdf.pageCount, 35);
               const pagesPerBatch = 2;
               for (let startP = 1; startP <= totalPages; startP += pagesPerBatch) {
                 const endP = Math.min(totalPages, startP + pagesPerBatch - 1);
                 if (onProgress) {
                   onProgress(
-                    `🤖 AI Vision द्वारा PDF पेज ${startP}${endP > startP ? `-${endP}` : ''} / ${totalPages} को इमेज बनाकर प्रश्न और उत्तर स्कैन किए जा रहे हैं (${aiExtractedItems.length} प्रश्न मिले)...`
+                    `🤖 AI Vision द्वारा PDF पेज ${startP}${endP > startP ? `-${endP}` : ''} / ${totalPages} स्कैन हो रहा है (अब तक ${finalDocs.length} प्रश्न लाइव सेव)...`
                   );
                 }
                 try {
@@ -6989,7 +7251,7 @@ Return ONLY a valid JSON array of objects with this exact schema (if a page has 
                   );
                   const parsedArr = parseAiJsonArraySafely(aiJsonStr);
                   if (parsedArr.length > 0) {
-                    aiExtractedItems.push(...parsedArr);
+                    await emitLiveBatch(parsedArr, `पेज ${startP}${endP > startP ? `-${endP}` : ''}/${totalPages}`);
                   }
                 } catch (pageBatchErr) {
                   console.warn(`PDF Vision batch ${startP}-${endP} error:`, pageBatchErr);
@@ -7001,65 +7263,21 @@ Return ONLY a valid JSON array of objects with this exact schema (if a page has 
               }
             }
           }
+          if (finalDocs.length === 0 && localRows.length > 0) {
+            await emitLiveBatch(localRows, 'डिजिटल टेक्स्ट बैकअप');
+          }
         } else if (isImageFile) {
           if (onProgress) onProgress('🤖 AI Vision द्वारा प्रश्न-पत्र इमेज और उत्तर स्कैन किए जा रहे हैं...');
           const dataUrl = await readFileAsDataUrl(questionFile);
           const prompt = buildVisionExtractionPrompt('this image');
           const aiJsonStr = await callAndroidAiBridge(prompt, dataUrl);
           const parsedArr = parseAiJsonArraySafely(aiJsonStr);
-          if (parsedArr.length > 0) aiExtractedItems.push(...parsedArr);
+          if (parsedArr.length > 0) {
+            await emitLiveBatch(parsedArr, 'इमेज स्कैन');
+          }
         }
 
-        // Fallback / non-PDF text enhancement if Vision returned 0 items (e.g. CSV/JSON upload or text-only fallback)
-        if (aiExtractedItems.length === 0 && localRows.length > 0) {
-          const batchSize = 15;
-          for (let i = 0; i < localRows.length; i += batchSize) {
-            const batch = localRows.slice(i, i + batchSize);
-            if (onProgress) {
-              onProgress(`🤖 AI द्वारा प्रश्न ${i + 1} से ${Math.min(localRows.length, i + batchSize)} स्कैन, उत्तर जाँच और Subject/Topic में वर्गीकृत किए जा रहे हैं...`);
-            }
-            const compactBatch = batch.map((r, idx) => {
-              const qNum = Number(r.questionNumber || i + idx + 1);
-              const keyAns = getKeyAnswerForQ(qNum);
-              const akIdx = keyAns !== undefined ? keyAns : r.rawCorrectIndex;
-              return {
-                qNum,
-                qHi: r.questionHi || '',
-                qEn: r.questionEn || '',
-                optsHi: [r.optA_Hi || '', r.optB_Hi || '', r.optC_Hi || '', r.optD_Hi || ''],
-                optsEn: [r.optA_En || '', r.optB_En || '', r.optC_En || '', r.optD_En || ''],
-                ansIndexFromKeyOrPaper: akIdx !== '' && akIdx !== undefined && akIdx !== null ? Number(akIdx) : null,
-                expHi: r.explanationHi || '',
-                expEn: r.explanationEn || ''
-              };
-            });
-            const prompt = `You are an expert bilingual (Hindi + English) competitive exam AI Question Bank processor.
-Clean up these extracted questions (fix any broken OCR or KrutiDev characters into pure Devanagari Hindi and clean English), ensure all 4 options exist in both Hindi and English.
-For "correctOptionIndex" (0=A, 1=B, 2=C, 3=D): if "ansIndexFromKeyOrPaper" is 0, 1, 2, or 3, use it; if it is null, check if the answer is mentioned inside the question text, and if not, SOLVE the question accurately yourself and set "correctOptionIndex" (0..3).
-Write a short explanation in Hindi & English, and classify each question into the exact Subject ("subjectTag") and Topic ("topic") folder.
-${forcedSubjectTag ? `Force Subject Folder: "${forcedSubjectTag}"` : ''}
-${forcedTopic ? `Force Topic Folder: "${forcedTopic}"` : ''}
-Available Subject & Topic Folders:
-${subjectTopicGuide}
-
-Input Questions JSON:
-${JSON.stringify(compactBatch)}
-
-Return ONLY a JSON array where each element has:
-{"questionNumber": number, "subjectTag": string, "topic": string, "difficulty": "Easy"|"Moderate"|"Hard", "questionHi": string, "questionEn": string, "optionsHi": [string,string,string,string], "optionsEn": [string,string,string,string], "correctOptionIndex": 0|1|2|3, "explanationHi": string, "explanationEn": string}`;
-            try {
-              const aiJsonStr = await callAndroidAiBridge(prompt, null);
-              const parsedBatch = parseAiJsonArraySafely(aiJsonStr);
-              if (parsedBatch.length > 0) {
-                aiExtractedItems.push(...parsedBatch);
-              } else {
-                aiExtractedItems.push(...batch);
-              }
-            } catch (_batchErr) {
-              aiExtractedItems.push(...batch);
-            }
-          }
-        } else if (aiExtractedItems.length === 0 && rawQuestionText && rawQuestionText.replace(/^Method:\s*PDF_OCR\s*/i, '').trim().length > 15) {
+        if (finalDocs.length === 0 && rawQuestionText && rawQuestionText.replace(/^Method:\s*PDF_OCR\s*/i, '').trim().length > 15) {
           const cleanRaw = convertKrutiDevInText(extractReadableTextFromPdfStream(rawQuestionText));
           const chunkLen = 9000;
           for (let offset = 0; offset < Math.min(cleanRaw.length, 45000); offset += chunkLen) {
@@ -7083,10 +7301,10 @@ Return ONLY a JSON array of objects:
             try {
               const aiJsonStr = await callAndroidAiBridge(prompt, null);
               const parsedSlice = parseAiJsonArraySafely(aiJsonStr);
-              if (parsedSlice.length > 0) aiExtractedItems.push(...parsedSlice);
-            } catch (_sliceErr) {
-              // ignore slice error
-            }
+              if (parsedSlice.length > 0) {
+                await emitLiveBatch(parsedSlice, 'टेक्स्ट खंड');
+              }
+            } catch (_sliceErr) {}
           }
         }
       } catch (aiErr) {
@@ -7094,8 +7312,8 @@ Return ONLY a JSON array of objects:
       }
     }
 
-    // Secondary PDF Canvas Page-to-Image Vision + Forced OCR Fallback if both AI & initial text pass returned 0 items
-    if (aiExtractedItems.length === 0 && localRows.length === 0 && isPdfFile && questionFile) {
+    // Page-by-Page Live Save Scanner for Scanned / Custom-Font PDFs (supports 10 to 35 page PDFs with Reusable OCR Worker)
+    if (finalDocs.length === 0 && isPdfFile && questionFile) {
       try {
         const pdfjsLib = await ensurePdfJsLoaded();
         if (pdfjsLib && typeof pdfjsLib.getDocument === 'function') {
@@ -7107,16 +7325,16 @@ Return ONLY a JSON array of objects:
           });
           if (ab) {
             const pdfDoc = await openPdfDocumentSafely(pdfjsLib, new Uint8Array(ab));
-            const maxFallbackPages = Math.min(pdfDoc.numPages || 1, 10);
+            const maxScanPages = Math.min(pdfDoc.numPages || 1, 35);
             const ocrCollectedPages = [];
-            for (let p = 1; p <= maxFallbackPages; p++) {
+            for (let p = 1; p <= maxScanPages; p++) {
               const page = await pdfDoc.getPage(p);
               if (hasAiBridge && typeof window.AndroidBridge.analyzeQuestionImageWithAi === 'function') {
                 if (onProgress) {
-                  onProgress(`🤖 पेज ${p}/${maxFallbackPages} को हाई-रेज़ोल्यूशन इमेज बनाकर AI Vision से स्कैन किया जा रहा है...`);
+                  onProgress(`🤖 पेज ${p}/${maxScanPages} को इमेज बनाकर AI Vision से स्कैन किया जा रहा है (अब तक ${finalDocs.length} प्रश्न लाइव सेव)...`);
                 }
                 try {
-                  const vp = page.getViewport({ scale: 1.8 });
+                  const vp = page.getViewport({ scale: 1.65 });
                   const cnv = document.createElement('canvas');
                   cnv.width = Math.max(1, Math.floor(vp.width));
                   cnv.height = Math.max(1, Math.floor(vp.height));
@@ -7124,24 +7342,39 @@ Return ONLY a JSON array of objects:
                   ctx.fillStyle = '#FFFFFF';
                   ctx.fillRect(0, 0, cnv.width, cnv.height);
                   await page.render({ canvasContext: ctx, viewport: vp }).promise;
-                  const jpegUrl = cnv.toDataURL('image/jpeg', 0.85);
+                  const jpegUrl = cnv.toDataURL('image/jpeg', 0.84);
                   const aiRes = await callAndroidAiBridge(buildVisionExtractionPrompt(`Page ${p}`), jpegUrl);
                   const arr = parseAiJsonArraySafely(aiRes);
                   if (arr.length > 0) {
-                    aiExtractedItems.push(...arr);
+                    await emitLiveBatch(arr, `पेज ${p}/${maxScanPages}`);
                     continue;
                   }
                 } catch (_cnvAiErr) {}
               }
               if (onProgress) {
-                onProgress(`⏳ पेज ${p}/${maxFallbackPages} को Smart Hindi+English OCR से पढ़ा जा रहा है...`);
+                onProgress(`⏳ पेज ${p}/${maxScanPages} स्कैन हो रहा है — अब तक ${finalDocs.length} प्रश्न लाइव सेव हो चुके हैं...`);
               }
               const ocrTxt = await renderPdfPageToCanvasAndOcr(page);
               if (ocrTxt && ocrTxt.trim()) {
                 ocrCollectedPages.push(`Page: ${p}\n${ocrTxt.trim()}`);
+                // Parse this single page immediately and Live-Save its questions right now!
+                const singlePageParsed = parseRawImportFile(
+                  `Method: PDF_OCR\nPage: ${p}\n${ocrTxt.trim()}`,
+                  fileName || 'questions.pdf',
+                  answerKeyText || '',
+                  paperSetCode || 'A',
+                  paperSetCode || 'A'
+                );
+                const pageItems = Array.isArray(singlePageParsed.rawItems)
+                  ? singlePageParsed.rawItems
+                  : (Array.isArray(singlePageParsed.rows) ? singlePageParsed.rows : []);
+                if (pageItems.length > 0) {
+                  await emitLiveBatch(pageItems, `पेज ${p}/${maxScanPages}`);
+                }
               }
             }
-            if (aiExtractedItems.length === 0 && ocrCollectedPages.length > 0) {
+            // Also run a combined pass across all collected OCR pages to catch any questions that split across two pages
+            if (ocrCollectedPages.length > 0) {
               const reParsed = parseRawImportFile(
                 'Method: PDF_OCR\n' + ocrCollectedPages.join('\n\n'),
                 fileName || 'questions.pdf',
@@ -7149,8 +7382,11 @@ Return ONLY a JSON array of objects:
                 paperSetCode || 'A',
                 paperSetCode || 'A'
               );
-              if (Array.isArray(reParsed.rows) && reParsed.rows.length > 0) {
-                localRows.push(...reParsed.rows);
+              const combinedItems = Array.isArray(reParsed.rawItems)
+                ? reParsed.rawItems
+                : (Array.isArray(reParsed.rows) ? reParsed.rows : []);
+              if (combinedItems.length > 0) {
+                await emitLiveBatch(combinedItems, `पेज 1-${maxScanPages} पूर्ण मिलान`);
               }
             }
           }
@@ -7159,146 +7395,6 @@ Return ONLY a JSON array of objects:
         console.warn('Secondary PDF canvas fallback error:', fbErr);
       }
     }
-
-    const sourceList = aiExtractedItems.length > 0 ? aiExtractedItems : localRows;
-    const allExamCodes = ['ALL', ...catalog.examCategories.map((e) => e.code)];
-    const nowIso = new Date().toISOString();
-    const finalDocs = [];
-
-    sourceList.forEach((rawItem, idx) => {
-      const qNum = Number(rawItem.questionNumber || idx + 1);
-      const rawHi = convertKrutiDevInText(String(rawItem.questionHi || '').trim());
-      const rawEn = convertKrutiDevInText(String(rawItem.questionEn || '').trim());
-      const qHi = rawHi || rawEn;
-      const qEn = rawEn || rawHi;
-      if (!qHi && !qEn) return;
-
-      const rawOptsHi = Array.isArray(rawItem.optionsHi)
-        ? rawItem.optionsHi
-        : [rawItem.optA_Hi || '', rawItem.optB_Hi || '', rawItem.optC_Hi || '', rawItem.optD_Hi || ''];
-      const rawOptsEn = Array.isArray(rawItem.optionsEn)
-        ? rawItem.optionsEn
-        : [rawItem.optA_En || '', rawItem.optB_En || '', rawItem.optC_En || '', rawItem.optD_En || ''];
-
-      const optsHi = [0, 1, 2, 3].map((i) => convertKrutiDevInText(String(rawOptsHi[i] || rawOptsEn[i] || `विकल्प ${['A', 'B', 'C', 'D'][i]}`).trim()));
-      const optsEn = [0, 1, 2, 3].map((i) => convertKrutiDevInText(String(rawOptsEn[i] || rawOptsHi[i] || `Option ${['A', 'B', 'C', 'D'][i]}`).trim()));
-
-      // Match Answer Key priority: explicit Answer Key map for qNum -> AI/inline correctOptionIndex -> rawCorrectIndex -> 0
-      let corrIdx = 0;
-      const keyMappedAns = getKeyAnswerForQ(qNum);
-      if (keyMappedAns !== undefined && keyMappedAns >= 0 && keyMappedAns <= 3) {
-        corrIdx = Number(keyMappedAns);
-      } else if (rawItem.correctOptionIndex !== undefined && rawItem.correctOptionIndex !== null && rawItem.correctOptionIndex !== '') {
-        const parsedCorr = parseCorrectIndexValue(rawItem.correctOptionIndex, optsHi, optsEn, false);
-        corrIdx = parsedCorr !== null ? parsedCorr : 0;
-      } else if (rawItem.rawCorrectIndex !== undefined && rawItem.rawCorrectIndex !== null && rawItem.rawCorrectIndex !== '') {
-        const parsedCorr = parseCorrectIndexValue(rawItem.rawCorrectIndex, optsHi, optsEn, false);
-        corrIdx = parsedCorr !== null ? parsedCorr : 0;
-      }
-
-      // Subject & Topic Categorisation (Subject-Wise -> Topic-Wise only)
-      const autoCat = autoCategorizeQuestionFromMaster(
-        {
-          questionHi: qHi,
-          questionEn: qEn,
-          optionsHi: optsHi,
-          optionsEn: optsEn,
-          explanationHi: rawItem.explanationHi || '',
-          explanationEn: rawItem.explanationEn || '',
-          subjectTag: forcedSubjectTag || rawItem.subjectTag || '',
-          topic: forcedTopic || rawItem.topic || ''
-        },
-        catalog,
-        allExamCodes
-      );
-
-      const finalSubjName = forcedSubjectTag ||
-        (rawItem.subjectTag && rawItem.subjectTag !== 'Needs Categorisation' ? String(rawItem.subjectTag).trim() : '') ||
-        (autoCat.subjectTag && autoCat.subjectTag !== 'Needs Categorisation' ? autoCat.subjectTag : 'Chhattisgarh General Knowledge');
-
-      const matchedSubObj = catalog.findSubject(finalSubjName);
-      const defaultTopicForSub = matchedSubObj && catalog.getTopicsForSubject(matchedSubObj.subjectId)[0]
-        ? catalog.getTopicsForSubject(matchedSubObj.subjectId)[0].titleEn
-        : 'General Topic';
-
-      const finalTopicName = forcedTopic ||
-        (rawItem.topic && rawItem.topic !== 'Needs Categorisation' ? String(rawItem.topic).trim() : '') ||
-        (autoCat.topic && autoCat.topic !== 'Needs Categorisation' ? autoCat.topic : defaultTopicForSub);
-
-      addCustomTaxonomyEntry(state, null, {
-        examCode: 'CGPSC',
-        subjectName: finalSubjName,
-        topicName: finalTopicName,
-        subtopicName: ''
-      });
-      const updatedCat = getTaxonomyCatalog(state);
-      const resolved = resolveCanonicalQuestionHierarchy(
-        {
-          examCode: 'ALL',
-          examIds: allExamCodes,
-          subjectTag: finalSubjName,
-          topic: finalTopicName,
-          subtopic: ''
-        },
-        updatedCat
-      );
-
-      const corrLetter = ['A', 'B', 'C', 'D'][corrIdx] || 'A';
-      const expHi = convertKrutiDevInText(String(rawItem.explanationHi || rawItem.explanationEn || '').trim()) ||
-        `सही उत्तर विकल्प (${corrLetter}) ${optsHi[corrIdx] || ''} है।`;
-      const expEn = convertKrutiDevInText(String(rawItem.explanationEn || rawItem.explanationHi || '').trim()) ||
-        `Correct answer is Option (${corrLetter}) ${optsEn[corrIdx] || ''}.`;
-      const diffVal = normalizeDifficultyValue(rawItem.difficulty || rawItem.difficultyLevel) || 'Moderate';
-
-      const qDoc = {
-        id: '',
-        questionId: '',
-        examCode: 'ALL',
-        examIds: allExamCodes,
-        subjectId: resolved.subjectId || makeSlugId('sub', finalSubjName),
-        subjectTag: resolved.subjectTag || finalSubjName,
-        topicId: resolved.topicId || makeSlugId('top', finalTopicName),
-        topic: resolved.topic || finalTopicName,
-        subtopicId: '',
-        subtopic: '',
-        difficulty: diffVal,
-        difficultyLevel: diffVal,
-        questionType: 'MCQ',
-        sourceDocument: (questionFile && questionFile.name) || 'AI_Scan',
-        paperSetCode: paperSetCode || 'A',
-        categorisationConfidence: 98,
-        needsCategorisation: false,
-        verificationStatus: 'verified',
-        status: 'verified',
-        verified: true,
-        adminVerified: true,
-        isDeleted: false,
-        languageAvailability: detectLanguageAvailability(rawHi, rawEn),
-        questionHi: qHi,
-        questionEn: qEn,
-        optA_Hi: optsHi[0],
-        optB_Hi: optsHi[1],
-        optC_Hi: optsHi[2],
-        optD_Hi: optsHi[3],
-        optA_En: optsEn[0],
-        optB_En: optsEn[1],
-        optC_En: optsEn[2],
-        optD_En: optsEn[3],
-        optionsHi: optsHi,
-        optionsEn: optsEn,
-        correctIndex: corrIdx,
-        correctOptionIndex: corrIdx,
-        explanationHi: expHi,
-        explanationEn: expEn,
-        createdAt: nowIso,
-        updatedAt: nowIso,
-        createdAtIso: nowIso,
-        updatedAtIso: nowIso
-      };
-      qDoc.id = computeDeterministicQuestionId(qDoc);
-      qDoc.questionId = qDoc.id;
-      finalDocs.push(qDoc);
-    });
 
     return finalDocs;
   }
@@ -7993,8 +8089,8 @@ Return ONLY a JSON array of objects:
               1️⃣ प्रश्न-पत्र फ़ाइल (Question Paper PDF / Image / CSV / JSON) *
             </label>
             <input type="file" accept=".pdf,.csv,.json,.png,.jpg,.jpeg,.webp,application/pdf,text/csv,application/json,image/*" class="form-input" id="qbAiQuestionFileInput" style="padding:6px;font-size:0.78rem;" />
-            <div id="qbSelectedQPFileLabel" style="font-size:0.74rem;margin-top:4px;color:${nav.selectedQuestionFile ? 'var(--success)' : 'var(--text-muted)'};font-weight:700;">
-              ${nav.selectedQuestionFile ? `📄 चुना गया: ${esc(nav.selectedQuestionFile.name)}` : 'कोई भी PDF, Photo, CSV या JSON प्रश्न-पत्र चुनें'}
+            <div id="qbSelectedQPFileLabel" style="font-size:0.75rem;margin-top:5px;color:${nav.selectedQuestionFile ? 'var(--success)' : 'var(--text-muted)'};font-weight:800;">
+              ${nav.selectedQuestionFile ? `✅ अपलोड हो गया (चुना गया): ${esc(nav.selectedQuestionFile.name)}` : 'कोई भी PDF, Photo, CSV या JSON प्रश्न-पत्र चुनें'}
             </div>
           </div>
 
@@ -8002,7 +8098,7 @@ Return ONLY a JSON array of objects:
           <div style="padding:10px 12px;border-radius:10px;background:var(--surface);border:1.5px dashed var(--secondary);">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:4px;">
               <label class="form-label" style="color:var(--secondary);font-weight:800;font-size:0.8rem;margin-bottom:0;">
-                2️⃣ उत्तर कुंजी फ़ाइल (Answer Key PDF / TXT / CSV)
+                2️⃣ उत्तर कुंजी फ़ाइल (Answer Key — वैकल्पिक)
               </label>
               <select class="form-select" id="qbAiPaperSetSelect" style="width:auto;padding:2px 8px;font-size:0.74rem;height:26px;">
                 <option value="A" ${nav.paperSetCode === 'A' ? 'selected' : ''}>Set A</option>
@@ -8011,7 +8107,10 @@ Return ONLY a JSON array of objects:
                 <option value="D" ${nav.paperSetCode === 'D' ? 'selected' : ''}>Set D</option>
               </select>
             </div>
-            <input type="file" accept=".pdf,.txt,.csv,application/pdf,text/plain,text/csv" class="form-input" id="qbAiAnswerKeyFileInput" style="padding:6px;font-size:0.78rem;margin-bottom:5px;" />
+            <input type="file" accept=".pdf,.txt,.csv,.png,.jpg,.jpeg,.webp,application/pdf,text/plain,text/csv,image/*" class="form-input" id="qbAiAnswerKeyFileInput" style="padding:6px;font-size:0.78rem;margin-bottom:4px;" />
+            <div id="qbSelectedAKFileLabel" style="font-size:0.75rem;margin-bottom:5px;color:${nav.selectedAnswerKeyFile ? 'var(--success)' : 'var(--text-muted)'};font-weight:800;">
+              ${nav.selectedAnswerKeyFile ? `✅ अपलोड हो गया (चुना गया): ${esc(nav.selectedAnswerKeyFile.name)}` : 'उत्तर कुंजी PDF, Photo, TXT या CSV चुनें (वैकल्पिक)'}
+            </div>
             <input class="form-input" id="qbAiAnswerKeyTextInput" value="${esc(qbState.pendingAnswerKeyText || '')}" placeholder="या उत्तर लिखें: 1-A, 2-C, 3-B (वैकल्पिक)" style="padding:5px 8px;font-size:0.76rem;" />
           </div>
 
@@ -8512,7 +8611,9 @@ Return ONLY a JSON array of objects:
           try {
             const cleanAk = await extractAnswerKeyWithAiFallback(
               nav.selectedAnswerKeyFile,
-              nav.paperSetCode || 'A'
+              nav.paperSetCode || 'A',
+              null,
+              { skipCanvasOcr: true }
             );
             if (cleanAk) {
               qbState.pendingAnswerKeyText = cleanAk;
@@ -8520,7 +8621,7 @@ Return ONLY a JSON array of objects:
               if (akTxtInp) akTxtInp.value = cleanAk;
             }
           } catch (e) {
-            console.warn('Answer key read error:', e);
+            console.warn('Answer key quick read error:', e);
           }
         }
       };
@@ -8558,65 +8659,16 @@ Return ONLY a JSON array of objects:
         const optionalAkFile = (akFileInp && akFileInp.files && akFileInp.files[0]) || nav.selectedAnswerKeyFile || null;
         nav.isScanning = true;
         nav.lastScanSummary = null;
-        nav.scanStatusText = `⏳ Step 1/3: "${qFile.name}" को AI स्कैनिंग के लिए पढ़ा जा रहा है...`;
+        nav.scanStatusText = `⏳ Step 1/3: "${qFile.name}" को स्कैनिंग के लिए तैयार किया जा रहा है...`;
         renderAdminConsole(rootEl, state, api);
 
-        try {
-          let answerKeyText = String(qbState.pendingAnswerKeyText || '').trim();
-          if (optionalAkFile && !answerKeyText) {
-            answerKeyText = await extractAnswerKeyWithAiFallback(
-              optionalAkFile,
-              nav.paperSetCode || 'A',
-              (msg) => {
-                nav.scanStatusText = msg;
-                const box = document.getElementById('qbAiScanStatusBox');
-                if (box) box.textContent = msg;
-              }
-            );
-            qbState.pendingAnswerKeyText = answerKeyText;
-          }
+        const folderCounts = new Map();
+        let liveSavedCount = 0;
 
-          const qKind = await detectUploadedFileKind(qFile, '');
-          const isImg = qKind === 'image';
-          const rawQuestionText = isImg
-            ? ''
-            : await extractTextFromUploadedFile(qFile, (msg) => {
-                nav.scanStatusText = msg;
-                const box = document.getElementById('qbAiScanStatusBox');
-                if (box) box.textContent = msg;
-              });
-
-          const scannedDocs = await scanAndCategorizeWithAiOrFallback({
-            questionFile: qFile,
-            rawQuestionText,
-            answerKeyText,
-            paperSetCode: nav.paperSetCode || 'A',
-            forcedSubjectTag: nav.overrideSubject || '',
-            forcedTopic: '',
-            state,
-            onProgress: (msg) => {
-              nav.scanStatusText = msg;
-              const box = document.getElementById('qbAiScanStatusBox');
-              if (box) box.textContent = msg;
-            }
-          });
-
-          if (!scannedDocs || scannedDocs.length === 0) {
-            nav.isScanning = false;
-            nav.scanStatusText = '';
-            api.toast('⚠️ फ़ाइल में कोई प्रश्न नहीं मिला। कृपया स्पष्ट PDF, Image, CSV या JSON फ़ाइल अपलोड करें।');
-            renderAdminConsole(rootEl, state, api);
-            return;
-          }
-
-          nav.scanStatusText = `💾 Step 3/3: ${scannedDocs.length} प्रश्नों को Subject → Topic फ़ोल्डर में सेव किया जा रहा है...`;
-          const box = document.getElementById('qbAiScanStatusBox');
-          if (box) box.textContent = nav.scanStatusText;
-
-          const folderCounts = new Map();
+        const saveDocsBatchLive = async (newDocsBatch, allDocsSoFar, pageLabel) => {
+          if (!Array.isArray(newDocsBatch) || newDocsBatch.length === 0) return;
           const docsToSync = [];
-
-          scannedDocs.forEach((doc) => {
+          newDocsBatch.forEach((doc) => {
             const existingIdx = state.questionBank.findIndex(
               (q) => q.id === doc.id || normalizeTextForComparison(q.questionHi) === normalizeTextForComparison(doc.questionHi)
             );
@@ -8638,21 +8690,88 @@ Return ONLY a JSON array of objects:
             cur.count += 1;
             folderCounts.set(fKey, cur);
           });
-
+          liveSavedCount = allDocsSoFar ? allDocsSoFar.length : (liveSavedCount + newDocsBatch.length);
           api.saveState();
           if (window.CGpediaCloud && window.CGpediaCloud.batchSaveCloudDocs && docsToSync.length > 0) {
-            await window.CGpediaCloud.batchSaveCloudDocs('question_bank', docsToSync);
+            window.CGpediaCloud.batchSaveCloudDocs('question_bank', docsToSync).catch(() => {});
+          }
+          const liveMsg = `✅ ${pageLabel || 'स्कैन'} पूरा — अब तक ${liveSavedCount} प्रश्न Subject → Topic फ़ोल्डर में लाइव सेव हो चुके हैं...`;
+          nav.scanStatusText = liveMsg;
+          const box = document.getElementById('qbAiScanStatusBox');
+          if (box) box.textContent = liveMsg;
+        };
+
+        try {
+          let answerKeyText = String(qbState.pendingAnswerKeyText || '').trim();
+          if (optionalAkFile && !answerKeyText) {
+            answerKeyText = await extractAnswerKeyWithAiFallback(
+              optionalAkFile,
+              nav.paperSetCode || 'A',
+              (msg) => {
+                nav.scanStatusText = msg;
+                const box = document.getElementById('qbAiScanStatusBox');
+                if (box) box.textContent = msg;
+              },
+              { skipCanvasOcr: false }
+            );
+            qbState.pendingAnswerKeyText = answerKeyText;
           }
 
+          const qKind = await detectUploadedFileKind(qFile, '');
+          const isImg = qKind === 'image';
+          // Fast digital text pass (skipCanvasOcr: true so it finishes in <1s; page-by-page OCR with Live Save happens inside scanAndCategorizeWithAiOrFallback)
+          const rawQuestionText = isImg
+            ? ''
+            : await extractTextFromUploadedFile(
+                qFile,
+                (msg) => {
+                  nav.scanStatusText = msg;
+                  const box = document.getElementById('qbAiScanStatusBox');
+                  if (box) box.textContent = msg;
+                },
+                { skipCanvasOcr: true }
+              );
+
+          const scannedDocs = await scanAndCategorizeWithAiOrFallback({
+            questionFile: qFile,
+            rawQuestionText,
+            answerKeyText,
+            paperSetCode: nav.paperSetCode || 'A',
+            forcedSubjectTag: nav.overrideSubject || '',
+            forcedTopic: '',
+            state,
+            onProgress: (msg) => {
+              nav.scanStatusText = msg;
+              const box = document.getElementById('qbAiScanStatusBox');
+              if (box) box.textContent = msg;
+            },
+            onLiveSaveDocs: saveDocsBatchLive
+          });
+
+          if ((!scannedDocs || scannedDocs.length === 0) && liveSavedCount === 0) {
+            nav.isScanning = false;
+            nav.scanStatusText = '';
+            api.toast('⚠️ फ़ाइल में कोई प्रश्न नहीं मिला। कृपया स्पष्ट PDF, Image, CSV या JSON फ़ाइल अपलोड करें।');
+            renderAdminConsole(rootEl, state, api);
+            return;
+          }
+
+          // Ensure any remaining docs not yet in folderCounts are saved
+          if (Array.isArray(scannedDocs) && scannedDocs.length > liveSavedCount) {
+            await saveDocsBatchLive(scannedDocs.slice(liveSavedCount), scannedDocs, 'अंतिम सेव');
+          }
+
+          const totalSaved = Math.max(liveSavedCount, Array.isArray(scannedDocs) ? scannedDocs.length : 0);
           const breakdown = Array.from(folderCounts.values());
           nav.isScanning = false;
           nav.scanStatusText = '';
           nav.selectedQuestionFile = null;
+          nav.selectedAnswerKeyFile = null;
           nav.lastScanSummary = {
-            message: `${scannedDocs.length} प्रश्न सफलतापूर्वक स्कैन होकर ${breakdown.length} Topic फ़ोल्डर में सेव हो गए! (Test Builder के लिए तैयार)`,
+            message: `${totalSaved} प्रश्न सफलतापूर्वक स्कैन होकर ${breakdown.length} Topic फ़ोल्डर में लाइव सेव हो गए! (Test Builder के लिए तैयार)`,
             folderBreakdown: breakdown
           };
-          api.toast(`✅ ${scannedDocs.length} प्रश्न सीधे Subject → Topic फ़ोल्डर में सेव हो गए!`);
+          api.toast(`✅ ${totalSaved} प्रश्न सीधे Subject → Topic फ़ोल्डर में सेव हो गए!`);
           renderAdminConsole(rootEl, state, api);
         } catch (scanErr) {
           console.error('AI Scan error:', scanErr);

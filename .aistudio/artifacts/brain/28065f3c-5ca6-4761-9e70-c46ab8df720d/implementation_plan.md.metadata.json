@@ -1,6 +1,6 @@
 {
-  "summary": "Implementation plan to fix Answer Key file upload confirmation UI and resolve the 'No questions found in file' AI/PDF scanning bug across both Android App and Web Browser strictly within the Question Bank section.",
-  "updatedAt": "2026-11-06T10:47:09.662344337Z",
+  "summary": "Implementation plan to fix the rawItems vs rows property mismatch causing 'No questions found' after scanning, implement page-by-page live question saving and fast reusable OCR worker for 10-30 page PDFs, restore the missing Answer Key upload status label in Box 2 HTML, and bust Service Worker cache so Web and Android immediately load the fix.",
+  "updatedAt": "2026-11-06T11:43:00.086303788Z",
   "requestFeedback": true,
   "userFacing": true
 }
