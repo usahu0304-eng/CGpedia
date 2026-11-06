@@ -2559,7 +2559,9 @@
       examCategories,
       subjects,
       topicMaster,
+      topics: topicMaster,
       subtopicMaster,
+      subtopics: subtopicMaster,
       allTopics: Array.from(allTopicsSet),
       allSubtopics: Array.from(allSubtopicsSet),
 
@@ -3311,11 +3313,14 @@
     state.migrationState = {
       version: 2,
       lastRunIso: nowIso,
+      lastMigratedAt: nowIso,
+      totalInspected: state.questionBank.length,
       migratedCount,
       alreadyCategorisedCount,
       needsCategorisationCount,
       errors: migrationErrors
     };
+    qbState.migrationReport = state.migrationState;
 
     if (api && typeof api.saveState === 'function') {
       api.saveState();
@@ -5784,7 +5789,7 @@
         .filter(Boolean)
     ])).filter(Boolean);
 
-    const matchedFilterTopObj = flt.topic !== 'ALL' ? catalog.findTopic(flt.topic, matchedFilterSubObj ? matchedFilterSubObj.subjectId : null) : null;
+    const matchedFilterTopObj = flt.topic !== 'ALL' ? catalog.findTopic(matchedFilterSubObj ? matchedFilterSubObj.subjectId : '', flt.topic) : null;
     const repoSubtopics = Array.from(new Set([
       ...(matchedFilterTopObj
         ? catalog.getSubtopicsForTopic(matchedFilterTopObj.topicId).map((st) => st.titleEn)

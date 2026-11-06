@@ -1,49 +1,48 @@
-# CGpedia — Admin Panel Initialization & Module Switcher Fix
+# CGpedia — Question Bank Crash Fix Plan
 
-Fix the startup `ReferenceError` that prevents the Admin Console module from registering on `window.CGpediaAdmin`, restore missing Question Bank taxonomy helper functions, and add cache-busting asset versioning so clicking the Admin Panel button and all 5 inner module tabs opens the workspace immediately.
+This plan resolves the specific runtime error occurring inside the **Question Bank** module (`Cannot read properties of undefined (reading 'length')` when rendering the Category Master & Question Bank header) without altering, resetting, or rebuilding any other part of the application.
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> **Root Cause Identified ("Reason kya hai?"):**
-> At the bottom of the Admin Console script, the global `window.CGpediaAdmin` export object references `upsertCategoryMasterItem` and `renameCategoryMasterItem`, which were not defined in the script scope (along with `resolveCanonicalQuestionHierarchy` and `normalizeDifficultyValue` inside Question Bank). Because JavaScript throws `ReferenceError: upsertCategoryMasterItem is not defined` while constructing `window.CGpediaAdmin`, **`window.CGpediaAdmin` remains `undefined`**. Consequently, when the user clicks the **🛡️ Admin Panel** button, the router check (`window.CGpediaAdmin && window.CGpediaAdmin.renderAdminConsole`) fails silently and nothing opens on screen.
+> **Diagnostic Finding ("Kaisi problem hai"):**
+> When opening **🧠 Question Bank**, the module calls `getTaxonomyCatalog(state)` and immediately reads `catalog.topics.length` and `catalog.subtopics.length` in the Category Master header badge and tabs. However, `getTaxonomyCatalog(state)` only returns `topicMaster` and `subtopicMaster` (omitting the `topics` and `subtopics` property aliases). This throws `TypeError: Cannot read properties of undefined (reading 'length')`, triggering the **⚠️ Module View Recovery** error screen instead of rendering the Question Bank.
 
-- **Confirmed Decision 1 (Admin Entry & Inner Tabs):** Fix both the main **🛡️ Admin Panel** button and all 5 inner Admin module tabs (`📊 Dashboard KPIs`, `📝 Test Series Builder`, `🧠 Question Bank`, `👥 Student Management`, `💳 Payment Management`).
-- **Confirmed Decision 2 (Quick-Access Triggers):** Keep quick-access Admin Panel buttons active in the **Settings Drawer**, **Mobile Bottom Navigation Bar**, **Profile Screen**, and **Owner Admin Verified** hero badge.
+- **Strict Scope Constraint**: Only the Question Bank issue identified above (and its directly linked Category Master / filter lookup properties inside Question Bank) will be fixed. No other modules, layouts, or database collections will be modified or rebuilt.
 
 ---
 
 ## 1. Overview & Core Concept
 
-- **What It Does:** Ensures `window.CGpediaAdmin` initializes cleanly without any `ReferenceError`, implements the missing Category Master & Question Bank helper functions (`upsertCategoryMasterItem`, `renameCategoryMasterItem`, `resolveCanonicalQuestionHierarchy`, `normalizeDifficultyValue`), and forces WebView/browser cache invalidation so the updated scripts load immediately.
-- **Target Audience / Persona:** Verified Owner Admin (`usahu0304@gmail.com`) and authorized staff managing exams, test series, questions, students, and payments, as well as students using the test portal.
-- **Key Value:** Clicking any Admin Panel trigger immediately renders the Master Admin Console and switches smoothly across all 5 top-level modules without losing existing Firebase data or scroll position.
+- **What It Does**: Restores normal rendering and interactive operation of the **🧠 Question Bank** module by exposing the expected `topics` and `subtopics` arrays on the taxonomy catalog object, fixing the reversed parameter order in the Topic-to-Subtopic cascading filter lookup, and ensuring the safe migration summary returns `totalInspected` and `lastMigratedAt`.
+- **Target Audience / Persona**: Owner Admin (`usahu0304@gmail.com`) managing bilingual questions, CSV/JSON/PDF imports, and Exam → Subject → Topic → Subtopic categorisation inside Question Bank.
+- **Key Value**: Eliminates the `⚠️ Module View Recovery` crash when opening Question Bank while keeping 100% of existing data, tests, payments, and features intact.
 
 ---
 
 ## 2. User Experience & Visual Design
 
-- **Key User Flows:**
-  1. **Opening the Admin Panel:** Clicking **🛡️ Admin Panel** in the top navigation bar, **🛡️ Admin** in the mobile bottom navigation bar, **🛡️ Open Master Admin Panel** in the Settings drawer, or the **🛡️ Owner Admin Verified** badge switches `state.activeTab` to `'admin'` and renders the Admin Console in `#appRoot`.
-  2. **Switching Inner Admin Modules:** Clicking any of the 5 horizontal module chips (`📊 Dashboard KPIs`, `📝 Test Series Builder`, `🧠 Question Bank`, `👥 Student Management`, `💳 Payment Management`) updates `#adminSubSectionBody` and the active module title while preserving horizontal scroll position.
-  3. **Managing Category Master in Question Bank:** Creating or renaming Exam, Subject, Topic, or Subtopic entries inside Question Bank executes `upsertCategoryMasterItem` and `renameCategoryMasterItem` and syncs with Firebase.
-- **Visual Identity & Theme:**
-  - *Aesthetic Direction:* Clean, authoritative bilingual exam-prep command center preserving the existing CGpedia layout.
-  - *Color Palette & Mood:* Royal Navy (`#0F2557`) primary header/navigation, Vibrant Blue (`#1D4ED8`) accents, Warm Amber/Orange (`#EA580C`) Owner Admin badges, and Slate surface cards (`--surface`, `--surface-alt`) across Light and Dark modes.
-  - *Typography & Hierarchy:* `Inter` and `Noto Sans Devanagari` for crisp Hindi/English bilingual legibility.
-- **Interactive Feedback & Motion:** Instant active-tab highlighting, preserved horizontal chip-row scroll position, toast confirmations on actions, and a visual recovery fallback card if any unexpected runtime error ever occurs.
+- **Key User Flows**:
+  1. Admin clicks **🧠 Question Bank** in the Admin Panel navigation bar.
+  2. The **Hierarchical Question Categorisation System** card, **Bulk Question Upload (CSV, JSON & Smart PDF + Answer Key)** card, **Add Single Question** card, and **Central Reusable Question Bank** repository table render immediately without throwing an error.
+  3. Opening **⚙️ Manage Exams, Subjects, Topics & Subtopics** and switching between **Exam Master**, **Subject Master**, **Topic Master**, and **Subtopic Master** tabs displays all items cleanly.
+  4. Filtering the Question Bank table by **Exam → Subject → Topic → Subtopic** cascades properly.
+- **Visual Identity & Theme**:
+  - Preserves the existing CGpedia layout, cards, badges, and styling without any visual redesign.
 
 ---
 
 ## 3. Key Product Decisions & Trade-Offs
 
-- **Decision 1: Define Complete Category Master & Hierarchy Helpers in Admin Console Scope**
-  - *Chosen Approach:* Implement `upsertCategoryMasterItem`, `renameCategoryMasterItem`, `resolveCanonicalQuestionHierarchy`, and `normalizeDifficultyValue` directly inside the Admin Console module before `window.CGpediaAdmin` is exported.
-  - *Why:* Eliminates the fatal `ReferenceError` at script load time AND ensures Question Bank category creation, renaming, single-question validation, and difficulty filtering all work end-to-end.
-  - *Alternatives Considered:* Simply removing the two names from `window.CGpediaAdmin`—rejected because the Category Master UI buttons inside Question Bank actively call `upsertCategoryMasterItem` and `renameCategoryMasterItem`.
-- **Decision 2: Cache-Busting Script Versioning + WebView Cache Clear**
-  - *Chosen Approach:* Add explicit version query parameters (`?v=5.2`) to script/stylesheet tags, bump the Service Worker cache version, and clear stale WebView cache on startup.
-  - *Why:* Guarantees that both browser tabs and the Android WebView immediately load the fixed script rather than a cached pre-fix copy.
+- **Decision 1: Alias `topics` and `subtopics` on `getTaxonomyCatalog` Return Object**
+  - *Chosen Approach*: Return both `topicMaster` / `topics` and `subtopicMaster` / `subtopics` from `getTaxonomyCatalog(state)`.
+  - *Why*: Both naming conventions are referenced across Question Bank rendering, Category Master tabs, and category rename handlers. Providing both aliases resolves the `undefined.length` and `.map()` crashes cleanly with zero side effects.
+- **Decision 2: Fix Reversed Arguments in `catalog.findTopic` Call for Cascading Subtopic Filter**
+  - *Chosen Approach*: Pass `(matchedFilterSubObj ? matchedFilterSubObj.subjectId : '', flt.topic)` to `catalog.findTopic(subVal, topicVal)` when computing `repoSubtopics`.
+  - *Why*: `findTopic` expects `(subVal, topicVal)`. Passing them in the proper order ensures selecting a Topic in the Question Bank filter bar populates its matching Subtopics accurately.
+- **Decision 3: Populate `totalInspected` and `lastMigratedAt` in Migration Report**
+  - *Chosen Approach*: Include `totalInspected` and `lastMigratedAt` on the migration status object and sync it to `qbState.migrationReport`.
+  - *Why*: Prevents `undefined inspected` in the Question Bank migration toast and status banner.
 
 ---
 
@@ -52,41 +51,28 @@ Fix the startup `ReferenceError` that prevents the Admin Console module from reg
 ### Architecture & Component Diagram
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    Entry Points (Verified Admin Only)                   │
-│  [Top Nav: 🛡️ Admin Panel]  [Mobile Bottom Nav: 🛡️ Admin]              │
-│  [Settings Drawer: 🛡️ Open Master Admin Panel]  [Hero Admin Badge]     │
-└───────────────────────────────────┬─────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                 Unified Router: navigateToTab('admin')                  │
-│  • Verifies isCurrentUserAdmin() (usahu0304@gmail.com / staff)          │
-│  • Updates state.activeTab = 'admin' & syncs URL hash (#admin)          │
-│  • Calls window.CGpediaAdmin.renderAdminConsole(root, state, publicApi) │
-└───────────────────────────────────┬─────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│             window.CGpediaAdmin (Initialized Cleanly on Load)           │
-│  ┌───────────────────────────────────────────────────────────────────┐  │
-│  │ Horizontal Module Bar (#adminSubTabNavRow — Scroll Preserved)     │  │
-│  │ [1. Dashboard KPIs] [2. Test Series Builder] [3. Question Bank]   │  │
-│  │ [4. Student Management] [5. Payment Management]                   │  │
-│  └─────────────────────────────────┬─────────────────────────────────┘  │
-│                                    │                                    │
-│                                    ▼                                    │
-│  ┌───────────────────────────────────────────────────────────────────┐  │
-│  │ Category & Question Helpers (No Undefined References)             │  │
-│  │ • normalizeDifficultyValue()                                      │  │
-│  │ • resolveCanonicalQuestionHierarchy()                             │  │
-│  │ • upsertCategoryMasterItem() & renameCategoryMasterItem()         │  │
-│  └───────────────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                        Admin Panel: 🧠 Question Bank                     │
+├──────────────────────────────────────────────────────────────────────────┤
+│  getTaxonomyCatalog(state)                                               │
+│    ├── examCategories  (Array)                                           │
+│    ├── subjects        (Array)                                           │
+│    ├── topicMaster     & topics     (Aliased Array — fixes .length/.map) │
+│    └── subtopicMaster  & subtopics  (Aliased Array — fixes .length/.map) │
+└───────────────────────────────┬──────────────────────────────────────────┘
+                                │
+                                ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                 renderQuestionBankManagement()                           │
+│  1. Category Master Header & 4-Tab Manager (Exams/Subjects/Topics/Sub)   │
+│  2. Bulk Upload (CSV / JSON / Smart PDF + Answer Key Set A/B/C/D)        │
+│  3. Single Question Form & Preview                                       │
+│  4. Central Question Bank Table & Cascading Filters (Exam→Subj→Top→Sub)  │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Interactive Component & State Mapping
-- **`window.CGpediaAdmin` Initialization:** All exported and internal helper functions are defined prior to assignment so `window.CGpediaAdmin` is always registered before `DOMContentLoaded`.
-- **`upsertCategoryMasterItem(state, api, type, payload)`:** Creates or updates Exam, Subject, Topic, or Subtopic records in `state.examMaster`, `state.subjectMaster`, `state.topicMaster`, and `state.subtopicMaster`, saves state locally, and syncs to Firestore.
-- **`renameCategoryMasterItem(state, api, type, id, newEn, newHi)`:** Updates the English and Hindi titles of an Exam, Subject, Topic, or Subtopic in the Master lists and cascades the updated label across linked questions in `state.questionBank`.
-- **`resolveCanonicalQuestionHierarchy(rawObj, catalog)` & `normalizeDifficultyValue(val)`:** Normalizes difficulty (`Easy`, `Moderate`, `Hard`) and resolves canonical `examIds`, `subjectId`, `topicId`, and `subtopicId` via `catalog.resolveHierarchy(...)`.
+
+1. **Taxonomy Catalog Resolution**: `getTaxonomyCatalog(state)` returns `topics: topicMaster` and `subtopics: subtopicMaster` alongside `topicMaster` and `subtopicMaster`.
+2. **Cascading Filter Lookup**: `matchedFilterTopObj` calls `catalog.findTopic(matchedFilterSubObj ? matchedFilterSubObj.subjectId : '', flt.topic)` with arguments in the expected `(subVal, topicVal)` order.
+3. **Migration Status Metadata**: `migrateExistingQuestionBankRecords` populates `totalInspected: state.questionBank.length` and `lastMigratedAt: nowIso` on `state.migrationState` and `qbState.migrationReport`.
