@@ -1,68 +1,92 @@
-# Fix Admin Panel Button & Inner Module Navigation Plan
+# CGpedia — Admin Panel Initialization & Module Switcher Fix
 
-## 1. Architectural Direction & Root Cause Analysis
+Fix the startup `ReferenceError` that prevents the Admin Console module from registering on `window.CGpediaAdmin`, restore missing Question Bank taxonomy helper functions, and add cache-busting asset versioning so clicking the Admin Panel button and all 5 inner module tabs opens the workspace immediately.
 
-### Confirmed User Decisions (from Phase 1)
-- **Scope of Fix:** Both the main **Admin Panel** entry button (`🛡️ Admin Panel`) and the **inner Admin module tabs** (`📊 Dashboard KPIs`, `📝 Test Series Builder`, `🧠 Question Bank`, `👥 Student Management`, `💳 Payment Management`).
-- **Additional Entry Points:** Add quick-access **Admin Panel** buttons inside both the **Settings Drawer** and the **Mobile Bottom Navigation Bar**, plus make the **Owner Admin Verified** badge interactive.
+## User Review & Critical Decisions
 
-### Root Causes Identified
-1. **Hash / State Overwrite in `enforceRouteUrlProtection()` (`app.js`):**
-   - Whenever `renderApp()` runs, it calls `enforceRouteUrlProtection()`.
-   - `enforceRouteUrlProtection()` reads `window.location.hash` (e.g., `#dashboard`). Because `#dashboard` is in `PROTECTED_TABS`, line 478 unconditionally executes `state.activeTab = rawHash`, **overwriting** `state.activeTab = 'admin'` whenever `window.location.hash` was not updated or when `history.pushState(..., '#admin')` fails silently in the Android WebView (`file:///android_asset/index.html`).
-   - Additionally, several Admin entry buttons (`#emptyStateGoAdminBtn`, `#homeGoAdminBtn`, `#adminLockBtn`, `[data-goto-tab]`) set `state.activeTab = 'admin'` without updating `window.location.hash`, causing `enforceRouteUrlProtection()` to immediately revert the view back to `dashboard`.
-2. **Missing Delegated Click Handling & Mobile / Drawer Entry Points (`index.html`, `app.js`):**
-   - `#mobileBottomNav` lacks an Admin tab button (`#mobileAdminNavBtn`), so on mobile viewports where `#mainNavTabs` overflows horizontally, the Admin button is hidden off-screen.
-   - `renderSettingsDrawerContent()` displays an `🛡️ Admin` badge next to the verified owner's name (`usahu0304@gmail.com`) but provides no button to open the Admin Panel.
-   - `#heroOwnerAdminBadge` (`🛡️ Owner Admin Verified`) looks clickable in the topbar/hero area but has no click listener.
-3. **Inner Admin Sub-Tab Event Delegation & Touch Handling (`admin-console.js`):**
-   - In `renderAdminConsole()`, attaching `ontouchstart` with `ev.preventDefault()` on `.filter-chip[data-admin-subtab]` and re-binding individual buttons can swallow tap events or miss clicks on inner spans/icons.
-   - Replacing per-button inline handlers with clean event delegation (`ev.target.closest('[data-admin-subtab]')`) on `#adminSubTabNavRow` and wrapping module rendering in a `try/catch` error boundary ensures every inner module tab switches reliably on both mobile touch and desktop click while preserving horizontal scroll position (`savedAdminNavScrollLeft`).
+> [!IMPORTANT]
+> **Root Cause Identified ("Reason kya hai?"):**
+> At the bottom of the Admin Console script, the global `window.CGpediaAdmin` export object references `upsertCategoryMasterItem` and `renameCategoryMasterItem`, which were not defined in the script scope (along with `resolveCanonicalQuestionHierarchy` and `normalizeDifficultyValue` inside Question Bank). Because JavaScript throws `ReferenceError: upsertCategoryMasterItem is not defined` while constructing `window.CGpediaAdmin`, **`window.CGpediaAdmin` remains `undefined`**. Consequently, when the user clicks the **🛡️ Admin Panel** button, the router check (`window.CGpediaAdmin && window.CGpediaAdmin.renderAdminConsole`) fails silently and nothing opens on screen.
+
+- **Confirmed Decision 1 (Admin Entry & Inner Tabs):** Fix both the main **🛡️ Admin Panel** button and all 5 inner Admin module tabs (`📊 Dashboard KPIs`, `📝 Test Series Builder`, `🧠 Question Bank`, `👥 Student Management`, `💳 Payment Management`).
+- **Confirmed Decision 2 (Quick-Access Triggers):** Keep quick-access Admin Panel buttons active in the **Settings Drawer**, **Mobile Bottom Navigation Bar**, **Profile Screen**, and **Owner Admin Verified** hero badge.
 
 ---
 
-## 2. Visual Direction & Layout Preservation
+## 1. Overview & Core Concept
 
-- **Preserved 5-Module Horizontal Admin Navigation:**
-  1. `📊 Dashboard KPIs` (`overview`)
-  2. `📝 Test Series Builder` (`tests`)
-  3. `🧠 Question Bank` (`qbank`)
-  4. `👥 Student Management` (`students`)
-  5. `💳 Payment Management` (`payments`)
-- **Scroll Position & Active Header:** Switching between modules preserves `#adminSubTabNavRow.scrollLeft` without jumping back to the first item, and updates the active module badge (`#activeAdminModuleBadge`) and section container (`#adminSubSectionBody`).
-- **Quick-Access Admin Entry Points (Visible Only to Verified Admin):**
-  - **Top Navigation Bar:** `#adminNavTabBtn` (`🛡️ Admin Panel`)
-  - **Mobile Bottom Navigation Bar:** `#mobileAdminNavBtn` (`🛡️ Admin`)
-  - **Settings Drawer:** Prominent `🛡️ Open Master Admin Panel` action button (`#drawerOpenAdminPanelBtn`)
-  - **Hero / Topbar Badge:** Interactive `#heroOwnerAdminBadge` (`🛡️ Owner Admin Verified`)
+- **What It Does:** Ensures `window.CGpediaAdmin` initializes cleanly without any `ReferenceError`, implements the missing Category Master & Question Bank helper functions (`upsertCategoryMasterItem`, `renameCategoryMasterItem`, `resolveCanonicalQuestionHierarchy`, `normalizeDifficultyValue`), and forces WebView/browser cache invalidation so the updated scripts load immediately.
+- **Target Audience / Persona:** Verified Owner Admin (`usahu0304@gmail.com`) and authorized staff managing exams, test series, questions, students, and payments, as well as students using the test portal.
+- **Key Value:** Clicking any Admin Panel trigger immediately renders the Master Admin Console and switches smoothly across all 5 top-level modules without losing existing Firebase data or scroll position.
 
 ---
 
-## 3. Core Flows & Component Changes
+## 2. User Experience & Visual Design
 
-### A. Unified Tab Navigation & Route Protection (`app.js`)
-- Create a central `navigateToTab(targetTab, adminSectionOverride)` helper and expose it on `publicApi`:
-  - Validates admin access when `targetTab === 'admin'` (`isCurrentUserAdmin()`).
-  - Sets `state.activeTab = targetTab` (and optionally `state.adminSection = adminSectionOverride`).
-  - Synchronizes `window.location.hash` safely without letting `file://` `pushState` exceptions block navigation.
-  - Calls `saveState()` and `renderApp()` immediately.
-- Update `enforceRouteUrlProtection()` so it only reads `window.location.hash` on initial boot or explicit `hashchange` events, never overwriting an in-memory `state.activeTab` change made by `navigateToTab()`.
-- Add event delegation on `#mainNavTabs` and `#mobileBottomNav` using `e.target.closest('[data-tab]')` so clicking any icon, label, or button inside a nav tab always triggers `navigateToTab()`.
+- **Key User Flows:**
+  1. **Opening the Admin Panel:** Clicking **🛡️ Admin Panel** in the top navigation bar, **🛡️ Admin** in the mobile bottom navigation bar, **🛡️ Open Master Admin Panel** in the Settings drawer, or the **🛡️ Owner Admin Verified** badge switches `state.activeTab` to `'admin'` and renders the Admin Console in `#appRoot`.
+  2. **Switching Inner Admin Modules:** Clicking any of the 5 horizontal module chips (`📊 Dashboard KPIs`, `📝 Test Series Builder`, `🧠 Question Bank`, `👥 Student Management`, `💳 Payment Management`) updates `#adminSubSectionBody` and the active module title while preserving horizontal scroll position.
+  3. **Managing Category Master in Question Bank:** Creating or renaming Exam, Subject, Topic, or Subtopic entries inside Question Bank executes `upsertCategoryMasterItem` and `renameCategoryMasterItem` and syncs with Firebase.
+- **Visual Identity & Theme:**
+  - *Aesthetic Direction:* Clean, authoritative bilingual exam-prep command center preserving the existing CGpedia layout.
+  - *Color Palette & Mood:* Royal Navy (`#0F2557`) primary header/navigation, Vibrant Blue (`#1D4ED8`) accents, Warm Amber/Orange (`#EA580C`) Owner Admin badges, and Slate surface cards (`--surface`, `--surface-alt`) across Light and Dark modes.
+  - *Typography & Hierarchy:* `Inter` and `Noto Sans Devanagari` for crisp Hindi/English bilingual legibility.
+- **Interactive Feedback & Motion:** Instant active-tab highlighting, preserved horizontal chip-row scroll position, toast confirmations on actions, and a visual recovery fallback card if any unexpected runtime error ever occurs.
 
-### B. Inner Admin Module Switcher & Error Boundary (`admin-console.js`)
-- Use a single delegated click handler on `#adminSubTabNavRow` (`e.target.closest('[data-admin-subtab]')`) without `ev.preventDefault()` on `touchstart`, ensuring mobile taps and desktop clicks always fire.
-- Preserve `savedAdminNavScrollLeft` before and after switching modules.
-- Wrap the module renderer switch (`overview`, `tests`, `qbank`, `students`, `payments`, plus utilities `stories`, `broadcast`, `branding`) in a `try/catch` block so any unexpected runtime error in a sub-component displays a clear recovery card rather than leaving the tab unresponsive.
+---
 
-### C. Settings Drawer, Mobile Bottom Nav & Hero Badge (`index.html`, `app.js`)
-- **`index.html`:**
-  - Add `#mobileAdminNavBtn` (`data-tab="admin"`, hidden by default unless `isCurrentUserAdmin()` is true) to `#mobileBottomNav`.
-  - Add `role="button" tabindex="0"` and pointer cursor to `#heroOwnerAdminBadge`.
-- **`app.js`:**
-  - Show/hide `#mobileAdminNavBtn` in `applyBrandingAndSecurity()` alongside `#adminNavTabBtn`.
-  - Add `#drawerOpenAdminPanelBtn` (`🛡️ Open Master Admin Panel`) in `renderSettingsDrawerContent()` when `isCurrentUserAdmin()` is true, closing the drawer and calling `navigateToTab('admin')` on click.
-  - Wire `#heroOwnerAdminBadge`, `#emptyStateGoAdminBtn`, and `#homeGoAdminBtn` to `navigateToTab('admin')`.
+## 3. Key Product Decisions & Trade-Offs
 
-### D. Service Worker Cache Refresh & Asset Sync (`sw.js`, `build-web.js`)
-- Bump `CACHE_NAME` in `sw.js` (`cgpedia-platform-v5`) with network-first handling for core `.js` and `.html` files so WebView/browser sessions immediately load the updated scripts.
-- Run `node build-web.js` to sync `/index.html`, `/app.js`, `/admin-console.js`, and `/sw.js` into `/app/src/main/assets/` and `/public/`, then verify with `compile_applet`.
+- **Decision 1: Define Complete Category Master & Hierarchy Helpers in Admin Console Scope**
+  - *Chosen Approach:* Implement `upsertCategoryMasterItem`, `renameCategoryMasterItem`, `resolveCanonicalQuestionHierarchy`, and `normalizeDifficultyValue` directly inside the Admin Console module before `window.CGpediaAdmin` is exported.
+  - *Why:* Eliminates the fatal `ReferenceError` at script load time AND ensures Question Bank category creation, renaming, single-question validation, and difficulty filtering all work end-to-end.
+  - *Alternatives Considered:* Simply removing the two names from `window.CGpediaAdmin`—rejected because the Category Master UI buttons inside Question Bank actively call `upsertCategoryMasterItem` and `renameCategoryMasterItem`.
+- **Decision 2: Cache-Busting Script Versioning + WebView Cache Clear**
+  - *Chosen Approach:* Add explicit version query parameters (`?v=5.2`) to script/stylesheet tags, bump the Service Worker cache version, and clear stale WebView cache on startup.
+  - *Why:* Guarantees that both browser tabs and the Android WebView immediately load the fixed script rather than a cached pre-fix copy.
+
+---
+
+## 4. Technical Architecture & Data Strategy *(Technical Reference)*
+
+### Architecture & Component Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    Entry Points (Verified Admin Only)                   │
+│  [Top Nav: 🛡️ Admin Panel]  [Mobile Bottom Nav: 🛡️ Admin]              │
+│  [Settings Drawer: 🛡️ Open Master Admin Panel]  [Hero Admin Badge]     │
+└───────────────────────────────────┬─────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                 Unified Router: navigateToTab('admin')                  │
+│  • Verifies isCurrentUserAdmin() (usahu0304@gmail.com / staff)          │
+│  • Updates state.activeTab = 'admin' & syncs URL hash (#admin)          │
+│  • Calls window.CGpediaAdmin.renderAdminConsole(root, state, publicApi) │
+└───────────────────────────────────┬─────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│             window.CGpediaAdmin (Initialized Cleanly on Load)           │
+│  ┌───────────────────────────────────────────────────────────────────┐  │
+│  │ Horizontal Module Bar (#adminSubTabNavRow — Scroll Preserved)     │  │
+│  │ [1. Dashboard KPIs] [2. Test Series Builder] [3. Question Bank]   │  │
+│  │ [4. Student Management] [5. Payment Management]                   │  │
+│  └─────────────────────────────────┬─────────────────────────────────┘  │
+│                                    │                                    │
+│                                    ▼                                    │
+│  ┌───────────────────────────────────────────────────────────────────┐  │
+│  │ Category & Question Helpers (No Undefined References)             │  │
+│  │ • normalizeDifficultyValue()                                      │  │
+│  │ • resolveCanonicalQuestionHierarchy()                             │  │
+│  │ • upsertCategoryMasterItem() & renameCategoryMasterItem()         │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Interactive Component & State Mapping
+- **`window.CGpediaAdmin` Initialization:** All exported and internal helper functions are defined prior to assignment so `window.CGpediaAdmin` is always registered before `DOMContentLoaded`.
+- **`upsertCategoryMasterItem(state, api, type, payload)`:** Creates or updates Exam, Subject, Topic, or Subtopic records in `state.examMaster`, `state.subjectMaster`, `state.topicMaster`, and `state.subtopicMaster`, saves state locally, and syncs to Firestore.
+- **`renameCategoryMasterItem(state, api, type, id, newEn, newHi)`:** Updates the English and Hindi titles of an Exam, Subject, Topic, or Subtopic in the Master lists and cascades the updated label across linked questions in `state.questionBank`.
+- **`resolveCanonicalQuestionHierarchy(rawObj, catalog)` & `normalizeDifficultyValue(val)`:** Normalizes difficulty (`Easy`, `Moderate`, `Hard`) and resolves canonical `examIds`, `subjectId`, `topicId`, and `subtopicId` via `catalog.resolveHierarchy(...)`.

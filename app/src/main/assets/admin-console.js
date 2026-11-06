@@ -2796,6 +2796,208 @@
     }
   }
 
+  function resolveCanonicalQuestionHierarchy(rawObj, catalogOrState) {
+    const raw = rawObj || {};
+    const cat = (catalogOrState && typeof catalogOrState.resolveHierarchy === 'function')
+      ? catalogOrState
+      : getTaxonomyCatalog(catalogOrState || {});
+    return cat.resolveHierarchy(raw);
+  }
+
+  function upsertCategoryMasterItem(state, api, type, payload) {
+    if (!state || !payload) return null;
+    state.customTaxonomy = state.customTaxonomy || { customCategories: [], customSubjects: [] };
+    state.customTaxonomy.customCategories = state.customTaxonomy.customCategories || [];
+    state.customTaxonomy.customSubjects = state.customTaxonomy.customSubjects || [];
+    state.examMaster = state.examMaster || [];
+    state.subjectMaster = state.subjectMaster || [];
+    state.topicMaster = state.topicMaster || [];
+    state.subtopicMaster = state.subtopicMaster || [];
+
+    const cleanType = String(type || '').toLowerCase();
+    const nowIso = new Date().toISOString();
+
+    if (cleanType === 'exam') {
+      const code = String(payload.code || payload.examId || payload.nameEn || 'CUSTOM_EXAM').trim().toUpperCase().replace(/\s+/g, '_');
+      const examId = String(payload.examId || payload.id || code).trim();
+      const examObj = {
+        id: examId,
+        examId,
+        code,
+        nameEn: String(payload.nameEn || code).trim(),
+        nameHi: String(payload.nameHi || payload.nameEn || code).trim(),
+        icon: payload.icon || '📘',
+        badge: payload.badge || 'Active',
+        subjectIds: Array.isArray(payload.subjectIds) ? payload.subjectIds : [],
+        updatedAtIso: nowIso
+      };
+      const idx = state.examMaster.findIndex((e) => (e.examId || e.code) === examId || e.code === code);
+      if (idx >= 0) state.examMaster[idx] = Object.assign({}, state.examMaster[idx], examObj);
+      else state.examMaster.push(examObj);
+
+      const cIdx = state.customTaxonomy.customCategories.findIndex((e) => (e.examId || e.code) === examId || e.code === code);
+      if (cIdx >= 0) state.customTaxonomy.customCategories[cIdx] = Object.assign({}, state.customTaxonomy.customCategories[cIdx], examObj);
+      else state.customTaxonomy.customCategories.push(examObj);
+
+      if (api && typeof api.saveState === 'function') api.saveState();
+      if (window.CGpediaCloud) {
+        window.CGpediaCloud.saveCloudDoc('exams', examObj.id, examObj);
+        window.CGpediaCloud.saveCloudDoc('app_config', 'taxonomy', Object.assign({ configKey: 'taxonomy' }, state.customTaxonomy));
+      }
+      return examObj;
+    }
+
+    if (cleanType === 'subject') {
+      const titleEn = String(payload.titleEn || payload.subjectId || 'General Studies').trim();
+      const subjectId = String(payload.subjectId || payload.id || makeSlugId('sub', titleEn)).trim();
+      const subObj = {
+        id: subjectId,
+        subjectId,
+        titleEn,
+        titleHi: String(payload.titleHi || titleEn).trim(),
+        examCode: payload.examCode || 'ALL',
+        aliases: Array.isArray(payload.aliases) ? payload.aliases : [],
+        topics: Array.isArray(payload.topics) ? payload.topics : [],
+        updatedAtIso: nowIso
+      };
+      const idx = state.subjectMaster.findIndex((s) => (s.subjectId || s.id) === subjectId || String(s.titleEn || '').toLowerCase() === titleEn.toLowerCase());
+      if (idx >= 0) state.subjectMaster[idx] = Object.assign({}, state.subjectMaster[idx], subObj);
+      else state.subjectMaster.push(subObj);
+
+      const cIdx = state.customTaxonomy.customSubjects.findIndex((s) => (s.subjectId || s.id) === subjectId || String(s.titleEn || '').toLowerCase() === titleEn.toLowerCase());
+      if (cIdx >= 0) state.customTaxonomy.customSubjects[cIdx] = Object.assign({}, state.customTaxonomy.customSubjects[cIdx], subObj);
+      else state.customTaxonomy.customSubjects.push(subObj);
+
+      if (api && typeof api.saveState === 'function') api.saveState();
+      if (window.CGpediaCloud) {
+        window.CGpediaCloud.saveCloudDoc('subjects', subObj.id, subObj);
+        window.CGpediaCloud.saveCloudDoc('app_config', 'taxonomy', Object.assign({ configKey: 'taxonomy' }, state.customTaxonomy));
+      }
+      return subObj;
+    }
+
+    if (cleanType === 'topic') {
+      const subjectId = String(payload.subjectId || 'sub_general_studies').trim();
+      const titleEn = String(payload.titleEn || 'General Topic').trim();
+      const topicId = String(payload.topicId || payload.id || makeSlugId(`top_${subjectId.replace(/^sub_/, '')}`, titleEn)).trim();
+      const topObj = {
+        id: topicId,
+        topicId,
+        subjectId,
+        titleEn,
+        titleHi: String(payload.titleHi || titleEn).trim(),
+        keywords: Array.isArray(payload.keywords) ? payload.keywords : [titleEn.toLowerCase()],
+        updatedAtIso: nowIso
+      };
+      const idx = state.topicMaster.findIndex((t) => (t.topicId || t.id) === topicId || (t.subjectId === subjectId && String(t.titleEn || '').toLowerCase() === titleEn.toLowerCase()));
+      if (idx >= 0) state.topicMaster[idx] = Object.assign({}, state.topicMaster[idx], topObj);
+      else state.topicMaster.push(topObj);
+
+      if (api && typeof api.saveState === 'function') api.saveState();
+      if (window.CGpediaCloud) {
+        window.CGpediaCloud.saveCloudDoc('topics', topObj.id, topObj);
+      }
+      return topObj;
+    }
+
+    if (cleanType === 'subtopic') {
+      const topicId = String(payload.topicId || 'top_general').trim();
+      const subjectId = String(payload.subjectId || '').trim();
+      const titleEn = String(payload.titleEn || 'General Subtopic').trim();
+      const subtopicId = String(payload.subtopicId || payload.id || makeSlugId('subtop', `${topicId}_${titleEn}`)).trim();
+      const stObj = {
+        id: subtopicId,
+        subtopicId,
+        topicId,
+        subjectId,
+        titleEn,
+        titleHi: String(payload.titleHi || titleEn).trim(),
+        keywords: Array.isArray(payload.keywords) ? payload.keywords : [titleEn.toLowerCase()],
+        updatedAtIso: nowIso
+      };
+      const idx = state.subtopicMaster.findIndex((st) => (st.subtopicId || st.id) === subtopicId || (st.topicId === topicId && String(st.titleEn || '').toLowerCase() === titleEn.toLowerCase()));
+      if (idx >= 0) state.subtopicMaster[idx] = Object.assign({}, state.subtopicMaster[idx], stObj);
+      else state.subtopicMaster.push(stObj);
+
+      if (api && typeof api.saveState === 'function') api.saveState();
+      if (window.CGpediaCloud) {
+        window.CGpediaCloud.saveCloudDoc('subtopics', stObj.id, stObj);
+      }
+      return stObj;
+    }
+
+    return null;
+  }
+
+  function renameCategoryMasterItem(state, api, type, id, newEn, newHi) {
+    if (!state || !id || !newEn) return;
+    const cleanType = String(type || '').toLowerCase();
+    const cleanEn = String(newEn).trim();
+    const cleanHi = String(newHi || cleanEn).trim();
+    const catalog = getTaxonomyCatalog(state);
+
+    if (cleanType === 'exam') {
+      const existing = catalog.findExam(id);
+      upsertCategoryMasterItem(state, api, 'exam', Object.assign({}, existing || {}, {
+        id,
+        examId: id,
+        code: (existing && existing.code) || id,
+        nameEn: cleanEn,
+        nameHi: cleanHi
+      }));
+    } else if (cleanType === 'subject') {
+      const existing = catalog.findSubject(id);
+      const oldEn = existing ? existing.titleEn : '';
+      upsertCategoryMasterItem(state, api, 'subject', Object.assign({}, existing || {}, {
+        id,
+        subjectId: id,
+        titleEn: cleanEn,
+        titleHi: cleanHi
+      }));
+      (state.questionBank || []).forEach((q) => {
+        if (q.subjectId === id || (oldEn && String(q.subjectTag || '').toLowerCase() === oldEn.toLowerCase())) {
+          q.subjectId = id;
+          q.subjectTag = cleanEn;
+        }
+      });
+    } else if (cleanType === 'topic') {
+      const existing = (catalog.topics || []).find((t) => t.topicId === id);
+      const oldEn = existing ? existing.titleEn : '';
+      upsertCategoryMasterItem(state, api, 'topic', Object.assign({}, existing || {}, {
+        id,
+        topicId: id,
+        subjectId: (existing && existing.subjectId) || 'sub_general_studies',
+        titleEn: cleanEn,
+        titleHi: cleanHi
+      }));
+      (state.questionBank || []).forEach((q) => {
+        if (q.topicId === id || (oldEn && String(q.topic || '').toLowerCase() === oldEn.toLowerCase())) {
+          q.topicId = id;
+          q.topic = cleanEn;
+        }
+      });
+    } else if (cleanType === 'subtopic') {
+      const existing = (catalog.subtopics || []).find((st) => st.subtopicId === id);
+      const oldEn = existing ? existing.titleEn : '';
+      upsertCategoryMasterItem(state, api, 'subtopic', Object.assign({}, existing || {}, {
+        id,
+        subtopicId: id,
+        topicId: (existing && existing.topicId) || '',
+        subjectId: (existing && existing.subjectId) || '',
+        titleEn: cleanEn,
+        titleHi: cleanHi
+      }));
+      (state.questionBank || []).forEach((q) => {
+        if (q.subtopicId === id || (oldEn && String(q.subtopic || '').toLowerCase() === oldEn.toLowerCase())) {
+          q.subtopicId = id;
+          q.subtopic = cleanEn;
+        }
+      });
+    }
+
+    if (api && typeof api.saveState === 'function') api.saveState();
+  }
+
   // Automatic Categorisation Engine using Subject, Topic & Subtopic Master (Section 6)
   function autoCategorizeQuestionFromMaster(item, catalog, defaultExamIds) {
     const combinedText = [
@@ -3233,6 +3435,10 @@
     if (low === 'difficult' || low === 'hard' || low === 'कठिन') return 'Hard';
     if (low === 'moderate' || low === 'medium' || low === 'मध्यम') return 'Moderate';
     return '';
+  }
+
+  function normalizeDifficultyValue(val) {
+    return normalizeDifficulty(val);
   }
 
   function parseCorrectIndexValue(rawVal) {

@@ -4819,9 +4819,11 @@
       dismissPwa.onclick = () => pwaBanner.classList.add('hidden');
     }
 
-    // Register Service Worker
+    // Register Service Worker & force update check
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
-      navigator.serviceWorker.register('sw.js').catch(() => {});
+      navigator.serviceWorker.register('sw.js?v=5.2').then((reg) => {
+        try { reg.update(); } catch (_) {}
+      }).catch(() => {});
     }
 
     // Connect Firebase Cloud Sync

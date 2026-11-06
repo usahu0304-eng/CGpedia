@@ -156,6 +156,7 @@ fun CgpediaWebAppHost(
                         }
                     }
 
+                    clearCache(true)
                     loadUrl("file:///android_asset/index.html")
                     webViewRef = this
                 }
