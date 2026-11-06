@@ -4517,12 +4517,39 @@
     if (!arrayBuffer) return '';
     const uint8 = new Uint8Array(arrayBuffer);
 
-    // Detect %PDF- magic bytes in the first 64 bytes even if Android file picker returned a content URI name without .pdf
+    // Detect %PDF- or Image magic bytes in the first 64 bytes even if Android file picker returned a content URI name without .pdf
     const headerAscii = new TextDecoder('latin1').decode(uint8.subarray(0, Math.min(64, uint8.length)));
     const isPdf =
       fileName.endsWith('.pdf') ||
       String(file.type || '').toLowerCase() === 'application/pdf' ||
       headerAscii.includes('%PDF-');
+
+    const isImg =
+      /\.(png|jpe?g|webp)$/i.test(fileName) ||
+      String(file.type || '').toLowerCase().startsWith('image/') ||
+      (uint8.length >= 4 && uint8[0] === 0x89 && uint8[1] === 0x50 && uint8[2] === 0x4E && uint8[3] === 0x47) ||
+      (uint8.length >= 3 && uint8[0] === 0xFF && uint8[1] === 0xD8 && uint8[2] === 0xFF) ||
+      (headerAscii.startsWith('RIFF') && headerAscii.includes('WEBP'));
+
+    if (isImg) {
+      const hasNativeImgAi = Boolean(
+        window.AndroidBridge &&
+        typeof window.AndroidBridge.analyzeQuestionImageWithAi === 'function'
+      );
+      if (hasNativeImgAi) return '';
+      try {
+        if (typeof onProgressToast === 'function') {
+          onProgressToast('⏳ इमेज फ़ाइल को Smart Hindi+English OCR से स्कैन किया जा रहा है...');
+        }
+        const Tesseract = await ensureTesseractLoaded();
+        if (Tesseract && typeof Tesseract.recognize === 'function') {
+          const res = await Tesseract.recognize(file, 'hin+eng');
+          const txt = res && res.data && res.data.text ? sanitizeExtractedPdfText(res.data.text) : '';
+          if (txt.trim()) return 'Method: PDF_OCR\nPage: 1\n' + txt;
+        }
+      } catch (_) {}
+      return '';
+    }
 
     if (!isPdf) {
       // Detect UTF-16LE / UTF-16BE BOMs (e.g. Excel "Unicode Text" CSV exports containing Hindi Devanagari)
@@ -4542,6 +4569,7 @@
       if (pdfjsLib && typeof pdfjsLib.getDocument === 'function') {
         const pdfDoc = await openPdfDocumentSafely(pdfjsLib, uint8);
         const pageTexts = [];
+        const backupPageTexts = [];
         for (let p = 1; p <= pdfDoc.numPages; p++) {
           const page = await pdfDoc.getPage(p);
           const viewport = typeof page.getViewport === 'function' ? page.getViewport({ scale: 1.0 }) : null;
@@ -4590,12 +4618,18 @@
             pageLines = assemblePdfItemsIntoLines(rawItems);
           }
 
-          let cleanPage = sanitizeExtractedPdfText(pageLines.filter(Boolean).join('\n'));
+          const rawJoinedPage = pageLines.filter(Boolean).join('\n');
+          let cleanPage = sanitizeExtractedPdfText(rawJoinedPage);
+          const krutiConvertedPage = convertKrutiDevInText(rawJoinedPage).trim();
+          const hasNativePdfVisionBridge = Boolean(
+            window.AndroidBridge &&
+            typeof window.AndroidBridge.analyzePdfPagesWithAi === 'function'
+          );
 
-          // If page text is empty (Scanned PDF) or garbled font/glyph code (missing ToUnicode CMap), run Canvas OCR (hin+eng)
-          if (isExtractedPageGarbledOrEmpty(cleanPage) && p <= 25) {
+          // If page text is empty (Scanned PDF) or garbled font/glyph code, run Canvas OCR (hin+eng) when not using native Android PDF Vision
+          if (isExtractedPageGarbledOrEmpty(cleanPage) && p <= 15 && !hasNativePdfVisionBridge) {
             if (typeof onProgressToast === 'function') {
-              onProgressToast(`⏳ PDF पेज ${p}/${pdfDoc.numPages} में स्कैन/कोडेड फ़ॉन्ट मिला — Smart Hindi+English OCR से पढ़ा जा रहा है...`);
+              onProgressToast(`⏳ PDF पेज ${p}/${pdfDoc.numPages} को Smart Hindi+English OCR से पढ़ा जा रहा है...`);
             }
             const ocrPageText = await renderPdfPageToCanvasAndOcr(page);
             if (ocrPageText && ocrPageText.trim()) {
@@ -4605,10 +4639,17 @@
 
           if (cleanPage && !isExtractedPageGarbledOrEmpty(cleanPage)) {
             pageTexts.push(`Page: ${p}\n${cleanPage}`);
+          } else if (cleanPage && cleanPage.trim().length >= 5) {
+            backupPageTexts.push(`Page: ${p}\n${cleanPage.trim()}`);
+          } else if (krutiConvertedPage && krutiConvertedPage.length >= 5) {
+            backupPageTexts.push(`Page: ${p}\n${krutiConvertedPage}`);
           }
         }
         if (pageTexts.join('\n').trim()) {
           return 'Method: PDF_OCR\n' + pageTexts.join('\n\n');
+        }
+        if (backupPageTexts.join('\n').trim()) {
+          return 'Method: PDF_OCR\n' + backupPageTexts.join('\n\n');
         }
       }
     } catch (pdfErr) {
@@ -4618,7 +4659,7 @@
     // 2. Fallback to native FlateDecode stream decompression + ToUnicode CMap extraction
     try {
       const streamExtracted = await decompressPdfBufferStreams(uint8);
-      if (streamExtracted && streamExtracted.trim() && !isExtractedPageGarbledOrEmpty(streamExtracted)) {
+      if (streamExtracted && streamExtracted.trim()) {
         return 'Method: PDF_OCR\n' + streamExtracted;
       }
     } catch (_) {}
@@ -5067,8 +5108,14 @@
     const questionBlocks = [];
     let currentBlock = null;
     let currentDetectedPage = 1;
+    let pendingStandaloneQNum = null;
 
-    const qStartRegex = /^\s*(?:Q(?:uestion|ues)?\.?\s*|प्रश्न\s*(?:क्र(?:मांक)?\.?)?\s*|प्र\.?\s*)?(?:\(?([0-9\u0966-\u096F]{1,4})\)?\s*[.):\-]|(?:\(([0-9\u0966-\u096F]{1,4})\)))\s*(.+)$/i;
+    // Stage 1A: Standard numbered question start: "1. ...", "Q1. ...", "प्र. 1 ...", "(1) ...", "[1] ...", "प्रश्न 1 ..."
+    const qStartRegex = /^\s*(?:(?:Q(?:uestion|ues)?|प्रश्न\s*(?:क्र(?:मांक)?\.?)?|प्र)\s*[.:\-]?\s*\(?([0-9\u0966-\u096F]{1,4})\)?\s*[.):\-]?\s+(.+)|(?:\(?([0-9\u0966-\u096F]{1,4})\)|\[([0-9\u0966-\u096F]{1,4})\]|([0-9\u0966-\u096F]{1,4})\s*[.):\-])\s*(.+))$/i;
+    // Stage 1B: Standalone question number on its own line: "1.", "Q. 1", "प्रश्न 1", "(1)"
+    const standaloneQNumRegex = /^\s*(?:Q(?:uestion|ues)?\.?\s*|प्रश्न\s*(?:क्र(?:मांक)?\.?)?\s*|प्र\.?\s*)?\(?([0-9\u0966-\u096F]{1,4})\)?\s*[.):\-]?\s*$/i;
+    // Stage 1C: Number + space followed by Hindi/English sentence (not an option line)
+    const spaceQStartRegex = /^\s*([0-9\u0966-\u096F]{1,3})\s+([\u0900-\u097FA-Z][^\n]{8,})$/;
     const pageMarkerRegex = /(?:^|\s)(?:Page|पृष्ठ)\s*[:\-]?\s*([0-9\u0966-\u096F]{1,4})\b/i;
 
     lines.forEach((rawLine, idx) => {
@@ -5079,29 +5126,148 @@
         currentDetectedPage = Number(normalizeDevanagariDigits(pageMatch[1])) || currentDetectedPage;
         return;
       }
-      const qMatch = line.match(qStartRegex);
-      const qNumDigits = qMatch ? normalizeDevanagariDigits(qMatch[1] || qMatch[2] || '') : '';
-      if (qMatch && Number(qNumDigits) > 0) {
-        const qNum = Number(qNumDigits);
+
+      const standaloneMatch = line.match(standaloneQNumRegex);
+      if (standaloneMatch) {
+        const sNum = Number(normalizeDevanagariDigits(standaloneMatch[1] || ''));
+        if (sNum > 0 && sNum <= 500) {
+          pendingStandaloneQNum = { qNum: sNum, rowNumber: idx + 1, pageNumber: currentDetectedPage };
+          return;
+        }
+      }
+
+      if (pendingStandaloneQNum && !/^\s*(?:[([]?[A-Da-dअआइईबसदकखगघ][)\].:\-])/i.test(line)) {
         if (currentBlock) questionBlocks.push(currentBlock);
         currentBlock = {
-          rowNumber: idx + 1,
-          questionNumber: qNum,
-          pageNumber: currentDetectedPage,
-          rawLines: [String(qMatch[3] || '').trim()]
+          rowNumber: pendingStandaloneQNum.rowNumber,
+          questionNumber: pendingStandaloneQNum.qNum,
+          pageNumber: pendingStandaloneQNum.pageNumber,
+          rawLines: [line]
         };
-      } else if (currentBlock) {
+        pendingStandaloneQNum = null;
+        return;
+      }
+      pendingStandaloneQNum = null;
+
+      const qMatch = line.match(qStartRegex);
+      const qNumDigits = qMatch
+        ? normalizeDevanagariDigits(qMatch[1] || qMatch[3] || qMatch[4] || qMatch[5] || '')
+        : '';
+      const qRestText = qMatch ? String(qMatch[2] || qMatch[6] || '').trim() : '';
+
+      if (qMatch && Number(qNumDigits) > 0 && Number(qNumDigits) <= 500 && qRestText) {
+        const qNum = Number(qNumDigits);
+        // Avoid treating "(1) Option..." inside an existing question block as a new question if qNum is 1-4 and currentBlock already has stem
+        const looksLikeSubOption = qNum >= 1 && qNum <= 4 && currentBlock && currentBlock.questionNumber !== qNum - 1 && /^\s*\([1-4\u0967-\u096A]\)/.test(line);
+        if (!looksLikeSubOption) {
+          if (currentBlock) questionBlocks.push(currentBlock);
+          currentBlock = {
+            rowNumber: idx + 1,
+            questionNumber: qNum,
+            pageNumber: currentDetectedPage,
+            rawLines: [qRestText]
+          };
+          return;
+        }
+      }
+
+      const spaceMatch = !qMatch ? line.match(spaceQStartRegex) : null;
+      if (spaceMatch) {
+        const spNum = Number(normalizeDevanagariDigits(spaceMatch[1] || ''));
+        if (spNum > 0 && spNum <= 300 && (!currentBlock || spNum === currentBlock.questionNumber + 1 || spNum === currentBlock.questionNumber)) {
+          if (currentBlock) questionBlocks.push(currentBlock);
+          currentBlock = {
+            rowNumber: idx + 1,
+            questionNumber: spNum,
+            pageNumber: currentDetectedPage,
+            rawLines: [String(spaceMatch[2] || '').trim()]
+          };
+          return;
+        }
+      }
+
+      if (currentBlock) {
         currentBlock.rawLines.push(line);
       }
     });
     if (currentBlock) questionBlocks.push(currentBlock);
+
+    // Stage 2: Option-Cluster Fallback (if PDF had unnumbered questions or custom font hid question numbers)
+    if (questionBlocks.length === 0 && lines.length > 0) {
+      const optStartLineRegex = /(?:^|\s)(?:[([]\s*[A-Da-dअआइईबसदकखगघ1-4]\s*[)\]]|[A-Da-dअआइईबसदकखगघ]\s*[.):\-])\s+\S/i;
+      const optDRegex = /(?:^|\s)(?:[([]\s*[Ddदघ4]\s*[)\]]|[Ddदघ]\s*[.):\-])\s+\S/i;
+      let tempLines = [];
+      let sawOptD = false;
+      let autoQNum = 1;
+      lines.forEach((rawLine, idx) => {
+        const line = rawLine.trim();
+        if (!line || pageMarkerRegex.test(line)) return;
+        const hasOpt = optStartLineRegex.test(line);
+        if (sawOptD && !hasOpt && tempLines.length >= 2) {
+          questionBlocks.push({
+            rowNumber: idx + 1,
+            questionNumber: autoQNum++,
+            pageNumber: 1,
+            rawLines: tempLines.slice()
+          });
+          tempLines = [line];
+          sawOptD = false;
+        } else {
+          tempLines.push(line);
+          if (optDRegex.test(line)) sawOptD = true;
+        }
+      });
+      if (tempLines.length > 0 && sawOptD) {
+        questionBlocks.push({
+          rowNumber: lines.length,
+          questionNumber: autoQNum++,
+          pageNumber: 1,
+          rawLines: tempLines
+        });
+      }
+    }
+
+    // Stage 3: Question-Mark / Paragraph Fallback so a non-empty file NEVER returns 0 questions
+    if (questionBlocks.length === 0 && lines.length > 0) {
+      const meaningfulLines = lines.filter((l) => l.length > 3 && !pageMarkerRegex.test(l));
+      let chunk = [];
+      let autoQNum = 1;
+      meaningfulLines.forEach((line, idx) => {
+        chunk.push(line);
+        if (/[?？।]$/.test(line) && chunk.length >= 2) {
+          questionBlocks.push({
+            rowNumber: idx + 1,
+            questionNumber: autoQNum++,
+            pageNumber: 1,
+            rawLines: chunk.slice()
+          });
+          chunk = [];
+        } else if (chunk.length >= 5) {
+          questionBlocks.push({
+            rowNumber: idx + 1,
+            questionNumber: autoQNum++,
+            pageNumber: 1,
+            rawLines: chunk.slice()
+          });
+          chunk = [];
+        }
+      });
+      if (chunk.length > 0) {
+        questionBlocks.push({
+          rowNumber: meaningfulLines.length,
+          questionNumber: autoQNum++,
+          pageNumber: 1,
+          rawLines: chunk
+        });
+      }
+    }
 
     if (questionBlocks.length === 0) {
       structureErrors.push({
         rowNumber: 1,
         questionNumber: '-',
         errorType: 'No Numbered Questions Found in PDF',
-        reason: 'Could not detect numbered questions (e.g., "1. प्रश्न...", "प्र. 1 ...", "Q1. ...") in the uploaded PDF.'
+        reason: 'Could not detect numbered questions in the uploaded PDF.'
       });
       return {
         fileType: 'PDF',
@@ -6928,6 +7094,72 @@ Return ONLY a JSON array of objects:
       }
     }
 
+    // Secondary PDF Canvas Page-to-Image Vision + Forced OCR Fallback if both AI & initial text pass returned 0 items
+    if (aiExtractedItems.length === 0 && localRows.length === 0 && isPdfFile && questionFile) {
+      try {
+        const pdfjsLib = await ensurePdfJsLoaded();
+        if (pdfjsLib && typeof pdfjsLib.getDocument === 'function') {
+          const ab = await new Promise((res, rej) => {
+            const r = new FileReader();
+            r.onload = () => res(r.result);
+            r.onerror = (e) => rej(e);
+            r.readAsArrayBuffer(questionFile);
+          });
+          if (ab) {
+            const pdfDoc = await openPdfDocumentSafely(pdfjsLib, new Uint8Array(ab));
+            const maxFallbackPages = Math.min(pdfDoc.numPages || 1, 10);
+            const ocrCollectedPages = [];
+            for (let p = 1; p <= maxFallbackPages; p++) {
+              const page = await pdfDoc.getPage(p);
+              if (hasAiBridge && typeof window.AndroidBridge.analyzeQuestionImageWithAi === 'function') {
+                if (onProgress) {
+                  onProgress(`🤖 पेज ${p}/${maxFallbackPages} को हाई-रेज़ोल्यूशन इमेज बनाकर AI Vision से स्कैन किया जा रहा है...`);
+                }
+                try {
+                  const vp = page.getViewport({ scale: 1.8 });
+                  const cnv = document.createElement('canvas');
+                  cnv.width = Math.max(1, Math.floor(vp.width));
+                  cnv.height = Math.max(1, Math.floor(vp.height));
+                  const ctx = cnv.getContext('2d');
+                  ctx.fillStyle = '#FFFFFF';
+                  ctx.fillRect(0, 0, cnv.width, cnv.height);
+                  await page.render({ canvasContext: ctx, viewport: vp }).promise;
+                  const jpegUrl = cnv.toDataURL('image/jpeg', 0.85);
+                  const aiRes = await callAndroidAiBridge(buildVisionExtractionPrompt(`Page ${p}`), jpegUrl);
+                  const arr = parseAiJsonArraySafely(aiRes);
+                  if (arr.length > 0) {
+                    aiExtractedItems.push(...arr);
+                    continue;
+                  }
+                } catch (_cnvAiErr) {}
+              }
+              if (onProgress) {
+                onProgress(`⏳ पेज ${p}/${maxFallbackPages} को Smart Hindi+English OCR से पढ़ा जा रहा है...`);
+              }
+              const ocrTxt = await renderPdfPageToCanvasAndOcr(page);
+              if (ocrTxt && ocrTxt.trim()) {
+                ocrCollectedPages.push(`Page: ${p}\n${ocrTxt.trim()}`);
+              }
+            }
+            if (aiExtractedItems.length === 0 && ocrCollectedPages.length > 0) {
+              const reParsed = parseRawImportFile(
+                'Method: PDF_OCR\n' + ocrCollectedPages.join('\n\n'),
+                fileName || 'questions.pdf',
+                answerKeyText || '',
+                paperSetCode || 'A',
+                paperSetCode || 'A'
+              );
+              if (Array.isArray(reParsed.rows) && reParsed.rows.length > 0) {
+                localRows.push(...reParsed.rows);
+              }
+            }
+          }
+        }
+      } catch (fbErr) {
+        console.warn('Secondary PDF canvas fallback error:', fbErr);
+      }
+    }
+
     const sourceList = aiExtractedItems.length > 0 ? aiExtractedItems : localRows;
     const allExamCodes = ['ALL', ...catalog.examCategories.map((e) => e.code)];
     const nowIso = new Date().toISOString();
@@ -8259,8 +8491,9 @@ Return ONLY a JSON array of objects:
           const lbl = document.getElementById('qbSelectedQPFileLabel');
           if (lbl) {
             lbl.style.color = 'var(--success)';
-            lbl.textContent = `📄 चुना गया: ${nav.selectedQuestionFile.name}`;
+            lbl.textContent = `✅ अपलोड हो गया (चुना गया): ${nav.selectedQuestionFile.name}`;
           }
+          api.toast(`📄 प्रश्न-पत्र फ़ाइल (${nav.selectedQuestionFile.name}) अपलोड हो गई!`);
         }
       };
     }
@@ -8270,15 +8503,22 @@ Return ONLY a JSON array of objects:
       akFileInp.onchange = async () => {
         if (akFileInp.files && akFileInp.files[0]) {
           nav.selectedAnswerKeyFile = akFileInp.files[0];
+          const akLbl = document.getElementById('qbSelectedAKFileLabel');
+          if (akLbl) {
+            akLbl.style.color = 'var(--success)';
+            akLbl.textContent = `✅ अपलोड हो गया (चुना गया): ${nav.selectedAnswerKeyFile.name}`;
+          }
+          api.toast(`🔑 उत्तर कुंजी फ़ाइल (${nav.selectedAnswerKeyFile.name}) अपलोड हो गई!`);
           try {
             const cleanAk = await extractAnswerKeyWithAiFallback(
               nav.selectedAnswerKeyFile,
               nav.paperSetCode || 'A'
             );
-            qbState.pendingAnswerKeyText = cleanAk;
-            const akTxtInp = document.getElementById('qbAiAnswerKeyTextInput');
-            if (akTxtInp) akTxtInp.value = cleanAk;
-            api.toast(`🔑 उत्तर कुंजी फ़ाइल (${nav.selectedAnswerKeyFile.name}) लोड हो गई!`);
+            if (cleanAk) {
+              qbState.pendingAnswerKeyText = cleanAk;
+              const akTxtInp = document.getElementById('qbAiAnswerKeyTextInput');
+              if (akTxtInp) akTxtInp.value = cleanAk;
+            }
           } catch (e) {
             console.warn('Answer key read error:', e);
           }

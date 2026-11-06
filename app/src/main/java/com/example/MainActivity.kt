@@ -221,21 +221,11 @@ class CgpediaAndroidBridge(private val activity: Activity) {
                     }
                 }
 
-                val model = Firebase.ai.generativeModel(
-                    modelName = "gemini-3.8-flash",
-                    generationConfig = generationConfig {
-                        responseMimeType = "application/json"
-                        temperature = 0.1f
-                    }
-                )
                 val inputContent = content {
                     bitmaps.forEach { bmp -> image(bmp) }
                     text(promptText)
                 }
-                val response = withTimeout(90_000L) {
-                    model.generateContent(inputContent)
-                }
-                val jsonOut = response.text.orEmpty()
+                val jsonOut = generateWithModelFallback(inputContent, 90_000L)
                 deliverResultToWeb(callbackId, true, jsonOut)
             } catch (e: Exception) {
                 deliverResultToWeb(callbackId, false, e.message ?: "PDF Vision AI error")
@@ -253,17 +243,10 @@ class CgpediaAndroidBridge(private val activity: Activity) {
     fun analyzeQuestionsWithAi(promptText: String, callbackId: String) {
         ioScope.launch {
             try {
-                val model = Firebase.ai.generativeModel(
-                    modelName = "gemini-3.8-flash",
-                    generationConfig = generationConfig {
-                        responseMimeType = "application/json"
-                        temperature = 0.1f
-                    }
-                )
-                val response = withTimeout(75_000L) {
-                    model.generateContent(promptText)
+                val inputContent = content {
+                    text(promptText)
                 }
-                val jsonOut = response.text.orEmpty()
+                val jsonOut = generateWithModelFallback(inputContent, 75_000L)
                 deliverResultToWeb(callbackId, true, jsonOut)
             } catch (e: Exception) {
                 deliverResultToWeb(callbackId, false, e.message ?: "AI scan error")
@@ -279,26 +262,45 @@ class CgpediaAndroidBridge(private val activity: Activity) {
                 val bytes = Base64.decode(cleanBase64, Base64.DEFAULT)
                 val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
                     ?: throw IllegalArgumentException("Could not decode image bytes")
-                val model = Firebase.ai.generativeModel(
-                    modelName = "gemini-3.8-flash",
-                    generationConfig = generationConfig {
-                        responseMimeType = "application/json"
-                        temperature = 0.1f
-                    }
-                )
                 val inputContent = content {
                     image(bitmap)
                     text(promptText)
                 }
-                val response = withTimeout(75_000L) {
-                    model.generateContent(inputContent)
-                }
-                val jsonOut = response.text.orEmpty()
+                val jsonOut = generateWithModelFallback(inputContent, 75_000L)
                 deliverResultToWeb(callbackId, true, jsonOut)
             } catch (e: Exception) {
                 deliverResultToWeb(callbackId, false, e.message ?: "AI image scan error")
             }
         }
+    }
+
+    private suspend fun generateWithModelFallback(
+        inputContent: com.google.firebase.ai.type.Content,
+        timeoutMs: Long
+    ): String {
+        val candidateModels = listOf("gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.0-flash")
+        var lastError: Exception? = null
+        for (modelId in candidateModels) {
+            try {
+                val model = Firebase.ai.generativeModel(
+                    modelName = modelId,
+                    generationConfig = generationConfig {
+                        responseMimeType = "application/json"
+                        temperature = 0.1f
+                    }
+                )
+                val response = withTimeout(timeoutMs) {
+                    model.generateContent(inputContent)
+                }
+                val txt = response.text.orEmpty().trim()
+                if (txt.isNotEmpty()) {
+                    return txt
+                }
+            } catch (e: Exception) {
+                lastError = e
+            }
+        }
+        throw (lastError ?: IllegalStateException("All Gemini models failed"))
     }
 
     private fun deliverResultToWeb(callbackId: String, ok: Boolean, payload: String) {

@@ -1,41 +1,40 @@
-# Implementation Plan: Native PDF Page-to-Image AI Vision Scanner & Optional Answer Key (Question Bank Only)
+# प्रश्न बैंक (Question Bank) — Answer Key Upload Indicator & AI/PDF Question Extraction Fix
 
-## 1. Root Cause Analysis (Why AI Had Trouble Reading Some PDFs)
-1. **Scanned & Custom-Font PDFs Dropped Before Reaching AI:**
-   - Previously, when a PDF was scanned (image-only) or used non-Unicode Hindi fonts (like KrutiDev/Chanakya/DevLys without a Unicode CMap), browser text extraction produced empty or garbled text and dropped those pages instead of sending the visual page images to Gemini Vision.
-2. **Native Android PDF-to-Image Vision Bridge Missing:**
-   - Android provides native `android.graphics.pdf.PdfRenderer` which can render every PDF page directly into a crisp `Bitmap` image offline without relying on external CDN scripts (`pdf.js` / `tesseract.js`), and pass those page images straight into **Firebase AI Logic (`gemini-3.8-flash` multimodal vision)**.
-3. **JSON Wrapping & Inline Answer Handling:**
-   - Gemini responses occasionally wrap JSON arrays inside markdown fences (`` ```json ... ``` ``) or `{ "questions": [...] }` objects, and papers that already contain answers inside the Question Paper (inline `उत्तर: (A)` / ticked option / answer table at the end) needed first-class support without requiring a separate Answer Key file.
+## 1. समस्या का सटीक कारण (Root Cause Analysis)
 
----
+यह समस्या आपके सिस्टम या नेटवर्क की नहीं है, बल्कि ऐप के **Question Bank (`प्रश्न बैंक`)** सेक्शन में इन 2 तकनीकी कारणों से हो रही थी:
 
-## 2. Targeted Fixes (Strictly Inside Question Bank Only)
+1. **बॉक्स 2 (`2️⃣ उत्तर कुंजी`) में "अपलोड हो गया" क्यों नहीं दिख रहा था:**
+   - बॉक्स 1 (`1️⃣ प्रश्न-पत्र फ़ाइल`) के नीचे `<div id="qbSelectedQPFileLabel">` लगा था जो फ़ाइल चुनते ही हरे रंग में `📄 चुना गया: ...` दिखाता था।
+   - लेकिन बॉक्स 2 (`2️⃣ उत्तर कुंजी`) में ऐसा कोई स्टेटस लेबल (`<div id="qbSelectedAKFileLabel">`) नहीं लगा था, और फ़ाइल चुनते ही कोड बैकग्राउंड में बिना कोई मैसेज दिखाए पूरा PDF पढ़ने लगता था।
 
-### A. Native Android `PdfRenderer` + Gemini Multimodal Vision (`MainActivity.kt`)
-- Add `@JavascriptInterface fun analyzePdfPagesWithAi(base64PdfData: String, promptText: String, startPage: Int, endPage: Int, callbackId: String)` to `CgpediaAndroidBridge` in `/app/src/main/java/com/example/MainActivity.kt`:
-  - Decodes the uploaded PDF bytes into a temporary cache file and opens it with Android's native **`android.graphics.pdf.PdfRenderer`**.
-  - Renders each page in the batch (e.g., 2–3 pages per batch at high-clarity scale) into a `Bitmap` with a white background.
-  - Passes all page `Bitmap`s + the structured extraction prompt directly to **`Firebase.ai.generativeModel("gemini-3.8-flash")`** using `content { image(pageBitmap1); image(pageBitmap2); text(promptText) }`.
-  - Strips any markdown code fences (` ```json `) and returns clean JSON to the WebView.
-
-### B. Canvas Page-to-Image Vision Fallback + Robust JSON Parser (`admin-console.js`)
-- In `/admin-console.js`:
-  - Add a bullet-proof `parseAiJsonArraySafely(rawStr)` helper that strips markdown fences, extracts `[...]` or `{ questions: [...] }`, and never fails on formatting variations.
-  - Update `scanAndCategorizeWithAiOrFallback`:
-    1. **Primary Path for PDFs on Android:** Sends the PDF in page batches (e.g. pages 1–3, 4–6, ...) directly to `window.AndroidBridge.analyzePdfPagesWithAi(...)` so **Gemini 3.8 Flash Vision visually reads every page** (Hindi + English text, KrutiDev/scanned fonts, 2-column layouts, options A–D, and any inline/highlighted answers).
-    2. **Secondary Path (PDF.js Canvas to Image Vision):** If `pdf.js` is active, renders PDF pages to `<canvas>` JPEG data URLs and sends them to `analyzeQuestionImageWithAi`.
-    3. **Enhanced Local Parser Fallback:** Also improves `extractTextFromUploadedFile` and `parsePdfOcrAndMatchAnswerKey` so inline answers (`उत्तर: (A)`, `Ans: B`, `[✓]`, `सही उत्तर: विकल्प C`) inside the Question Paper are automatically extracted even offline.
-
-### C. Answer Key File Made 100% Optional (`वैकल्पिक — जरूरी नहीं है`)
-- Update the Question Bank upload UI label & workflow in `renderQuestionBankManagementV2`:
-  - Clearly label Box 2 as **`2️⃣ उत्तर कुंजी फ़ाइल (वैकल्पिक / Optional — यदि प्रश्न-पत्र में उत्तर नहीं हैं)`**.
-  - Priority order for determining the correct option (`A / B / C / D`) for every question:
-    1. **Separate Answer Key File / Pasted Key** (if uploaded by Admin).
-    2. **Answer Present Inside the Question Paper Itself** (inline `उत्तर / Ans`, bold/ticked option, or answer table at the end of the Question Paper).
-    3. **AI Auto-Solve** (if no answer is given anywhere, Gemini AI solves the question and sets the accurate option + bilingual explanation).
+2. **AI स्कैन करने पर `"⚠️ फ़ाइल में कोई प्रश्न नहीं मिला"` क्यों बोल रहा था (Android और Web Browser दोनों में):**
+   - **Web Browser में:** ब्राउज़र में `AndroidBridge` नहीं होता, और जब PDF में कस्टम हिन्दी फ़ॉन्ट (KrutiDev/DevLys) या Scanned पेज होता था, तो `isExtractedPageGarbledOrEmpty()` उस पूरे पेज के टेक्स्ट को हटा देता था (`pageTexts = []`)।
+   - **Question Regex की सख्ती:** लोकल पार्सर केवल एक ही लाइन में लिखे `1. प्रश्न...` को पकड़ता था। यदि PDF में प्रश्न संख्या (`1.` या `प्र. 1` या `Q1`) अलग लाइन पर हो, या बिना डॉट के हो, या केवल `(A) (B) (C) (D)` विकल्प हों, तो वह `0 प्रश्न` लौटा देता था।
+   - **Android App में:** बैकएंड पर `ai_logic` प्रोविज़निंग और मॉडल फ़ॉलबैक (`gemini-3.8-flash` → `gemini-2.5-flash`) न होने पर AI कॉल की त्रुटि दब जाती थी।
 
 ---
 
-## 3. Strict Scope Guarantee
-- Only `/app/src/main/java/com/example/MainActivity.kt` (AI bridge) and the Question Bank section in `/admin-console.js` will be modified. No other screens, tabs, or features will be changed.
+## 2. प्रस्तावित सुधार (Strictly in Question Bank Section Only)
+
+### सुधार 1: दोनों फ़ाइल बॉक्स में तुरंत हरा `"✅ अपलोड हो गया: <फ़ाइल का नाम>"` कन्फर्मेशन (`admin-console.js`)
+- **बॉक्स 1 (`1️⃣ प्रश्न-पत्र फ़ाइल`):** फ़ाइल चुनते ही तुरंत हरे रंग में `✅ अपलोड हो गया: <filename>` दिखेगा।
+- **बॉक्स 2 (`2️⃣ उत्तर कुंजी — वैकल्पिक`):** ठीक पहली फ़ाइल की तरह बॉक्स 2 में भी `<div id="qbSelectedAKFileLabel">` जोड़ा जाएगा। जैसे ही आप उत्तर कुंजी फ़ाइल चुनेंगे, तुरंत हरे रंग में **`✅ अपलोड हो गया: <filename>`** साफ़ दिखाई देगा।
+
+### सुधार 2: Android + Web Browser दोनों में 100% प्रश्न निकालने वाला 4-स्तरीय इंजन (`admin-console.js` & `MainActivity.kt`)
+1. **Android AI Vision + Multi-Model Fallback (`MainActivity.kt`):**
+   - Firebase `ai_logic` प्रोविज़न किया जाएगा और `MainActivity.kt` में `gemini-3.8-flash` के साथ ऑटोमैटिक मॉडल फ़ॉलबैक जोड़ा जाएगा ताकि PDF पेज की इमेज सीधे स्कैन हो सके।
+2. **PDF टेक्स्ट और Canvas OCR सुरक्षित रखना (`extractTextFromUploadedFile`):**
+   - किसी भी PDF पेज को `isExtractedPageGarbledOrEmpty` के कारण डिलीट नहीं किया जाएगा — यदि पेज में कस्टम फ़ॉन्ट या कम टेक्स्ट है, तो उसे KrutiDev-to-Unicode कन्वर्टर और Canvas OCR दोनों से गुजार कर सुरक्षित रखा जाएगा।
+3. **स्मार्ट 4-स्टेज प्रश्न डिटेक्टर (`parsePdfOcrAndMatchAnswerKey`):**
+   - **Stage A:** सभी प्रकार के प्रश्न नंबर (`1.`, `Q.1`, `प्र. 1`, `प्रश्न 1`, `(1)`) चाहे प्रश्न अगली लाइन पर ही क्यों न हो।
+   - **Stage B (Option-Anchored Detection):** यदि PDF में प्रश्न नंबर साफ़ न हों, तो जहाँ-जहाँ `(A)...(B)...(C)...(D)` या `(अ)...(ब)...(स)...(द)` या `(1)...(2)...(3)...(4)` विकल्प मिलेंगे, वहाँ से अपने-आप प्रश्न और चारों विकल्प अलग कर लिए जाएँगे।
+   - **Stage C (Fallback Block Extraction):** यदि PDF में साधारण पैराग्राफ या वन-लाइनर प्रश्न हैं, तब भी उन्हें प्रश्न-उत्तर के रूप में निकाला जाएगा ताकि कभी भी `"फ़ाइल में कोई प्रश्न नहीं मिला"` की समस्या न आए।
+4. **उत्तर कुंजी मिलान या स्वतः उत्तर पहचान:**
+   - यदि दूसरी फ़ाइल (Answer Key) अपलोड की गई है, तो उससे सटीक मिलान होगा; और यदि नहीं की गई है, तो पेपर में दिए गए उत्तर (`उत्तर:`, `Ans:`, `✓`) या AI/स्मार्ट सॉल्वर से सही विकल्प तय होकर सीधे **Subject → Topic फ़ोल्डर** में सेव होगा।
+
+---
+
+## 3. सत्यापन (Verification Plan)
+1. `node --check admin-console.js` और `node build-web.js` चलाकर Web और Android दोनों के एसेट्स सिंक करना।
+2. `compile_applet` चलाकर Android APK बिल्ड का सत्यापन करना।
