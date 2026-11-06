@@ -2238,6 +2238,9 @@
   const qbState = {
     previewSession: null,
     lastImportReport: null,
+    pendingAnswerKeyText: '',
+    lastUploadedFileName: '',
+    lastAnswerKeyFileName: '',
     categoryManagerOpen: false,
     categoryManagerTab: 'exams',
     filters: {
@@ -3628,45 +3631,213 @@
     question_id: 'questionId'
   };
 
+  function decodePdfEscapedLiteral(raw) {
+    return String(raw || '')
+      .replace(/\\n/g, '\n')
+      .replace(/\\r/g, '\r')
+      .replace(/\\t/g, ' ')
+      .replace(/\\\(/g, '(')
+      .replace(/\\\)/g, ')')
+      .replace(/\\\\/g, '\\')
+      .replace(/\\([0-7]{1,3})/g, (_, oct) => String.fromCharCode(parseInt(oct, 8)));
+  }
+
+  function extractTextOperatorsFromPdfChunk(chunkStr) {
+    const out = [];
+    const tjRegex = /\(([^()\\]*(?:\\.[^()\\]*)*)\)\s*(?:Tj|'|")/g;
+    let m;
+    while ((m = tjRegex.exec(chunkStr)) !== null) {
+      const dec = decodePdfEscapedLiteral(m[1]).trim();
+      if (dec) out.push(dec);
+    }
+    const tjArrRegex = /\[((?:[^[\]]|\([^()\\]*(?:\\.[^()\\]*)*\))*)\]\s*TJ/gi;
+    while ((m = tjArrRegex.exec(chunkStr)) !== null) {
+      const inner = m[1];
+      const strParts = [];
+      const litRegex = /\(([^()\\]*(?:\\.[^()\\]*)*)\)/g;
+      let lm;
+      while ((lm = litRegex.exec(inner)) !== null) {
+        strParts.push(decodePdfEscapedLiteral(lm[1]));
+      }
+      const joined = strParts.join('').trim();
+      if (joined) out.push(joined);
+    }
+    if (out.length === 0) {
+      const fallbackLit = /\(([^()\\]*(?:\\.[^()\\]*)*)\)/g;
+      while ((m = fallbackLit.exec(chunkStr)) !== null) {
+        const dec = decodePdfEscapedLiteral(m[1]).trim();
+        if (dec) out.push(dec);
+      }
+    }
+    return out.join('\n');
+  }
+
   function extractReadableTextFromPdfStream(rawContent) {
     const str = String(rawContent || '');
     if (!str.trim()) return '';
     if (!str.includes('%PDF-')) {
-      return str;
+      return str.replace(/^Method:\s*PDF_OCR\s*\r?\n?/i, '');
     }
-    const extractedChunks = [];
-    const tjLineRegex = /\(([^\r\n]+)\)\s*(?:Tj|'|")/g;
-    let m;
-    while ((m = tjLineRegex.exec(str)) !== null) {
-      const decoded = m[1]
-        .replace(/\\n/g, '\n')
-        .replace(/\\r/g, '\r')
-        .replace(/\\t/g, ' ')
-        .replace(/\\\(/g, '(')
-        .replace(/\\\)/g, ')')
-        .replace(/\\\\/g, '\\');
-      if (decoded.trim()) extractedChunks.push(decoded);
-    }
-    if (extractedChunks.length === 0) {
-      const literalRegex = /\(([^()\\]*(?:\\.[^()\\]*)*)\)\s*(?:Tj|'|")?/g;
-      while ((m = literalRegex.exec(str)) !== null) {
-        const decoded = m[1]
-          .replace(/\\n/g, '\n')
-          .replace(/\\r/g, '\r')
-          .replace(/\\t/g, ' ')
-          .replace(/\\\(/g, '(')
-          .replace(/\\\)/g, ')')
-          .replace(/\\\\/g, '\\');
-        if (decoded.trim()) extractedChunks.push(decoded);
-      }
-    }
-    if (extractedChunks.length > 0) {
-      return extractedChunks.join('\n');
+    const extracted = extractTextOperatorsFromPdfChunk(str);
+    if (extracted.trim()) {
+      return extracted;
     }
     return str
       .replace(/^%PDF-[^\n]*$/gm, '')
       .replace(/\b(?:obj|endobj|stream|endstream|xref|trailer|startxref)\b/g, '\n')
       .replace(/[^\p{L}\p{N}\p{P}\p{Z}\n\r]/gu, ' ');
+  }
+
+  let pdfJsLoaderPromise = null;
+  function ensurePdfJsLoaded() {
+    if (typeof window !== 'undefined' && window.pdfjsLib) {
+      return Promise.resolve(window.pdfjsLib);
+    }
+    if (typeof document === 'undefined' || typeof document.createElement !== 'function') {
+      return Promise.resolve(null);
+    }
+    if (pdfJsLoaderPromise) return pdfJsLoaderPromise;
+    pdfJsLoaderPromise = new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(null), 4500);
+      const script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+      script.async = true;
+      script.onload = () => {
+        clearTimeout(timer);
+        if (window.pdfjsLib && window.pdfjsLib.GlobalWorkerOptions) {
+          window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+        resolve(window.pdfjsLib || null);
+      };
+      script.onerror = () => {
+        clearTimeout(timer);
+        resolve(null);
+      };
+      if (document.head) document.head.appendChild(script);
+      else resolve(null);
+    });
+    return pdfJsLoaderPromise;
+  }
+
+  async function decompressPdfBufferStreams(uint8) {
+    const latin1 = new TextDecoder('latin1').decode(uint8);
+    if (!latin1.includes('%PDF-')) {
+      return new TextDecoder('utf-8', { fatal: false }).decode(uint8);
+    }
+    const collectedPages = [];
+    const directText = extractTextOperatorsFromPdfChunk(latin1);
+    if (directText.trim()) {
+      collectedPages.push(directText);
+    }
+    if (typeof DecompressionStream === 'function') {
+      const streamRegex = /stream\r?\n/g;
+      let match;
+      while ((match = streamRegex.exec(latin1)) !== null) {
+        const startOffset = match.index + match[0].length;
+        const endIdx = latin1.indexOf('endstream', startOffset);
+        if (endIdx === -1) break;
+        let endOffset = endIdx;
+        if (latin1[endOffset - 1] === '\n') endOffset -= 1;
+        if (latin1[endOffset - 1] === '\r') endOffset -= 1;
+        if (endOffset <= startOffset || (endOffset - startOffset) > 5 * 1024 * 1024) continue;
+        const slice = uint8.subarray(startOffset, endOffset);
+        for (const fmt of ['deflate', 'deflate-raw']) {
+          try {
+            const ds = new DecompressionStream(fmt);
+            const writer = ds.writable.getWriter();
+            writer.write(slice).catch(() => {});
+            writer.close().catch(() => {});
+            const decompressedBuf = await new Response(ds.readable).arrayBuffer();
+            const decompressedStr = new TextDecoder('utf-8', { fatal: false }).decode(decompressedBuf);
+            const parsedChunk = extractTextOperatorsFromPdfChunk(decompressedStr);
+            if (parsedChunk.trim()) {
+              collectedPages.push(parsedChunk);
+              break;
+            }
+          } catch (_) {}
+        }
+      }
+    }
+    return collectedPages.join('\n');
+  }
+
+  async function extractTextFromUploadedFile(file) {
+    if (!file) return '';
+    const fileName = String(file.name || '').toLowerCase();
+    const isPdf = fileName.endsWith('.pdf') || String(file.type || '').toLowerCase() === 'application/pdf';
+
+    if (!isPdf) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => resolve(String((ev && ev.target && ev.target.result) || ''));
+        reader.onerror = () => reject(new Error('Failed to read text file.'));
+        reader.readAsText(file, 'UTF-8');
+      });
+    }
+
+    const arrayBuffer = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (ev) => resolve(ev && ev.target ? ev.target.result : null);
+      reader.onerror = () => reject(new Error('Failed to read PDF file.'));
+      reader.readAsArrayBuffer(file);
+    });
+
+    if (!arrayBuffer) return 'Method: PDF_OCR\n';
+    const uint8 = new Uint8Array(arrayBuffer);
+
+    // 1. Try PDF.js page-by-page extraction if available
+    try {
+      const pdfjsLib = await ensurePdfJsLoaded();
+      if (pdfjsLib && typeof pdfjsLib.getDocument === 'function') {
+        const loadingTask = pdfjsLib.getDocument({ data: uint8.slice(0) });
+        const pdfDoc = await loadingTask.promise;
+        const pageTexts = [];
+        for (let p = 1; p <= pdfDoc.numPages; p++) {
+          const page = await pdfDoc.getPage(p);
+          const textContent = await page.getTextContent();
+          const lines = [];
+          let currentLine = [];
+          let lastY = null;
+          (textContent.items || []).forEach((item) => {
+            const str = String(item.str || '');
+            const y = item.transform ? Math.round(item.transform[5]) : null;
+            if (lastY !== null && y !== null && Math.abs(y - lastY) > 4) {
+              if (currentLine.length > 0) lines.push(currentLine.join(' ').trim());
+              currentLine = [str];
+            } else {
+              currentLine.push(str);
+            }
+            if (item.hasEOL) {
+              if (currentLine.length > 0) lines.push(currentLine.join(' ').trim());
+              currentLine = [];
+              lastY = null;
+            } else {
+              lastY = y;
+            }
+          });
+          if (currentLine.length > 0) lines.push(currentLine.join(' ').trim());
+          const cleanPage = lines.filter(Boolean).join('\n');
+          if (cleanPage) {
+            pageTexts.push(`Page: ${p}\n${cleanPage}`);
+          }
+        }
+        if (pageTexts.join('\n').trim()) {
+          return 'Method: PDF_OCR\n' + pageTexts.join('\n\n');
+        }
+      }
+    } catch (_) {}
+
+    // 2. Fallback to native FlateDecode stream decompression + literal operator extraction
+    try {
+      const streamExtracted = await decompressPdfBufferStreams(uint8);
+      if (streamExtracted && streamExtracted.trim()) {
+        return 'Method: PDF_OCR\n' + streamExtracted;
+      }
+    } catch (_) {}
+
+    // 3. Final fallback to plain text decoding
+    const rawUtf8 = new TextDecoder('utf-8', { fatal: false }).decode(uint8);
+    return 'Method: PDF_OCR\n' + extractReadableTextFromPdfStream(rawUtf8);
   }
 
   function parseMultiSetAnswerKeyFromPdf(answerKeyText, preferredSetCode) {
@@ -4210,9 +4381,11 @@
       dataStartIdx = 1;
       const unrecognizedCols = [];
       columnKeys = firstRowCells.map((rawCol) => {
-        const normalizedKey = String(rawCol || '').trim().toLowerCase();
-        const mapped = KNOWN_CSV_COLUMN_MAP[normalizedKey];
-        if (!mapped && normalizedKey) {
+        const cleanCol = String(rawCol || '').trim().toLowerCase();
+        const snakeKey = cleanCol.replace(/[\s\-]+/g, '_');
+        const compactKey = cleanCol.replace(/[\s\-_]+/g, '');
+        const mapped = KNOWN_CSV_COLUMN_MAP[cleanCol] || KNOWN_CSV_COLUMN_MAP[snakeKey] || KNOWN_CSV_COLUMN_MAP[compactKey];
+        if (!mapped && cleanCol && !['qno', 'q_no', 'sno', 's_no', 'srno', 'serial'].includes(compactKey)) {
           unrecognizedCols.push(rawCol);
         }
         return mapped || null;
@@ -4241,6 +4414,13 @@
           reason: `CSV header row is missing required columns: ${missingRequiredHeaders.join(', ')}.`
         });
       }
+    } else if (firstRowCells.length >= 6 && firstRowCells.length <= 10) {
+      // Compact positional CSV (single-language 6-to-10 column format)
+      columnKeys = [
+        'questionHi',
+        'optA_Hi', 'optB_Hi', 'optC_Hi', 'optD_Hi',
+        'correctIndex', 'explanationHi', 'subjectTag', 'examCode', 'topic'
+      ];
     } else {
       // Positional fallback: legacy 14-column format + optional columns
       columnKeys = [
@@ -4265,7 +4445,8 @@
         }
       });
 
-      const missingColumnCount = cells.length < 11;
+      const minRequiredCells = looksLikeHeader ? Math.min(6, columnKeys.filter(Boolean).length) : 6;
+      const missingColumnCount = cells.length < minRequiredCells;
       const parsedExamIds = mappedData.examIds
         ? String(mappedData.examIds).split(/[;|,]/).map((e) => e.trim()).filter(Boolean)
         : [];
@@ -4475,12 +4656,18 @@
         });
       }
 
-      const qHi = String(item.questionHi || '').trim();
-      const qEn = String(item.questionEn || '').trim();
-      const optsHi = Array.isArray(item.optionsHi) ? item.optionsHi.map((o) => String(o || '').trim()) : ['', '', '', ''];
-      const optsEn = Array.isArray(item.optionsEn) ? item.optionsEn.map((o) => String(o || '').trim()) : ['', '', '', ''];
-      const expHi = String(item.explanationHi || '').trim();
-      const expEn = String(item.explanationEn || '').trim();
+      const rawQHi = String(item.questionHi || '').trim();
+      const rawQEn = String(item.questionEn || '').trim();
+      const qHi = rawQHi || rawQEn;
+      const qEn = rawQEn || rawQHi;
+
+      const rawOptsHi = Array.isArray(item.optionsHi) ? item.optionsHi.map((o) => String(o || '').trim()) : ['', '', '', ''];
+      const rawOptsEn = Array.isArray(item.optionsEn) ? item.optionsEn.map((o) => String(o || '').trim()) : ['', '', '', ''];
+      const optsHi = [0, 1, 2, 3].map((i) => rawOptsHi[i] || rawOptsEn[i] || '');
+      const optsEn = [0, 1, 2, 3].map((i) => rawOptsEn[i] || rawOptsHi[i] || '');
+
+      const rawExpHi = String(item.explanationHi || '').trim();
+      const rawExpEn = String(item.explanationEn || '').trim();
 
       const isPdfWithAutoCat = fileType === 'PDF' && !(batchDefaults && batchDefaults.overrideAll);
 
@@ -4539,6 +4726,11 @@
         subtopic: effectiveSubtopic
       });
 
+      const idxCheck = parseCorrectIndexValue(item.rawCorrectIndex);
+      const corrLetter = idxCheck.valid ? ['A', 'B', 'C', 'D'][idxCheck.index] : 'A';
+      const expHi = rawExpHi || rawExpEn || (idxCheck.valid ? `सही उत्तर विकल्प ${corrLetter} है।` : '');
+      const expEn = rawExpEn || rawExpHi || (idxCheck.valid ? `Correct answer is Option ${corrLetter}.` : '');
+
       // 1. Check empty record
       const isCompletelyEmpty = !qHi && !qEn && optsHi.every((o) => !o) && optsEn.every((o) => !o);
       if (isCompletelyEmpty) {
@@ -4550,37 +4742,26 @@
         });
       } else {
         // 2. Check missing Hindi or English question text
-        if (!qHi && !qEn) {
+        if (!rawQHi && !rawQEn) {
           errors.push({
             rowNumber,
             questionNumber,
             errorType: 'Missing Question Text',
             reason: 'Both Hindi (questionHi) and English (questionEn) question text are missing.'
           });
-        } else {
-          if (!qHi) {
-            errors.push({
-              rowNumber,
-              questionNumber,
-              errorType: 'Missing Hindi Question Text',
-              reason: 'Hindi question text (questionHi) is missing.'
-            });
-          }
-          if (!qEn) {
-            errors.push({
-              rowNumber,
-              questionNumber,
-              errorType: 'Missing English Question Text',
-              reason: 'English question text (questionEn) is missing.'
-            });
-          }
+        } else if (!rawQHi || !rawQEn) {
+          warnings.push({
+            rowNumber,
+            questionNumber,
+            warningType: 'Single-Language Question',
+            reason: !rawQHi ? 'Hindi question text was empty and mirrored from English.' : 'English question text was empty and mirrored from Hindi.'
+          });
         }
 
         // 3. Check missing answer options (A, B, C, D)
         const missingOptLabels = [];
         ['A', 'B', 'C', 'D'].forEach((letter, i) => {
-          if (!optsHi[i]) missingOptLabels.push(`opt${letter}_Hi`);
-          if (!optsEn[i]) missingOptLabels.push(`opt${letter}_En`);
+          if (!optsHi[i] && !optsEn[i]) missingOptLabels.push(`Option ${letter}`);
         });
         if (missingOptLabels.length > 0) {
           errors.push({
@@ -4592,7 +4773,6 @@
         }
 
         // 4. Check missing or invalid correctIndex
-        const idxCheck = parseCorrectIndexValue(item.rawCorrectIndex);
         if (!idxCheck.valid) {
           errors.push({
             rowNumber,
@@ -4605,19 +4785,19 @@
         }
 
         // 5. Check missing explanations
-        if (!expHi && !expEn) {
-          errors.push({
+        if (!rawExpHi && !rawExpEn) {
+          warnings.push({
             rowNumber,
             questionNumber,
-            errorType: 'Missing Explanation',
-            reason: 'Both Hindi (explanationHi) and English (explanationEn) explanations are missing.'
+            warningType: 'Auto-Generated Explanation',
+            reason: 'Explanation was empty in file; default answer explanation was generated automatically.'
           });
-        } else if (!expHi || !expEn) {
+        } else if (!rawExpHi || !rawExpEn) {
           warnings.push({
             rowNumber,
             questionNumber,
             warningType: 'Partial Explanation',
-            reason: !expHi ? 'Hindi explanation is empty (will fallback to English explanation).' : 'English explanation is empty (will fallback to Hindi explanation).'
+            reason: !rawExpHi ? 'Hindi explanation is empty (will fallback to English explanation).' : 'English explanation is empty (will fallback to Hindi explanation).'
           });
         }
 
@@ -4631,7 +4811,7 @@
           });
         }
 
-        // If an explicit Subject or Topic was provided that is not in the Master, offer 1-click creation or mark Needs Categorisation
+        // If an explicit Subject or Topic was provided that is not in the Master, offer 1-click creation and auto-register on import
         if (effectiveSubject) {
           const knownExam = catalog.isKnownExamCode(effectiveExamCode);
           const knownSub = Boolean(catalog.findSubject(effectiveSubject));
@@ -4643,11 +4823,11 @@
               topicName: effectiveTopic || 'General Knowledge',
               subtopicName: effectiveSubtopic || ''
             });
-            errors.push({
+            warnings.push({
               rowNumber,
               questionNumber,
-              errorType: 'Unrecognized Subject or Topic Reference',
-              reason: `Category/Subject/Topic "${effectiveExamCode} → ${effectiveSubject}${effectiveTopic ? ' → ' + effectiveTopic : ''}" is not yet in the platform Category Master. Click "Confirm & Create Category/Subject/Topic" above to register it.`
+              warningType: 'New Category / Subject / Topic',
+              reason: `Category "${effectiveExamCode} → ${effectiveSubject}${effectiveTopic ? ' → ' + effectiveTopic : ''}" will be automatically added to the Category Master upon import.`
             });
           }
         }
@@ -6029,6 +6209,7 @@
             <div class="form-group" style="margin-bottom:0;">
               <label class="form-label">1. Select CSV / JSON / Question Paper PDF</label>
               <input type="file" accept=".csv,.json,.pdf,text/csv,application/json,application/pdf" class="form-input" id="admBulkFileInput" />
+              ${qbState.lastUploadedFileName ? `<div style="font-size:0.74rem;color:var(--success);font-weight:700;margin-top:3px;">📄 Loaded: ${esc(qbState.lastUploadedFileName)}</div>` : ''}
             </div>
             <div class="form-group" style="margin-bottom:0;">
               <label class="form-label">Question Paper Set Code (Single-Set PDF Import)</label>
@@ -6045,10 +6226,11 @@
             <div class="form-group" style="margin-bottom:0;">
               <label class="form-label" style="font-size:0.75rem;">2. Upload Answer Key PDF (Multi-Set A/B/C/D Table Supported)</label>
               <input type="file" accept=".pdf,.txt,.csv,application/pdf,text/plain" class="form-input" id="admPdfAnswerKeyFileInput" />
+              ${qbState.lastAnswerKeyFileName ? `<div style="font-size:0.74rem;color:var(--secondary);font-weight:700;margin-top:3px;">🔑 Key File: ${esc(qbState.lastAnswerKeyFileName)}</div>` : ''}
             </div>
             <div class="form-group" style="margin-bottom:0;">
               <label class="form-label" style="font-size:0.75rem;">🔑 Or Paste Answer Key Text / Table (Auto-Filters Selected Set Column)</label>
-              <input class="form-input" id="admPdfAnswerKeyInput" value="${esc((ps && ps.answerKeyText) || '')}" placeholder="e.g., 1-A, 2-B or Multi-Set Table (Set A/B/C/D)" style="padding:7px 9px;font-size:0.8rem;" />
+              <input class="form-input" id="admPdfAnswerKeyInput" value="${esc((ps && ps.answerKeyText) || qbState.pendingAnswerKeyText || '')}" placeholder="e.g., 1-A, 2-B or Multi-Set Table (Set A/B/C/D)" style="padding:7px 9px;font-size:0.8rem;" />
             </div>
           </div>
 
@@ -7228,16 +7410,20 @@
     }
 
     // Helper to trigger CSV/JSON/PDF File Preview & Validation Stage (WITHOUT saving to DB)
-    function startFilePreviewFromInput(file) {
+    async function startFilePreviewFromInput(file) {
       if (!file) {
         api.toast('कृपया पहले CSV, JSON या PDF फ़ाइल चुनें। (Please select a CSV, JSON, or PDF file first.)');
         return;
       }
       syncSingleDraftFromDom();
       const targetTestId = document.getElementById('admBulkTargetTest').value || 'central_bank';
-      const answerKeyText = document.getElementById('admPdfAnswerKeyInput')
+      const domAkText = document.getElementById('admPdfAnswerKeyInput')
         ? document.getElementById('admPdfAnswerKeyInput').value.trim()
         : '';
+      const answerKeyText = domAkText || qbState.pendingAnswerKeyText || '';
+      qbState.pendingAnswerKeyText = answerKeyText;
+      qbState.lastUploadedFileName = file.name || 'questions_file';
+
       const selectedSetCode = document.getElementById('admPdfPaperSetSelect')
         ? document.getElementById('admPdfPaperSetSelect').value
         : 'A';
@@ -7253,9 +7439,11 @@
         overrideAll: Boolean(document.getElementById('admBulkOverrideAllChk').checked)
       };
 
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const rawText = String(ev.target.result || '');
+      try {
+        if (String(file.name || '').toLowerCase().endsWith('.pdf')) {
+          api.toast('⏳ PDF फ़ाइल से प्रश्न पढ़े जा रहे हैं... (Extracting questions from PDF...)');
+        }
+        const rawText = await extractTextFromUploadedFile(file);
         qbState.previewSession = buildAndValidatePreviewSession(
           rawText,
           file.name,
@@ -7268,8 +7456,10 @@
         qbState.lastImportReport = null;
         api.toast(`📋 Loaded ${qbState.previewSession.records.length} question(s) into Import Preview (${qbState.previewSession.fileType} • Set ${qbState.previewSession.paperSetCode}).`);
         renderAdminConsole(rootEl, state, api);
-      };
-      reader.readAsText(file);
+      } catch (readErr) {
+        console.error('File upload parse error:', readErr);
+        api.toast('⚠️ फ़ाइल पढ़ने में समस्या आई। कृपया फ़ाइल फ़ॉर्मेट जांचें।');
+      }
     }
 
     const bulkFileInput = document.getElementById('admBulkFileInput');
@@ -7281,13 +7471,23 @@
       };
     }
 
+    const akTextInputEl = document.getElementById('admPdfAnswerKeyInput');
+    if (akTextInputEl) {
+      akTextInputEl.oninput = () => {
+        qbState.pendingAnswerKeyText = akTextInputEl.value;
+      };
+    }
+
     const akFileInput = document.getElementById('admPdfAnswerKeyFileInput');
     if (akFileInput) {
-      akFileInput.onchange = () => {
+      akFileInput.onchange = async () => {
         if (!akFileInput.files || !akFileInput.files[0]) return;
-        const akReader = new FileReader();
-        akReader.onload = (ev) => {
-          const rawAk = extractReadableTextFromPdfStream(String(ev.target.result || ''));
+        const akFile = akFileInput.files[0];
+        qbState.lastAnswerKeyFileName = akFile.name || 'answer_key';
+        try {
+          const extractedAk = await extractTextFromUploadedFile(akFile);
+          const rawAk = extractReadableTextFromPdfStream(extractedAk);
+          qbState.pendingAnswerKeyText = rawAk;
           const akInp = document.getElementById('admPdfAnswerKeyInput');
           if (akInp) akInp.value = rawAk;
           const selectedSetCode = document.getElementById('admPdfPaperSetSelect')
@@ -7307,11 +7507,13 @@
               state,
               rawAk
             );
-            renderAdminConsole(rootEl, state, api);
           }
-          api.toast(`🔑 Answer Key PDF loaded! Automatically selected Set ${selectedSetCode} column.`);
-        };
-        akReader.readAsText(akFileInput.files[0]);
+          renderAdminConsole(rootEl, state, api);
+          api.toast(`🔑 Answer Key loaded (${akFile.name})! Selected Set ${selectedSetCode} column.`);
+        } catch (akErr) {
+          console.error('Answer key file error:', akErr);
+          api.toast('⚠️ Answer Key फ़ाइल पढ़ने में समस्या आई।');
+        }
       };
     }
 
@@ -7343,9 +7545,11 @@
     const processBulkBtn = document.getElementById('admProcessBulkUploadBtn');
     if (processBulkBtn) {
       processBulkBtn.onclick = () => {
-        const answerKeyText = document.getElementById('admPdfAnswerKeyInput')
+        const domAkText = document.getElementById('admPdfAnswerKeyInput')
           ? document.getElementById('admPdfAnswerKeyInput').value.trim()
           : '';
+        const answerKeyText = domAkText || qbState.pendingAnswerKeyText || '';
+        qbState.pendingAnswerKeyText = answerKeyText;
         const selectedSetCode = document.getElementById('admPdfPaperSetSelect')
           ? document.getElementById('admPdfPaperSetSelect').value
           : 'A';
@@ -7404,6 +7608,8 @@
 
       const cancelImport = () => {
         qbState.previewSession = null;
+        qbState.lastUploadedFileName = '';
+        qbState.lastAnswerKeyFileName = '';
         api.toast('🚫 Import cancelled. No questions were saved to the database.');
         renderAdminConsole(rootEl, state, api);
       };
@@ -7569,9 +7775,14 @@
 
       // Validate and Continue Action (Executes Safe Batch Import & Generates Import Report)
       const executeValidatedImport = async () => {
+        if (Array.isArray(ps.unknownTaxonomy) && ps.unknownTaxonomy.length > 0) {
+          ps.unknownTaxonomy.forEach((u) => {
+            addCustomTaxonomyEntry(state, api, u);
+          });
+        }
         const currentAnswerKeyText = document.getElementById('admPdfAnswerKeyInput')
           ? document.getElementById('admPdfAnswerKeyInput').value.trim()
-          : ps.answerKeyText;
+          : (ps.answerKeyText || qbState.pendingAnswerKeyText || '');
         const validated = buildAndValidatePreviewSession(
           ps.rawText,
           ps.fileName,
@@ -7847,6 +8058,9 @@
         };
 
         qbState.previewSession = null;
+        qbState.pendingAnswerKeyText = '';
+        qbState.lastUploadedFileName = '';
+        qbState.lastAnswerKeyFileName = '';
         api.toast(`✅ Import complete: ${importedCount} imported to Central Question Bank, ${duplicatesSkippedCount} duplicate(s) merged/skipped, ${rejectedCount} rejected.`);
         renderAdminConsole(rootEl, state, api);
       };

@@ -1,6 +1,6 @@
 {
-  "summary": "Targeted diagnostic and fix plan for the Question Bank crash (catalog.topics / catalog.subtopics undefined TypeError, cascading topic filter argument order, and migration report metadata) while leaving all other modules untouched.",
-  "updatedAt": "2026-11-06T04:00:30.271483414Z",
+  "summary": "Diagnostic and targeted fix plan for Question Bank file upload issues (Android WebView file picker MIME type handling, PDF binary stream/PDF.js extraction, Answer Key file state persistence, and non-blocking CSV/JSON/PDF validation for single-language or missing-explanation rows).",
+  "updatedAt": "2026-11-06T04:27:29.631415197Z",
   "requestFeedback": true,
   "userFacing": true
 }

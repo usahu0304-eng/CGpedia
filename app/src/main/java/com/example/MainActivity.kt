@@ -54,8 +54,28 @@ class MainActivity : ComponentActivity() {
         setContent {
             CgpediaWebAppHost(
                 activity = this,
-                onLaunchFilePicker = { mimeType ->
-                    filePickerLauncher.launch(mimeType.ifBlank { "*/*" })
+                onLaunchFilePicker = { rawMimeType ->
+                    val cleaned = rawMimeType.trim()
+                    val safeMime = if (
+                        cleaned.isBlank() ||
+                        cleaned.contains(",") ||
+                        cleaned.startsWith(".") ||
+                        !cleaned.contains("/")
+                    ) {
+                        "*/*"
+                    } else {
+                        cleaned
+                    }
+                    runCatching {
+                        filePickerLauncher.launch(safeMime)
+                    }.onFailure {
+                        runCatching {
+                            filePickerLauncher.launch("*/*")
+                        }.onFailure {
+                            fileUploadCallback?.onReceiveValue(null)
+                            fileUploadCallback = null
+                        }
+                    }
                 },
                 onSetUploadCallback = { callback ->
                     fileUploadCallback?.onReceiveValue(null)
@@ -148,10 +168,21 @@ fun CgpediaWebAppHost(
                             fileChooserParams: FileChooserParams?
                         ): Boolean {
                             onSetUploadCallback(filePathCallback)
-                            val acceptTypes = fileChooserParams?.acceptTypes
-                                ?.firstOrNull { it.isNotBlank() }
-                                ?: "image/*"
-                            onLaunchFilePicker(acceptTypes)
+                            val nonBlankTypes = fileChooserParams?.acceptTypes
+                                ?.flatMap { it.split(",") }
+                                ?.map { it.trim() }
+                                ?.filter { it.isNotBlank() }
+                                .orEmpty()
+                            val resolvedMime = when {
+                                nonBlankTypes.isEmpty() -> "*/*"
+                                nonBlankTypes.size == 1 &&
+                                    nonBlankTypes[0].contains("/") &&
+                                    !nonBlankTypes[0].startsWith(".") -> nonBlankTypes[0]
+                                nonBlankTypes.all { it.startsWith("image/") } -> "image/*"
+                                nonBlankTypes.all { it.startsWith("audio/") || it == ".mp3" || it == ".wav" || it == ".m4a" } -> "audio/*"
+                                else -> "*/*"
+                            }
+                            onLaunchFilePicker(resolvedMime)
                             return true
                         }
                     }
