@@ -4821,7 +4821,7 @@
 
     // Register Service Worker & force update check
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
-      navigator.serviceWorker.register('sw.js?v=5.6').then((reg) => {
+      navigator.serviceWorker.register('sw.js?v=5.7').then((reg) => {
         try { reg.update(); } catch (_) {}
       }).catch(() => {});
     }

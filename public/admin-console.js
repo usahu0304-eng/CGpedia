@@ -3934,6 +3934,234 @@
     'स्तर': 'difficulty'
   };
 
+  // ============================================================================
+  // KRUTIDEV-010 / DEVLYS-010 LEGACY HINDI FONT DETECTOR & UNICODE CONVERTER
+  // ============================================================================
+  const KRUTIDEV_REPLACEMENT_PAIRS = [
+    ['¼v½', '(अ)'], ['¼c½', '(ब)'], ['¼l½', '(स)'], ['¼n½', '(द)'],
+    ['¼d½', '(क)'], ['¼[k½', '(ख)'], ['¼x½', '(ग)'], ['¼?k½', '(घ)'],
+    ['¼1½', '(1)'], ['¼2½', '(2)'], ['¼3½', '(3)'], ['¼4½', '(4)'],
+    ['¼A½', '(A)'], ['¼B½', '(B)'], ['¼C½', '(C)'], ['¼D½', '(D)'],
+    ['ñ', '॰'], ['Q+Z', 'क़्ज़'], ['sas', 'ें'], ['sa', 'ं'],
+    ['£', 'र्'], ['Ä', 'द्ध'], ['Å', 'ऊ'], ['Æ', 'र्त्'], ['Ç', 'ड़'], ['È', 'ढ़'],
+    ['É', 'ङ्ग'], ['Ê', 'झ्'], ['Ë', 'ञ्च'], ['Ì', 'ट्ट'], ['Í', 'ठ्ठ'], ['Î', 'ड्ड'],
+    ['Ï', 'ढ्ढ'], ['Ñ', 'त्त'], ['Ò', 'द्भ'], ['Ó', 'द्म'], ['Ô', 'द्य'], ['Õ', 'द्व'],
+    ['Ö', 'क्र'], ['×', 'द्र'], ['Ø', 'क्र'], ['Ùk', 'त्त'], ['Ù', 'त्'], ['Ú', 'फ्र'],
+    ['Û', 'ह्न'], ['Ü', 'ह्म'], ['Ý', 'ह्य'], ['Þ', 'ह्र'], ['ß', 'ह्ल'],
+    ['à', 'ह्व'], ['á', '्र'], ['â', '्र'], ['ã', 'हृ'], ['ä', 'क्त'], ['å', 'औ'],
+    ['æ', '्र'], ['ç', 'प्र'], ['è', 'ध्'], ['é', 'न्न'], ['ê', 'जी'], ['ë', 'द्ग'],
+    ['ì', 'द्घ'], ['í', 'द्द'], ['î', 'द्ध'], ['ï', 'द्ब'], ['ð', 'िट'], ['ñ', '॰'],
+    ['ò', 'द्व'], ['ó', 'ट्ट'], ['ô', 'क्क'], ['õ', 'ल्ल'], ['ö', 'च्च'], ['÷', 'ज्ज'],
+    ['ø', '्र'], ['ù', 'ञ्च'], ['ú', 'ज्ज'], ['û', 'क्त'], ['ü', 'श्व'], ['ý', 'श्र'],
+    ['þ', 'त्र'], ['ÿ', 'ज्ञ'],
+    ['vks', 'ओ'], ['vkS', 'औ'], ['vk', 'आ'], ['v', 'अ'], ['bZ', 'ई'], ['b', 'इ'],
+    ['m', 'उ'], ['ऊ', 'ऊ'], [',s', 'ऐ'], [',', 'ए'], ['_', 'ऋ'],
+    ['d+', 'क़'], ['[+', 'ख़'], ['x+', 'ग़'], ['t+', 'ज़'], ['M+', 'ड़'], ['<+', 'ढ़'], ['Q+', 'फ़'],
+    ['[k', 'ख'], ['[', 'ख्'], ['?k', 'घ'], ['?', 'घ्'], ['³', 'ङ'],
+    ['pk', 'चा'], ['p', 'च'], ['N', 'छ'], ['t', 'ज'], ['>k', 'झा'], ['>', 'झ'], ['¥', 'ञ'],
+    ['V', 'ट'], ['B', 'ठ'], ['M', 'ड'], ['<', 'ढ'], ['.k', 'ण'], ['.', 'ण्'],
+    ['r', 'त'], ['Fkk', 'था'], ['Fk', 'थ'], ['F', 'थ्'], ['n', 'द'], ['/k', 'ध'], ['/', 'ध्'], ['u', 'न'],
+    ['i', 'प'], ['Q', 'फ'], ['c', 'ब'], ['Hkk', 'भा'], ['Hk', 'भ'], ['H', 'भ्'], ['e', 'म'],
+    [';', 'य'], ['j', 'र'], ['y', 'ल'], ['G', 'ळ'], ['o', 'व'],
+    ["'k", 'श'], ["'", 'श्'], ['"k', 'ष'], ['"', 'ष्'], ['l', 'स'], ['g', 'ह'],
+    ['{k', 'क्ष'], ['{', 'क्ष्'], ['=', 'त्र'], ['«', 'त्र्'], ['K', 'ज्ञ'],
+    ['d', 'क'], ['x', 'ग'],
+    ['ks', 'ो'], ['kS', 'ौ'], ['k', 'ा'], ['h', 'ी'], ['q', 'ु'], ['w', 'ू'],
+    ['`', 'ृ'], ['s', 'े'], ['S', 'ै'], ['a', 'ं'], ['¡', 'ँ'], ['%', 'ः'], ['~', '्'],
+    ['¼', '('], ['½', ')'], ['\\', '?'], ['A', '।'], ['-', '.']
+  ];
+
+  function isLikelyKrutiDevWordOrSegment(seg) {
+    const s = String(seg || '').trim();
+    if (!s || /[\u0900-\u097F]/.test(s)) return false;
+    // Explicit KrutiDev option markers or high-certainty ligature bytes
+    if (/¼[vclndxg?1-4A-D]\[?k?½|[NÙhlx<+]{4,}|fuEufyf\[kr|lafo\/kku|vuqPNsn|NRrhlx<|NÙhlx<|mÙkj|iz'u|fLFkr|jkT;|ljdkj|Hkkjr/.test(s)) {
+      return true;
+    }
+    if (/[\u00C0-\u00FF]/.test(s) && /[a-zA-Z]/.test(s)) {
+      return true;
+    }
+    // Check token-level KrutiDev function words & mid-word casing/punctuation patterns
+    const tokens = s.split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) return false;
+    let krutiTokenHits = 0;
+    const krutiFuncWordRegex = /^(?:gS|gSa|Fkk|Fkh|Fks|esa|dk|dh|ds|dks|ls|ij|vkSj|;g|og|dc|dgk¡|dgka|dkSu|fdl|fdlus|iz'u|mÙkj|lfefr|ftyk|unh|igkM\+|Hkkjr|jkT;|fLFkr|ugha|fd;k|tkrk|gksrk|द्वारा|dFku|dwV|lgh|चुनिए)$/i;
+    const krutiPatternRegex = /(?:[a-z][A-Z][a-z]|\[k|\?k|M\+|<+|\b[dfghjlmnprtuwy]k[sS]?\b|\bf[dghjklmnprstvwxyz][a-z]*\b|[;\\~`{}])/;
+    tokens.forEach((tok) => {
+      const cleanTok = tok.replace(/^[(),.:;\-]+|[(),.:;\-]+$/g, '');
+      if (!cleanTok) return;
+      if (krutiFuncWordRegex.test(cleanTok) || krutiPatternRegex.test(cleanTok)) {
+        krutiTokenHits += 1;
+      }
+    });
+    return (krutiTokenHits >= 2 && krutiTokenHits / tokens.length >= 0.28) || (tokens.length <= 3 && krutiTokenHits >= 1 && /¼|½|\[k|\?k|M\+|<+|;/.test(s));
+  }
+
+  function convertSingleKrutiDevSegmentToUnicode(krutiStr) {
+    let text = String(krutiStr || '');
+    if (!text.trim()) return text;
+
+    // 1. Protect numeric ranges and question numbers at start e.g. "1-" -> "1."
+    text = text.replace(/^(\s*\d{1,4})\s*-\s*/gm, '$1. ');
+
+    // 2. Reorder KrutiDev short 'i' matra ('f') from before consonant cluster to after the consonant ('ि')
+    // Handle 'f' + half-consonants + full-consonant
+    text = text.replace(/f((?:[\[?/'"{«]|[dghjklmnprstvwxyzcbVBM<.]~)*)(?:(\[k|\?k|'k|"k|\{k|\.k|M\+|<+|d\+|x\+|t\+|Q\+|Fk|Hk|\/k|>k|pk|Hkk|Fkk|[dghjklmnprstvwxyzcbVBM<>;QGK=]))/g, '$1$2ि');
+
+    // 3. Reorder KrutiDev reph ('Z') before the syllable it sits on
+    text = text.replace(/([dghjklmnprstvwxyzcbVBM<>;QGK=\[?/'"{])([ksSqw`sSa¡]*?)Z/g, '£$1$2');
+
+    // 4. Apply lookup replacements
+    for (let i = 0; i < KRUTIDEV_REPLACEMENT_PAIRS.length; i++) {
+      const [src, dst] = KRUTIDEV_REPLACEMENT_PAIRS[i];
+      if (text.includes(src)) {
+        text = text.split(src).join(dst);
+      }
+    }
+
+    // 5. Clean up matra combinations
+    text = text
+      .replace(/अा/g, 'आ')
+      .replace(/आे/g, 'ओ')
+      .replace(/आै/g, 'औ')
+      .replace(/एे/g, 'ऐ')
+      .replace(/्ा/g, '')
+      .replace(/्े/g, 'े')
+      .replace(/्ै/g, 'ै')
+      .replace(/्ो/g, 'ो')
+      .replace(/्ौ/g, 'ौ');
+
+    return text;
+  }
+
+  function convertKrutiDevInText(rawText) {
+    const str = String(rawText || '');
+    if (!str.trim()) return str;
+    const lines = str.split(/\r?\n/);
+    const convertedLines = lines.map((line) => {
+      if (!line.trim()) return line;
+      // Always convert explicit KrutiDev option markers ¼v½ ¼c½ ¼l½ ¼n½
+      let working = line
+        .replace(/¼v½/g, '(अ)')
+        .replace(/¼c½/g, '(ब)')
+        .replace(/¼l½/g, '(स)')
+        .replace(/¼n½/g, '(द)')
+        .replace(/¼d½/g, '(क)')
+        .replace(/¼\[k½/g, '(ख)')
+        .replace(/¼x½/g, '(ग)')
+        .replace(/¼\?k½/g, '(घ)');
+
+      if (!isLikelyKrutiDevWordOrSegment(working)) {
+        return working;
+      }
+
+      // If the line has both a KrutiDev half and an English half separated by 2+ spaces or slash, convert only the KrutiDev part
+      const parts = working.split(/(\s{2,}|\s+\/\s+|\s+\|\|\s+)/);
+      if (parts.length > 1) {
+        return parts.map((part) => {
+          if (/^(\s{2,}|\s+\/\s+|\s+\|\|\s+)$/.test(part)) return part;
+          return isLikelyKrutiDevWordOrSegment(part) ? convertSingleKrutiDevSegmentToUnicode(part) : part;
+        }).join('');
+      }
+
+      return convertSingleKrutiDevSegmentToUnicode(working);
+    });
+    return convertedLines.join('\n');
+  }
+
+  // ============================================================================
+  // PDF STREAM & TOUNICODE CMAP DECODERS + GARBLED TEXT SANITIZER
+  // ============================================================================
+  function parsePdfToUnicodeCMap(streamStr) {
+    const cmap = new Map();
+    const s = String(streamStr || '');
+    if (!s.includes('beginbfchar') && !s.includes('beginbfrange')) return cmap;
+
+    const bfcharRegex = /beginbfchar([\s\S]*?)endbfchar/gi;
+    let m;
+    while ((m = bfcharRegex.exec(s)) !== null) {
+      const pairRegex = /<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/g;
+      let pm;
+      while ((pm = pairRegex.exec(m[1])) !== null) {
+        const srcHex = pm[1].toUpperCase();
+        const dstHex = pm[2];
+        let uStr = '';
+        for (let i = 0; i < dstHex.length; i += 4) {
+          const cp = parseInt(dstHex.slice(i, i + 4), 16);
+          if (cp && cp !== 0xFEFF) uStr += String.fromCodePoint(cp);
+        }
+        if (uStr) cmap.set(srcHex, uStr);
+      }
+    }
+
+    const bfrangeRegex = /beginbfrange([\s\S]*?)endbfrange/gi;
+    while ((m = bfrangeRegex.exec(s)) !== null) {
+      const rangeRegex = /<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/g;
+      let rm;
+      while ((rm = rangeRegex.exec(m[1])) !== null) {
+        const startCode = parseInt(rm[1], 16);
+        const endCode = parseInt(rm[2], 16);
+        const targetStart = parseInt(rm[3], 16);
+        const padLen = rm[1].length;
+        if (!isNaN(startCode) && !isNaN(endCode) && !isNaN(targetStart) && endCode >= startCode && (endCode - startCode) <= 512) {
+          for (let c = startCode; c <= endCode; c++) {
+            const keyHex = c.toString(16).toUpperCase().padStart(padLen, '0');
+            const cp = targetStart + (c - startCode);
+            if (cp > 0 && cp !== 0xFEFF) {
+              cmap.set(keyHex, String.fromCodePoint(cp));
+            }
+          }
+        }
+      }
+    }
+    return cmap;
+  }
+
+  function sanitizeExtractedPdfText(rawStr) {
+    const lines = String(rawStr || '')
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\uE000-\uF8FF\uFFFD]/g, ' ')
+      .split(/\r?\n/);
+
+    const cleanLines = [];
+    lines.forEach((rawLine) => {
+      const line = rawLine.replace(/\s+/g, ' ').trim();
+      if (!line) return;
+      // Filter out raw PDF dictionary / object / stream syntax
+      if (/^(?:%PDF-|\d+\s+\d+\s+obj\b|endobj\b|stream\b|endstream\b|xref\b|trailer\b|startxref\b|<<|>>|\/(?:Type|Subtype|Font|BaseFont|Filter|FlateDecode|Length|Resources|MediaBox|Parent|Contents|ProcSet|Encoding|ToUnicode|CIDSystemInfo|FontDescriptor)\b)/i.test(line)) {
+        return;
+      }
+      if ((line.match(/\/[A-Z][A-Za-z0-9]+/g) || []).length >= 3) {
+        return;
+      }
+      cleanLines.push(line);
+    });
+    return convertKrutiDevInText(cleanLines.join('\n'));
+  }
+
+  function isExtractedPageGarbledOrEmpty(pageText) {
+    const clean = String(pageText || '').trim();
+    if (!clean || clean.length < 15) return true;
+    // Count valid Devanagari chars, valid Latin letters, and total non-space characters
+    const nonSpace = clean.replace(/\s+/g, '');
+    if (nonSpace.length < 10) return true;
+    const puaOrReplacement = (clean.match(/[\uE000-\uF8FF\uFFFD\u0001-\u001F]/g) || []).length;
+    if (puaOrReplacement > Math.max(3, nonSpace.length * 0.08)) return true;
+
+    const devChars = (clean.match(/[\u0900-\u097F]/g) || []).length;
+    const latinWords = (clean.match(/\b[A-Za-z]{3,}\b/g) || []).filter((w) => /[aeiouAEIOU]/.test(w)).length;
+    const strangeSymbols = (clean.match(/[^A-Za-z0-9\u0900-\u097F\s.,?:;()[\]\-/'"+=%₹।]/g) || []).length;
+
+    // If high ratio of strange symbols/encoding noise and very few readable Hindi or English words
+    if (strangeSymbols / nonSpace.length > 0.22 && devChars < 10 && latinWords < 5) {
+      return true;
+    }
+    // If neither Devanagari nor readable English words exist
+    if (devChars < 5 && latinWords < 3) {
+      return true;
+    }
+    return false;
+  }
+
   function decodePdfEscapedLiteral(raw) {
     return String(raw || '')
       .replace(/\\n/g, '\n')
@@ -3942,79 +4170,123 @@
       .replace(/\\\(/g, '(')
       .replace(/\\\)/g, ')')
       .replace(/\\\\/g, '\\')
-      .replace(/\\([0-7]{1,3})/g, (_, oct) => String.fromCharCode(parseInt(oct, 8)));
+      .replace(/\\([0-7]{1,3})/g, (_, oct) => {
+        const code = parseInt(oct, 8);
+        return code >= 32 ? String.fromCharCode(code) : ' ';
+      });
   }
 
-  function decodePdfHexLiteral(hexStr) {
-    const clean = String(hexStr || '').replace(/[^0-9A-Fa-f]/g, '');
+  function decodePdfHexLiteral(hexStr, cMapTable) {
+    const clean = String(hexStr || '').replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
     if (!clean) return '';
-    // Check UTF-16BE BOM or 4-hex-digit Devanagari sequences (09xx)
-    if (clean.length % 4 === 0 && (/^(?:FEFF|09[0-7][0-9A-Fa-f]|00[2-7][0-9A-Fa-f])/i.test(clean))) {
+
+    if (cMapTable && cMapTable.size > 0) {
+      // Try 4-hex-digit lookup first, then 2-hex-digit lookup
+      if (clean.length % 4 === 0) {
+        let mapped4 = '';
+        let hits4 = 0;
+        for (let i = 0; i < clean.length; i += 4) {
+          const k = clean.slice(i, i + 4);
+          if (cMapTable.has(k)) {
+            mapped4 += cMapTable.get(k);
+            hits4 += 1;
+          }
+        }
+        if (hits4 > 0) return mapped4;
+      }
+      if (clean.length % 2 === 0) {
+        let mapped2 = '';
+        let hits2 = 0;
+        for (let i = 0; i < clean.length; i += 2) {
+          const k = clean.slice(i, i + 2);
+          if (cMapTable.has(k)) {
+            mapped2 += cMapTable.get(k);
+            hits2 += 1;
+          }
+        }
+        if (hits2 > 0) return mapped2;
+      }
+    }
+
+    // Check UTF-16BE BOM or 4-hex-digit Devanagari/Latin Unicode sequences (09xx / 00xx)
+    if (clean.length % 4 === 0 && (/^(?:FEFF|09[0-7][0-9A-F]|00[2-7][0-9A-F])/i.test(clean))) {
       let out16 = '';
       for (let i = 0; i < clean.length; i += 4) {
         const code = parseInt(clean.slice(i, i + 4), 16);
-        if (code && code !== 0xFEFF) out16 += String.fromCharCode(code);
+        if (code >= 0x0020 && code !== 0xFEFF && !(code >= 0xE000 && code <= 0xF8FF)) {
+          out16 += String.fromCharCode(code);
+        }
       }
       if (out16.trim()) return out16;
     }
+
+    // Do NOT decode unmapped 4-byte Identity-H CID glyph indices (e.g. 0001001A002B) into random ASCII symbols!
+    if (clean.length % 4 === 0 && /^(?:00[0-9A-F]{2}){2,}$/.test(clean) && !/^(?:00[2-7][0-9A-F]){2,}$/.test(clean)) {
+      return '';
+    }
+
     let out8 = '';
     for (let i = 0; i < clean.length; i += 2) {
       const code = parseInt(clean.slice(i, i + 2), 16);
-      if (code) out8 += String.fromCharCode(code);
+      if (code >= 32 && code <= 126) out8 += String.fromCharCode(code);
     }
     return out8;
   }
 
-  function extractTextOperatorsFromPdfChunk(chunkStr) {
+  function extractTextOperatorsFromPdfChunk(chunkStr, cMapTable) {
     const out = [];
-    const tjRegex = /\(([^()\\]*(?:\\.[^()\\]*)*)\)\s*(?:Tj|'|")/g;
-    let m;
-    while ((m = tjRegex.exec(chunkStr)) !== null) {
-      const dec = decodePdfEscapedLiteral(m[1]).trim();
-      if (dec) out.push(dec);
+    // Extract strictly from BT ... ET text blocks when present so binary image/font streams are never parsed as text
+    const btBlocks = [];
+    const btEtRegex = /\bBT\b([\s\S]*?)\bET\b/g;
+    let bm;
+    while ((bm = btEtRegex.exec(chunkStr)) !== null) {
+      btBlocks.push(bm[1]);
     }
-    const hexTjRegex = /<([0-9A-Fa-f\s]+)>\s*(?:Tj|'|")/g;
-    while ((m = hexTjRegex.exec(chunkStr)) !== null) {
-      const dec = decodePdfHexLiteral(m[1]).trim();
-      if (dec) out.push(dec);
-    }
-    const tjArrRegex = /\[((?:[^[\]]|\([^()\\]*(?:\\.[^()\\]*)*\))*)\]\s*TJ/gi;
-    while ((m = tjArrRegex.exec(chunkStr)) !== null) {
-      const inner = m[1];
-      const strParts = [];
-      const tokenRegex = /\(([^()\\]*(?:\\.[^()\\]*)*)\)|<([0-9A-Fa-f\s]+)>/g;
-      let lm;
-      while ((lm = tokenRegex.exec(inner)) !== null) {
-        if (lm[1] !== undefined) strParts.push(decodePdfEscapedLiteral(lm[1]));
-        else if (lm[2] !== undefined) strParts.push(decodePdfHexLiteral(lm[2]));
-      }
-      const joined = strParts.join('').trim();
-      if (joined) out.push(joined);
-    }
-    if (out.length === 0) {
-      const fallbackLit = /\(([^()\\]*(?:\\.[^()\\]*)*)\)/g;
-      while ((m = fallbackLit.exec(chunkStr)) !== null) {
+    const targetScopes = btBlocks.length > 0 ? btBlocks : [chunkStr];
+
+    targetScopes.forEach((scope) => {
+      const tjRegex = /\(([^()\\]*(?:\\.[^()\\]*)*)\)\s*(?:Tj|'|")/g;
+      let m;
+      while ((m = tjRegex.exec(scope)) !== null) {
         const dec = decodePdfEscapedLiteral(m[1]).trim();
         if (dec) out.push(dec);
       }
-    }
-    return out.join('\n');
+      const hexTjRegex = /<([0-9A-Fa-f\s]+)>\s*(?:Tj|'|")/g;
+      while ((m = hexTjRegex.exec(scope)) !== null) {
+        const dec = decodePdfHexLiteral(m[1], cMapTable).trim();
+        if (dec) out.push(dec);
+      }
+      const tjArrRegex = /\[((?:[^[\]]|\([^()\\]*(?:\\.[^()\\]*)*\))*)\]\s*TJ/gi;
+      while ((m = tjArrRegex.exec(scope)) !== null) {
+        const inner = m[1];
+        const strParts = [];
+        const tokenRegex = /\(([^()\\]*(?:\\.[^()\\]*)*)\)|<([0-9A-Fa-f\s]+)>/g;
+        let lm;
+        while ((lm = tokenRegex.exec(inner)) !== null) {
+          if (lm[1] !== undefined) strParts.push(decodePdfEscapedLiteral(lm[1]));
+          else if (lm[2] !== undefined) strParts.push(decodePdfHexLiteral(lm[2], cMapTable));
+        }
+        const joined = strParts.join('').trim();
+        if (joined) out.push(joined);
+      }
+    });
+
+    return sanitizeExtractedPdfText(out.join('\n'));
   }
 
   function extractReadableTextFromPdfStream(rawContent) {
     const str = String(rawContent || '');
     if (!str.trim()) return '';
     if (!str.includes('%PDF-')) {
-      return str.replace(/^Method:\s*PDF_OCR\s*\r?\n?/i, '');
+      return sanitizeExtractedPdfText(str.replace(/^Method:\s*PDF_OCR\s*\r?\n?/i, ''));
     }
-    const extracted = extractTextOperatorsFromPdfChunk(str);
-    if (extracted.trim()) {
+    const cMapTable = parsePdfToUnicodeCMap(str);
+    const extracted = extractTextOperatorsFromPdfChunk(str, cMapTable);
+    if (extracted.trim() && !isExtractedPageGarbledOrEmpty(extracted)) {
       return extracted;
     }
-    return str
-      .replace(/^%PDF-[^\n]*$/gm, '')
-      .replace(/\b(?:obj|endobj|stream|endstream|xref|trailer|startxref)\b/g, '\n')
-      .replace(/[^\p{L}\p{M}\p{N}\p{P}\p{Z}\n\r]/gu, ' ');
+    // Never dump raw %PDF- binary / dictionary bytes when text operators are compressed or unmapped
+    return '';
   }
 
   let pdfJsLoaderPromise = null;
@@ -4027,19 +4299,29 @@
     }
     if (pdfJsLoaderPromise) return pdfJsLoaderPromise;
     pdfJsLoaderPromise = new Promise((resolve) => {
-      const timer = setTimeout(() => resolve(null), 5000);
+      const timer = setTimeout(() => resolve(null), 8000);
       const script = document.createElement('script');
       script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
       script.async = true;
       script.onload = () => {
         clearTimeout(timer);
         if (window.pdfjsLib && window.pdfjsLib.GlobalWorkerOptions) {
-          window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+          try {
+            // Use Same-Origin Blob Worker to avoid cross-origin Worker SecurityError in WebView / Chrome
+            const workerBlob = new Blob(
+              ['importScripts("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js");'],
+              { type: 'application/javascript' }
+            );
+            window.pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(workerBlob);
+          } catch (_) {
+            window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+          }
         }
         resolve(window.pdfjsLib || null);
       };
       script.onerror = () => {
         clearTimeout(timer);
+        pdfJsLoaderPromise = null;
         resolve(null);
       };
       if (document.head) document.head.appendChild(script);
@@ -4048,16 +4330,83 @@
     return pdfJsLoaderPromise;
   }
 
+  let tesseractLoaderPromise = null;
+  function ensureTesseractLoaded() {
+    if (typeof window !== 'undefined' && window.Tesseract) {
+      return Promise.resolve(window.Tesseract);
+    }
+    if (typeof document === 'undefined' || typeof document.createElement !== 'function') {
+      return Promise.resolve(null);
+    }
+    if (tesseractLoaderPromise) return tesseractLoaderPromise;
+    tesseractLoaderPromise = new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(null), 10000);
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+      script.async = true;
+      script.onload = () => {
+        clearTimeout(timer);
+        resolve(window.Tesseract || null);
+      };
+      script.onerror = () => {
+        clearTimeout(timer);
+        tesseractLoaderPromise = null;
+        resolve(null);
+      };
+      if (document.head) document.head.appendChild(script);
+      else resolve(null);
+    });
+    return tesseractLoaderPromise;
+  }
+
+  async function openPdfDocumentSafely(pdfjsLib, uint8) {
+    const baseParams = {
+      data: uint8.slice(0),
+      cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
+      cMapPacked: true,
+      standardFontDataUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/standard_fonts/',
+      isEvalSupported: false
+    };
+    try {
+      return await pdfjsLib.getDocument(baseParams).promise;
+    } catch (_) {
+      return await pdfjsLib.getDocument(Object.assign({}, baseParams, {
+        data: uint8.slice(0),
+        disableWorker: true
+      })).promise;
+    }
+  }
+
+  async function renderPdfPageToCanvasAndOcr(page) {
+    if (typeof document === 'undefined' || typeof document.createElement !== 'function') return '';
+    try {
+      const Tesseract = await ensureTesseractLoaded();
+      if (!Tesseract || typeof Tesseract.recognize !== 'function') return '';
+      const viewport = page.getViewport({ scale: 2.0 });
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.floor(viewport.width));
+      canvas.height = Math.max(1, Math.floor(viewport.height));
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return '';
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      const result = await Tesseract.recognize(canvas, 'hin+eng');
+      const ocrText = result && result.data && result.data.text ? String(result.data.text) : '';
+      return sanitizeExtractedPdfText(ocrText);
+    } catch (_) {
+      return '';
+    }
+  }
+
   async function decompressPdfBufferStreams(uint8) {
     const latin1 = new TextDecoder('latin1').decode(uint8);
     if (!latin1.includes('%PDF-')) {
       return new TextDecoder('utf-8', { fatal: false }).decode(uint8);
     }
-    const collectedPages = [];
-    const directText = extractTextOperatorsFromPdfChunk(latin1);
-    if (directText.trim()) {
-      collectedPages.push(directText);
-    }
+    const decompressedChunks = [];
+    const cMapTable = parsePdfToUnicodeCMap(latin1);
+
     if (typeof DecompressionStream === 'function') {
       const streamRegex = /stream\r?\n/g;
       let match;
@@ -4078,15 +4427,30 @@
             writer.close().catch(() => {});
             const decompressedBuf = await new Response(ds.readable).arrayBuffer();
             const decompressedStr = new TextDecoder('utf-8', { fatal: false }).decode(decompressedBuf);
-            const parsedChunk = extractTextOperatorsFromPdfChunk(decompressedStr);
-            if (parsedChunk.trim()) {
-              collectedPages.push(parsedChunk);
-              break;
+            if (decompressedStr.includes('beginbfchar') || decompressedStr.includes('beginbfrange')) {
+              const subMap = parsePdfToUnicodeCMap(decompressedStr);
+              subMap.forEach((v, k) => cMapTable.set(k, v));
             }
+            if (/\bBT\b/.test(decompressedStr) || /\bTj\b|\bTJ\b/.test(decompressedStr)) {
+              decompressedChunks.push(decompressedStr);
+            }
+            break;
           } catch (_) {}
         }
       }
     }
+
+    const collectedPages = [];
+    const directText = extractTextOperatorsFromPdfChunk(latin1, cMapTable);
+    if (directText.trim() && !isExtractedPageGarbledOrEmpty(directText)) {
+      collectedPages.push(directText);
+    }
+    decompressedChunks.forEach((chunkStr) => {
+      const parsedChunk = extractTextOperatorsFromPdfChunk(chunkStr, cMapTable);
+      if (parsedChunk.trim() && !isExtractedPageGarbledOrEmpty(parsedChunk)) {
+        collectedPages.push(parsedChunk);
+      }
+    });
     return collectedPages.join('\n');
   }
 
@@ -4094,13 +4458,13 @@
     if (!Array.isArray(itemsList) || itemsList.length === 0) return [];
     // Sort top-to-bottom (descending Y), then left-to-right (ascending X)
     const sorted = itemsList.slice().sort((a, b) => {
-      if (Math.abs(b.y - a.y) > 4) return b.y - a.y;
+      if (Math.abs(b.y - a.y) > 5.5) return b.y - a.y;
       return a.x - b.x;
     });
     const rowBuckets = [];
     sorted.forEach((it) => {
       const lastBucket = rowBuckets[rowBuckets.length - 1];
-      if (!lastBucket || Math.abs(it.y - lastBucket.avgY) > 4.5) {
+      if (!lastBucket || Math.abs(it.y - lastBucket.avgY) > 5.8) {
         rowBuckets.push({ avgY: it.y, items: [it] });
       } else {
         lastBucket.items.push(it);
@@ -4122,11 +4486,11 @@
         }
         const gap = prevRight !== null ? (it.x - prevRight) : 0;
         // If there is a large horizontal gap and a new question or bracketed option starts, split onto a new line
-        if (gap > 85 && /^(?:Q\.?\s*\d|\(?[0-9\u0966-\u096F]{1,3}[.):]|\([A-Da-dअआइईबसदकखगघ1-4१-४]\))/i.test(text.trim())) {
+        if (gap > 75 && /^(?:Q\.?\s*\d|प्र\.?\s*\d|प्रश्न\s*\d|\(?[0-9\u0966-\u096F]{1,3}[.):\-]|[([]\s*[A-Da-dअआइईबसदकखगघ1-4१-४]\s*[)\]]|¼[vclndxg?1-4A-D]½)/i.test(text.trim())) {
           const built = lineParts.join('').replace(/\s+/g, ' ').trim();
           if (built) outLines.push(built);
           lineParts = [text];
-        } else if (gap > 2.5 && lineParts.length > 0) {
+        } else if (gap > 2.2 && lineParts.length > 0) {
           lineParts.push(' ' + text);
         } else {
           lineParts.push(text);
@@ -4139,10 +4503,9 @@
     return outLines;
   }
 
-  async function extractTextFromUploadedFile(file) {
+  async function extractTextFromUploadedFile(file, onProgressToast) {
     if (!file) return '';
     const fileName = String(file.name || '').toLowerCase();
-    const isPdf = fileName.endsWith('.pdf') || String(file.type || '').toLowerCase() === 'application/pdf';
 
     const arrayBuffer = await new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -4151,38 +4514,39 @@
       reader.readAsArrayBuffer(file);
     });
 
-    if (!arrayBuffer) return isPdf ? 'Method: PDF_OCR\n' : '';
+    if (!arrayBuffer) return '';
     const uint8 = new Uint8Array(arrayBuffer);
+
+    // Detect %PDF- magic bytes in the first 64 bytes even if Android file picker returned a content URI name without .pdf
+    const headerAscii = new TextDecoder('latin1').decode(uint8.subarray(0, Math.min(64, uint8.length)));
+    const isPdf =
+      fileName.endsWith('.pdf') ||
+      String(file.type || '').toLowerCase() === 'application/pdf' ||
+      headerAscii.includes('%PDF-');
 
     if (!isPdf) {
       // Detect UTF-16LE / UTF-16BE BOMs (e.g. Excel "Unicode Text" CSV exports containing Hindi Devanagari)
       if (uint8.length >= 2 && uint8[0] === 0xFF && uint8[1] === 0xFE) {
-        return new TextDecoder('utf-16le', { fatal: false }).decode(uint8.subarray(2));
+        return convertKrutiDevInText(new TextDecoder('utf-16le', { fatal: false }).decode(uint8.subarray(2)));
       }
       if (uint8.length >= 2 && uint8[0] === 0xFE && uint8[1] === 0xFF) {
-        return new TextDecoder('utf-16be', { fatal: false }).decode(uint8.subarray(2));
+        return convertKrutiDevInText(new TextDecoder('utf-16be', { fatal: false }).decode(uint8.subarray(2)));
       }
       const utf8Text = new TextDecoder('utf-8', { fatal: false }).decode(uint8);
-      return utf8Text.replace(/^\uFEFF/, '');
+      return convertKrutiDevInText(utf8Text.replace(/^\uFEFF/, ''));
     }
 
-    // 1. Try PDF.js page-by-page extraction with CMap + Two-Column Bilingual Layout awareness
+    // 1. Primary PDF.js page-by-page extraction with Blob Worker / disableWorker fallback + KrutiDev + Canvas OCR
     try {
       const pdfjsLib = await ensurePdfJsLoaded();
       if (pdfjsLib && typeof pdfjsLib.getDocument === 'function') {
-        const loadingTask = pdfjsLib.getDocument({
-          data: uint8.slice(0),
-          cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
-          cMapPacked: true,
-          standardFontDataUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/standard_fonts/'
-        });
-        const pdfDoc = await loadingTask.promise;
+        const pdfDoc = await openPdfDocumentSafely(pdfjsLib, uint8);
         const pageTexts = [];
         for (let p = 1; p <= pdfDoc.numPages; p++) {
           const page = await pdfDoc.getPage(p);
           const viewport = typeof page.getViewport === 'function' ? page.getViewport({ scale: 1.0 }) : null;
           const pageWidth = (viewport && viewport.width) ? viewport.width : 595;
-          const midX = pageWidth * 0.49;
+          const midX = pageWidth * 0.485;
 
           const textContent = await page.getTextContent();
           const rawItems = [];
@@ -4195,31 +4559,30 @@
             rawItems.push({ str, x, y, w });
           });
 
-          // Detect if this page is a Two-Column Bilingual layout (Left Column = Hindi/Q-left, Right Column = English/Q-right)
-          let leftColCount = 0;
-          let rightColCount = 0;
-          let centerCrossingCount = 0;
+          // Partition into Left Column, Right Column, and Full-Width Banner items
+          const leftItems = [];
+          const rightItems = [];
+          const bannerItems = [];
           rawItems.forEach((it) => {
-            if (it.x < pageWidth * 0.44 && (it.x + it.w) > pageWidth * 0.56) {
-              centerCrossingCount += 1;
+            if (it.x < pageWidth * 0.42 && (it.x + it.w) > pageWidth * 0.62) {
+              bannerItems.push(it);
             } else if (it.x < midX) {
-              leftColCount += 1;
-            } else if (it.x >= midX) {
-              rightColCount += 1;
+              leftItems.push(it);
+            } else {
+              rightItems.push(it);
             }
           });
 
           const isTwoColumnPage =
-            rawItems.length >= 16 &&
-            leftColCount >= 6 &&
-            rightColCount >= 6 &&
-            centerCrossingCount <= Math.max(4, Math.floor(rawItems.length * 0.12));
+            rawItems.length >= 12 &&
+            leftItems.length >= 5 &&
+            rightItems.length >= 5 &&
+            bannerItems.length <= Math.max(6, Math.floor(rawItems.length * 0.2));
 
           let pageLines = [];
           if (isTwoColumnPage) {
-            const leftItems = rawItems.filter((it) => it.x < midX);
-            const rightItems = rawItems.filter((it) => it.x >= midX);
             pageLines = [
+              ...assemblePdfItemsIntoLines(bannerItems),
               ...assemblePdfItemsIntoLines(leftItems),
               ...assemblePdfItemsIntoLines(rightItems)
             ];
@@ -4227,8 +4590,20 @@
             pageLines = assemblePdfItemsIntoLines(rawItems);
           }
 
-          const cleanPage = pageLines.filter(Boolean).join('\n');
-          if (cleanPage) {
+          let cleanPage = sanitizeExtractedPdfText(pageLines.filter(Boolean).join('\n'));
+
+          // If page text is empty (Scanned PDF) or garbled font/glyph code (missing ToUnicode CMap), run Canvas OCR (hin+eng)
+          if (isExtractedPageGarbledOrEmpty(cleanPage) && p <= 25) {
+            if (typeof onProgressToast === 'function') {
+              onProgressToast(`⏳ PDF पेज ${p}/${pdfDoc.numPages} में स्कैन/कोडेड फ़ॉन्ट मिला — Smart Hindi+English OCR से पढ़ा जा रहा है...`);
+            }
+            const ocrPageText = await renderPdfPageToCanvasAndOcr(page);
+            if (ocrPageText && ocrPageText.trim()) {
+              cleanPage = ocrPageText;
+            }
+          }
+
+          if (cleanPage && !isExtractedPageGarbledOrEmpty(cleanPage)) {
             pageTexts.push(`Page: ${p}\n${cleanPage}`);
           }
         }
@@ -4236,17 +4611,19 @@
           return 'Method: PDF_OCR\n' + pageTexts.join('\n\n');
         }
       }
-    } catch (_) {}
+    } catch (pdfErr) {
+      console.warn('PDF.js extraction error:', pdfErr);
+    }
 
-    // 2. Fallback to native FlateDecode stream decompression + literal operator extraction
+    // 2. Fallback to native FlateDecode stream decompression + ToUnicode CMap extraction
     try {
       const streamExtracted = await decompressPdfBufferStreams(uint8);
-      if (streamExtracted && streamExtracted.trim()) {
+      if (streamExtracted && streamExtracted.trim() && !isExtractedPageGarbledOrEmpty(streamExtracted)) {
         return 'Method: PDF_OCR\n' + streamExtracted;
       }
     } catch (_) {}
 
-    // 3. Final fallback to plain text decoding
+    // 3. Final fallback (never emits raw %PDF- binary code)
     const rawUtf8 = new TextDecoder('utf-8', { fatal: false }).decode(uint8);
     return 'Method: PDF_OCR\n' + extractReadableTextFromPdfStream(rawUtf8);
   }
@@ -8189,10 +8566,10 @@
       };
 
       try {
-        if (String(file.name || '').toLowerCase().endsWith('.pdf')) {
+        if (String(file.name || '').toLowerCase().endsWith('.pdf') || String(file.type || '').toLowerCase() === 'application/pdf') {
           api.toast('⏳ PDF फ़ाइल से प्रश्न पढ़े जा रहे हैं... (Extracting questions from PDF...)');
         }
-        const rawText = await extractTextFromUploadedFile(file);
+        const rawText = await extractTextFromUploadedFile(file, (msg) => api.toast(msg));
         qbState.previewSession = buildAndValidatePreviewSession(
           rawText,
           file.name,

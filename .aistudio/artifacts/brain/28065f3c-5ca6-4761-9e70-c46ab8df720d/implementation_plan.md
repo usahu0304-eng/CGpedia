@@ -1,51 +1,87 @@
-# Question Bank — Bilingual (Hindi + English) Question Paper Fix Plan
+# Question Bank — Fix Garbled Code & Multi-Question Detection in Bilingual PDFs
 
-## Root Cause Diagnosis: English Paper क्यों चला और Hindi + English (Bilingual) Paper में क्यों दिक्कत आई?
+This plan resolves the root causes where uploading a Hindi + English (Bilingual) PDF either fails to detect questions or detects only 1 question filled with garbled symbols/code (`KrutiDev` legacy font encoding, unmapped `CID/Identity-H` font glyph codes, or raw PDF binary stream operators) in both Hindi and English fields. All changes remain strictly confined to the **Question Bank** module.
 
-कोड की गहन जांच (`admin-console.js`) में **5 मुख्य तकनीकी कारण** मिले हैं जिनकी वजह से केवल-अंग्रेज़ी (English-only) प्रश्न-पत्र काम कर गया, लेकिन **हिन्दी + अंग्रेज़ी (Bilingual)** प्रश्न-पत्र में समस्या आई:
+## User Review & Critical Decisions
 
-1. **Two-Column Bilingual PDF में हिन्दी और अंग्रेज़ी की लाइनें आपस में मिल जाना (`extractTextFromUploadedFile`):**
-   - CGPSC, Vyapam, SSC आदि के द्विभाषी (Bilingual) PDF पेपर में अक्सर बाईं ओर (Left Column) हिन्दी और दाईं ओर (Right Column) अंग्रेज़ी के प्रश्न होते हैं।
-   - `PDF.js` लाइन निकालते समय केवल `Y` (ऊंचाई) को देख रहा था, `X` (बाएं-दाएं कॉलम) को नहीं। इस कारण एक ही ऊंचाई (`Y`) पर लिखे बाएं कॉलम के हिन्दी प्रश्न और दाएं कॉलम के अंग्रेज़ी प्रश्न **एक ही लाइन में जुड़कर खराब हो रहे थे** (जबकि Single-column English पेपर में यह दिक्कत नहीं होती)।
-
-2. **एक ही प्रश्न में हिन्दी `(अ)-(द)` और अंग्रेज़ी `(A)-(D)` दोनों विकल्प होने पर Overwrite होना (`parsePdfOcrAndMatchAnswerKey`):**
-   - जब किसी द्विभाषी प्रश्न में पहले हिन्दी प्रश्न + 4 विकल्प और उसके नीचे अंग्रेज़ी प्रश्न + 4 विकल्प होते हैं:
-     - सिस्टम पहले विकल्प `(अ)` पर ही प्रश्न का टेक्स्ट (`firstOptIndex`) काट देता था, जिससे नीचे लिखा **अंग्रेज़ी प्रश्न विकल्प (D) के अंदर चला जाता था**।
-     - इसके बाद जब नीचे के अंग्रेज़ी विकल्प `(A)-(D)` पढ़े जाते थे, तो `extractedOpts[optIdx] = ...` **पुराने हिन्दी विकल्पों को मिटाकर (Overwrite) केवल अंग्रेज़ी विकल्प बचाता था**।
-
-3. **समान प्रश्न क्रमांक (`1.` हिन्दी और `1.` अंग्रेज़ी) वाले प्रश्नों का आपस में Merge न होना:**
-   - कई द्विभाषी प्रश्न-पत्रों में एक ही प्रश्न दो बार नंबर के साथ आता है—एक बार हिन्दी में (`1. छत्तीसगढ़...`) और एक बार अंग्रेज़ी में (`1. Chhattisgarh...`)।
-   - अभी सिस्टम इन्हें एक द्विभाषी प्रश्न बनाने के बजाय दो अलग-अलग अधूरे प्रश्न (`Q1` और `Q1`) बना देता था।
-
-4. **एक ही लाइन में लिखे Bilingual Text / Options (`रायपुर (Raipur)` या `हिन्दी प्रश्न? English question?`) का अलग न होना (`splitBilingualText`):**
-   - `splitBilingualText` केवल `/`, `||` या नई लाइन (`\n`) होने पर ही हिन्दी और अंग्रेज़ी को अलग करता था। यदि एक ही लाइन में बिना `/` के हिन्दी और अंग्रेज़ी साथ लिखे हों (जैसे `(A) 1 नवंबर 2000 (1 November 2000)` या `छत्तीसगढ़ का गठन कब हुआ? When was CG formed?`), तो वह दोनों को अलग नहीं कर पाता था।
-
-5. **प्रश्न के बीच में आने वाले `A.`, `B.` (जैसे `Dr. B. R. Ambedkar`, `Article 21-A`) या CSV के Bilingual Header (`Question (Hindi)`) की समस्या:**
-   - प्रश्न के बीच में `B.` या `A.` आने पर `optRegex` उसे विकल्प मानकर प्रश्न को बीच से ही काट देता था, जिससे विकल्प अधूरे रह जाते थे और प्रश्न `❌ REJECTED (Missing Answer Options)` हो जाता था।
+> [!IMPORTANT]
+> **Confirmed Scope & Root-Cause Decisions**
+> - **Confirmed Decision 1 (File Format)**: The affected uploads are **Hindi + English PDF Question Papers** (both typed DTP PDFs and scanned/coded PDFs).
+> - **Confirmed Decision 2 (Symptom Diagnosis)**: The 1 detected question displays strange English/symbol codes (`KrutiDev` legacy Hindi encoding, unmapped CID glyph codes, or raw PDF stream code) duplicated across both Hindi and English boxes, while remaining questions fail to split.
+> - **Confirmed Decision 3 (Strict Boundary)**: Only the Question Bank file extraction, font decoding, OCR fallback, and question splitter will be updated. No other app modules, UI layouts, or saved Firebase data will be modified.
 
 ---
 
-## Proposed Fixes (Strictly Inside Question Bank Only)
+## 1. Overview & Core Concept
 
-### 1. Two-Column Bilingual PDF Layout Detection (`/admin-console.js`)
-- `extractTextFromUploadedFile` में प्रत्येक PDF पेज के शब्दों के `X` और `Y` कोऑर्डिनेट्स की जांच करना।
-- यदि पेज **Two-Column (Left + Right)** लेआउट में है, तो पहले पूरे **Left Column** की लाइनें क्रम से निकालना और फिर **Right Column** की लाइनें निकालना, ताकि हिन्दी और अंग्रेज़ी के कॉलम आपस में न मिलें।
-
-### 2. Dual-Block & Dual-Option Bilingual Parser (`/admin-console.js`)
-- यदि एक ही प्रश्न ब्लॉक में **हिन्दी प्रश्न + 4 विकल्प** और उसके नीचे **अंग्रेज़ी प्रश्न + 4 विकल्प** हैं, तो:
-  - पहले विकल्प सेट के बाद आने वाले अंग्रेज़ी/हिन्दी प्रश्न टेक्स्ट को विकल्प (D) से अलग करके `questionEn` / `questionHi` में रखना।
-  - दोनों विकल्प सेट्स को मिटाने (Overwrite) के बजाय देवनागरी विकल्पों को `optionsHi[0..3]` में और अंग्रेज़ी विकल्पों को `optionsEn[0..3]` में सुरक्षित रखना।
-- यदि PDF में समान प्रश्न क्रमांक (`Q1` हिन्दी और `Q1` अंग्रेज़ी) दो अलग-अलग ब्लॉक्स में मिलें, तो उन्हें स्वचालित रूप से **एक ही Bilingual Question (`Q1`)** में जोड़ना (Merge)।
-
-### 3. Smart Bilingual Line & Option Splitter (`splitBilingualText`)
-- `/`, `||`, `\n` के अलावा एक ही लाइन में लिखे **`हिन्दी टेक्स्ट (English Text)`**, **`हिन्दी - English`**, और **देवनागरी वाक्य के बाद शुरू होने वाले अंग्रेज़ी वाक्य** को साफ़ तौर पर `hi` और `en` में अलग करना।
-
-### 4. Safe Option Regex & Bilingual CSV Header Support (`/admin-console.js`)
-- `optRegex` को सुधारना ताकि प्रश्न के बीच में आने वाले नाम/अनुच्छेद (`Dr. B. R. Ambedkar`, `Vitamin A.`, `Article 21-A`) को विकल्प न समझा जाए, और हमेशा अंतिम 4 वास्तविक विकल्पों `(A)-(D)` / `(अ)-(द)` को ही विकल्प माना जाए।
-- CSV हेडर मैपिंग में ब्रैकेट/स्पेस वाले सभी द्विभाषी नाम जैसे `Question (Hindi)`, `Question (English)`, `Option A (Hindi)`, `Option A (English)`, `question_hindi`, `question_english` को सपोर्ट करना।
+- **What Causes the Problem Today**:
+  1. **PDF.js Cross-Origin Worker Failure in WebView**: Loading `pdf.worker.min.js` directly from a remote CDN URL triggers a browser/WebView cross-origin `Worker` restriction, causing `PDF.js` to silently fail and fall back to raw PDF stream extraction. In English-only PDFs, raw stream literals `(1. Question...) Tj` are plain ASCII, so they still work; in Hindi + English PDFs, Devanagari fonts use 2-byte `CID / Identity-H` glyph indices (`<001A002F...> Tj`), which the raw stream fallback decodes into random ASCII symbols and code.
+  2. **Legacy Hindi Font Encoding (`KrutiDev` / `DevLys`)**: Many CGPSC, Vyapam, and State PSC bilingual PDFs store Hindi text in non-Unicode **KrutiDev-010 / DevLys** font (where Hindi looks like `NÙhlx<+ jkT; dk xBu...` and options look like `¼v½ ¼c½ ¼l½ ¼n½`). Because it contains no Unicode Devanagari characters (`\u0900-\u097F`), the parser treats it as Latin code and copies the same garbled string into both Hindi and English fields.
+  3. **Broken `ToUnicode` CMap or Scanned PDF Pages**: Some PDFs have corrupted font CMap tables (producing Private Use Area `\uE000-\uF8FF` or symbol gibberish) or scanned page images with no text layer.
+  4. **Standalone / Offset Question Numbers (`1.`, `Q.1`)**: When question numbers sit on a separate baseline or standalone line from the Hindi stem, the line regex misses question boundaries and merges the entire paper into Question 1.
+- **What This Fix Delivers**:
+  - Reliable **PDF.js execution** (Blob Worker + main-thread `disableWorker` fallback) so `PDF.js` never crashes into raw binary code.
+  - Automatic **KrutiDev / DevLys to Unicode Devanagari conversion** for legacy Hindi text and options (`¼v½` → `(अ)`, `¼c½` → `(ब)`, `¼l½` → `(स)`, `¼n½` → `(द)`).
+  - Automatic **Garbled-Code / Scanned Page Detection + Canvas OCR (`Tesseract.js` `hin+eng`)** when a PDF page has missing/corrupted font mappings or scanned images.
+  - **Multi-Question Boundary Detection** supporting standalone question numbers, table-cell numbers, inline numbers after Option D, and option-group segmentation so all questions in the paper are detected individually.
 
 ---
 
-## Strict Scope Guarantee
-- **केवल Question Bank** के फ़ाइल रीडिंग और Bilingual (Hindi + English) पार्सिंग लॉजिक में ही सुधार किया जाएगा।
-- ऐप के किसी भी अन्य सेक्शन, डिज़ाइन या डेटा में कोई बदलाव नहीं होगा।
+## 2. User Experience & Workflow
+
+- **Key User Flow**:
+  1. Admin selects a Hindi + English PDF in **Question Bank → Bulk Question Upload**.
+  2. The extractor loads `PDF.js` safely (using a Same-Origin Blob Worker with automatic main-thread fallback).
+  3. For each page:
+     - If legacy **KrutiDev / DevLys** Hindi encoding is detected, it automatically converts the Hindi segments and option markers (`¼v½..¼n½`) into clean Unicode Devanagari while preserving English segments.
+     - If the extracted page text is empty (Scanned PDF) or contains garbled font/glyph code (corrupted `ToUnicode` CMap), the page is automatically rendered to an offscreen `<canvas>` and processed via bilingual **Hindi + English OCR (`hin+eng`)** with live toast progress updates.
+  4. The question splitter separates every question (`1` to `N`) even when question numbers are on standalone lines, offset baselines, or two-column layouts, and populates clean Hindi in `🇮🇳 हिन्दी` and clean English in `🇬🇧 English`.
+
+---
+
+## 3. Key Product Decisions & Trade-Offs
+
+- **Decision 1: Same-Origin Blob Worker + Main-Thread Fallback for `PDF.js`**
+  - *Chosen Approach*: Wrap `importScripts('.../pdf.worker.min.js')` in a local `Blob` URL and automatically retry with `disableWorker: true` if worker initialization fails.
+  - *Why*: Eliminates cross-origin worker failures in Android WebView and Chrome so `PDF.js` always decodes PDF font tables properly instead of falling back to raw PDF stream code.
+- **Decision 2: Selective KrutiDev-to-Unicode Conversion**
+  - *Chosen Approach*: Detect KrutiDev signature tokens (`¼v½`, `¼c½`, `¼l½`, `¼n½`, `NÙhlx<+`, `fuEufyf[kr`, `iz'u`, `gS`, `esa`, `dk`, etc.) at the line/clause level and convert only KrutiDev segments to Unicode Devanagari while leaving genuine English text untouched.
+  - *Why*: Bilingual DTP papers mix KrutiDev Hindi and Arial/Times English in the same document; selective conversion restores readable Devanagari without corrupting the English question text.
+- **Decision 3: Automatic Canvas OCR Fallback for Coded / Scanned Pages**
+  - *Chosen Approach*: If extracted text fails the readability check (empty text, PUA glyphs, control characters, or symbol-code gibberish), render the PDF page to `<canvas>` and run `Tesseract.js` (`hin+eng`).
+  - *Why*: Visually rendering the page bypasses broken internal PDF font maps completely because the glyphs are drawn onto the canvas exactly as a human sees them.
+
+---
+
+## 4. Technical Architecture & Data Strategy
+
+```
+┌───────────────────────────────────────────────────────────────────────────┐
+│                 Uploaded PDF File (Typed, KrutiDev, or Scanned)           │
+└─────────────────────────────────────┬─────────────────────────────────────┘
+                                      ▼
+┌───────────────────────────────────────────────────────────────────────────┐
+│ 1. Safe PDF.js Loader (Blob Worker + disableWorker Main-Thread Fallback)  │
+│    • Detects %PDF- magic bytes even if Android file name lacks .pdf       │
+│    • Extracts items with 2-Column (Left Hindi / Right English) awareness  │
+└─────────────────────────────────────┬─────────────────────────────────────┘
+                                      ▼
+┌───────────────────────────────────────────────────────────────────────────┐
+│ 2. Font & Readability Inspector (Per Page)                                │
+│    ├─ Has KrutiDev / DevLys patterns (`¼v½`, `NÙhlx<+`, `fuEufyf[kr`)?    │
+│    │   └──► Convert KrutiDev Hindi segments & options to Unicode (देवनागरी)│
+│    └─ Is page text empty OR garbled CID/PUA/symbol code?                  │
+│        └──► Render PDF Page to Canvas (2.0x) → Run Tesseract OCR (hin+eng)│
+└─────────────────────────────────────┬─────────────────────────────────────┘
+                                      ▼
+┌───────────────────────────────────────────────────────────────────────────┐
+│ 3. Multi-Pattern Question Splitter & Bilingual Option Extractor           │
+│    • Handles standalone line numbers (`1.` on line N, stem on line N+1)   │
+│    • Splits inline question numbers glued after Option D                  │
+│    • Pairs Hindi + English stems & options into clean Bilingual records   │
+└───────────────────────────────────────────────────────────────────────────┘
+```
+
+- **Interactive State & Error Recovery**:
+  - Never dumps raw `%PDF-` binary streams, `obj`/`endobj` dictionaries, or unmapped hex glyph codes into `questionHi` / `questionEn`.
+  - Displays clear progress toasts during multi-page PDF decoding and OCR fallback, then opens the interactive **Import Preview Workbench** with all detected questions properly separated into Hindi and English.

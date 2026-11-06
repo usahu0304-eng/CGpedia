@@ -1,6 +1,6 @@
 {
-  "summary": "Diagnosis and implementation plan to fix Bilingual (Hindi + English) Question Paper parsing, 2-column PDF extraction, dual-option overwrite bug, same-number Hindi/English question pairing, and bilingual text splitting in Question Bank.",
-  "updatedAt": "2026-11-06T07:00:49.898894452Z",
+  "summary": "Implementation plan to resolve PDF binary/font code extraction, KrutiDev/DevLys legacy Hindi encoding, scanned/coded PDF OCR fallback, and multi-question boundary detection in the Question Bank module.",
+  "updatedAt": "2026-11-06T08:04:03.464020450Z",
   "requestFeedback": true,
   "userFacing": true
 }
