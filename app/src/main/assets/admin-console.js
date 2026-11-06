@@ -3714,55 +3714,140 @@
   const KNOWN_CSV_COLUMN_MAP = {
     questionhi: 'questionHi',
     question_hi: 'questionHi',
+    questionhindi: 'questionHi',
+    question_hindi: 'questionHi',
+    question_in_hindi: 'questionHi',
+    qhi: 'questionHi',
+    q_hi: 'questionHi',
+    qhindi: 'questionHi',
+    q_hindi: 'questionHi',
     stemhi: 'questionHi',
+    stem_hi: 'questionHi',
     hindi_question: 'questionHi',
+    hindiquestion: 'questionHi',
     questionen: 'questionEn',
     question_en: 'questionEn',
+    questionenglish: 'questionEn',
+    question_english: 'questionEn',
+    question_in_english: 'questionEn',
+    qen: 'questionEn',
+    q_en: 'questionEn',
+    qenglish: 'questionEn',
+    q_english: 'questionEn',
     stemen: 'questionEn',
+    stem_en: 'questionEn',
     english_question: 'questionEn',
+    englishquestion: 'questionEn',
     question: 'questionEn',
     opta_hi: 'optA_Hi',
     optiona_hi: 'optA_Hi',
+    option_a_hi: 'optA_Hi',
+    option_a_hindi: 'optA_Hi',
+    optionahindi: 'optA_Hi',
+    optahindi: 'optA_Hi',
+    opt_a_hindi: 'optA_Hi',
     opt0_hi: 'optA_Hi',
     optb_hi: 'optB_Hi',
     optionb_hi: 'optB_Hi',
+    option_b_hi: 'optB_Hi',
+    option_b_hindi: 'optB_Hi',
+    optionbhindi: 'optB_Hi',
+    optbhindi: 'optB_Hi',
+    opt_b_hindi: 'optB_Hi',
     opt1_hi: 'optB_Hi',
     optc_hi: 'optC_Hi',
     optionc_hi: 'optC_Hi',
+    option_c_hi: 'optC_Hi',
+    option_c_hindi: 'optC_Hi',
+    optionchindi: 'optC_Hi',
+    optchindi: 'optC_Hi',
+    opt_c_hindi: 'optC_Hi',
     opt2_hi: 'optC_Hi',
     optd_hi: 'optD_Hi',
     optiond_hi: 'optD_Hi',
+    option_d_hi: 'optD_Hi',
+    option_d_hindi: 'optD_Hi',
+    optiondhindi: 'optD_Hi',
+    optdhindi: 'optD_Hi',
+    opt_d_hindi: 'optD_Hi',
     opt3_hi: 'optD_Hi',
     opta_en: 'optA_En',
     optiona_en: 'optA_En',
+    option_a_en: 'optA_En',
+    option_a_english: 'optA_En',
+    optionaenglish: 'optA_En',
+    optaenglish: 'optA_En',
+    opt_a_english: 'optA_En',
     opta: 'optA_En',
     option_a: 'optA_En',
+    optiona: 'optA_En',
+    option1: 'optA_En',
+    option_1: 'optA_En',
     opt0_en: 'optA_En',
     optb_en: 'optB_En',
     optionb_en: 'optB_En',
+    option_b_en: 'optB_En',
+    option_b_english: 'optB_En',
+    optionbenglish: 'optB_En',
+    optbenglish: 'optB_En',
+    opt_b_english: 'optB_En',
     optb: 'optB_En',
     option_b: 'optB_En',
+    optionb: 'optB_En',
+    option2: 'optB_En',
+    option_2: 'optB_En',
     opt1_en: 'optB_En',
     optc_en: 'optC_En',
     optionc_en: 'optC_En',
+    option_c_en: 'optC_En',
+    option_c_english: 'optC_En',
+    optioncenglish: 'optC_En',
+    optcenglish: 'optC_En',
+    opt_c_english: 'optC_En',
     optc: 'optC_En',
     option_c: 'optC_En',
+    optionc: 'optC_En',
+    option3: 'optC_En',
+    option_3: 'optC_En',
     opt2_en: 'optC_En',
     optd_en: 'optD_En',
     optiond_en: 'optD_En',
+    option_d_en: 'optD_En',
+    option_d_english: 'optD_En',
+    optiondenglish: 'optD_En',
+    optdenglish: 'optD_En',
+    opt_d_english: 'optD_En',
     optd: 'optD_En',
     option_d: 'optD_En',
+    optiond: 'optD_En',
+    option4: 'optD_En',
+    option_4: 'optD_En',
     opt3_en: 'optD_En',
     correctindex: 'correctIndex',
     correct_index: 'correctIndex',
     correctoptionindex: 'correctIndex',
+    correctoption: 'correctIndex',
+    correct_option: 'correctIndex',
     correct_answer: 'correctIndex',
+    correctanswer: 'correctIndex',
+    right_answer: 'correctIndex',
+    rightanswer: 'correctIndex',
     answer: 'correctIndex',
+    ans: 'correctIndex',
     explanationhi: 'explanationHi',
     explanation_hi: 'explanationHi',
+    explanationhindi: 'explanationHi',
+    explanation_hindi: 'explanationHi',
+    solution_hi: 'explanationHi',
+    solution_hindi: 'explanationHi',
     exphi: 'explanationHi',
     explanationen: 'explanationEn',
     explanation_en: 'explanationEn',
+    explanationenglish: 'explanationEn',
+    explanation_english: 'explanationEn',
+    solution_en: 'explanationEn',
+    solution_english: 'explanationEn',
+    solution: 'explanationEn',
     expen: 'explanationEn',
     explanation: 'explanationEn',
     subjecttag: 'subjectTag',
@@ -3814,6 +3899,10 @@
     'प्रश्न': 'questionHi',
     'हिन्दी_प्रश्न': 'questionHi',
     'हिंदी_प्रश्न': 'questionHi',
+    'प्रश्न_हिन्दी': 'questionHi',
+    'प्रश्न_हिंदी': 'questionHi',
+    'अंग्रेजी_प्रश्न': 'questionEn',
+    'प्रश्न_अंग्रेजी': 'questionEn',
     'विकल्प_a': 'optA_Hi',
     'विकल्प_b': 'optB_Hi',
     'विकल्प_c': 'optC_Hi',
@@ -3835,6 +3924,7 @@
     'सही_विकल्प': 'correctIndex',
     'व्याख्या': 'explanationHi',
     'उत्तर_व्याख्या': 'explanationHi',
+    'हल': 'explanationHi',
     'विषय': 'subjectTag',
     'टॉपिक': 'topic',
     'अध्याय': 'topic',
@@ -4000,6 +4090,55 @@
     return collectedPages.join('\n');
   }
 
+  function assemblePdfItemsIntoLines(itemsList) {
+    if (!Array.isArray(itemsList) || itemsList.length === 0) return [];
+    // Sort top-to-bottom (descending Y), then left-to-right (ascending X)
+    const sorted = itemsList.slice().sort((a, b) => {
+      if (Math.abs(b.y - a.y) > 4) return b.y - a.y;
+      return a.x - b.x;
+    });
+    const rowBuckets = [];
+    sorted.forEach((it) => {
+      const lastBucket = rowBuckets[rowBuckets.length - 1];
+      if (!lastBucket || Math.abs(it.y - lastBucket.avgY) > 4.5) {
+        rowBuckets.push({ avgY: it.y, items: [it] });
+      } else {
+        lastBucket.items.push(it);
+        lastBucket.avgY = (lastBucket.avgY * (lastBucket.items.length - 1) + it.y) / lastBucket.items.length;
+      }
+    });
+    const outLines = [];
+    rowBuckets.forEach((bucket) => {
+      bucket.items.sort((a, b) => a.x - b.x);
+      let lineParts = [];
+      let prevRight = null;
+      bucket.items.forEach((it) => {
+        const text = String(it.str || '');
+        if (!text.trim()) {
+          if (lineParts.length > 0 && !lineParts[lineParts.length - 1].endsWith(' ')) {
+            lineParts.push(' ');
+          }
+          return;
+        }
+        const gap = prevRight !== null ? (it.x - prevRight) : 0;
+        // If there is a large horizontal gap and a new question or bracketed option starts, split onto a new line
+        if (gap > 85 && /^(?:Q\.?\s*\d|\(?[0-9\u0966-\u096F]{1,3}[.):]|\([A-Da-dअआइईबसदकखगघ1-4१-४]\))/i.test(text.trim())) {
+          const built = lineParts.join('').replace(/\s+/g, ' ').trim();
+          if (built) outLines.push(built);
+          lineParts = [text];
+        } else if (gap > 2.5 && lineParts.length > 0) {
+          lineParts.push(' ' + text);
+        } else {
+          lineParts.push(text);
+        }
+        prevRight = it.x + Math.max(it.w || 0, text.length * 4.2);
+      });
+      const finalLine = lineParts.join('').replace(/\s+/g, ' ').trim();
+      if (finalLine) outLines.push(finalLine);
+    });
+    return outLines;
+  }
+
   async function extractTextFromUploadedFile(file) {
     if (!file) return '';
     const fileName = String(file.name || '').toLowerCase();
@@ -4027,7 +4166,7 @@
       return utf8Text.replace(/^\uFEFF/, '');
     }
 
-    // 1. Try PDF.js page-by-page extraction with CMap support for Hindi Devanagari fonts
+    // 1. Try PDF.js page-by-page extraction with CMap + Two-Column Bilingual Layout awareness
     try {
       const pdfjsLib = await ensurePdfJsLoaded();
       if (pdfjsLib && typeof pdfjsLib.getDocument === 'function') {
@@ -4041,29 +4180,54 @@
         const pageTexts = [];
         for (let p = 1; p <= pdfDoc.numPages; p++) {
           const page = await pdfDoc.getPage(p);
+          const viewport = typeof page.getViewport === 'function' ? page.getViewport({ scale: 1.0 }) : null;
+          const pageWidth = (viewport && viewport.width) ? viewport.width : 595;
+          const midX = pageWidth * 0.49;
+
           const textContent = await page.getTextContent();
-          const lines = [];
-          let currentLine = [];
-          let lastY = null;
+          const rawItems = [];
           (textContent.items || []).forEach((item) => {
             const str = String(item.str || '');
-            const y = item.transform ? Math.round(item.transform[5]) : null;
-            if (lastY !== null && y !== null && Math.abs(y - lastY) > 4) {
-              if (currentLine.length > 0) lines.push(currentLine.join(' ').trim());
-              currentLine = [str];
-            } else {
-              currentLine.push(str);
-            }
-            if (item.hasEOL) {
-              if (currentLine.length > 0) lines.push(currentLine.join(' ').trim());
-              currentLine = [];
-              lastY = null;
-            } else {
-              lastY = y;
+            if (!str.trim()) return;
+            const x = item.transform ? Number(item.transform[4] || 0) : 0;
+            const y = item.transform ? Number(item.transform[5] || 0) : 0;
+            const w = Number(item.width || (str.length * 4.5));
+            rawItems.push({ str, x, y, w });
+          });
+
+          // Detect if this page is a Two-Column Bilingual layout (Left Column = Hindi/Q-left, Right Column = English/Q-right)
+          let leftColCount = 0;
+          let rightColCount = 0;
+          let centerCrossingCount = 0;
+          rawItems.forEach((it) => {
+            if (it.x < pageWidth * 0.44 && (it.x + it.w) > pageWidth * 0.56) {
+              centerCrossingCount += 1;
+            } else if (it.x < midX) {
+              leftColCount += 1;
+            } else if (it.x >= midX) {
+              rightColCount += 1;
             }
           });
-          if (currentLine.length > 0) lines.push(currentLine.join(' ').trim());
-          const cleanPage = lines.filter(Boolean).join('\n');
+
+          const isTwoColumnPage =
+            rawItems.length >= 16 &&
+            leftColCount >= 6 &&
+            rightColCount >= 6 &&
+            centerCrossingCount <= Math.max(4, Math.floor(rawItems.length * 0.12));
+
+          let pageLines = [];
+          if (isTwoColumnPage) {
+            const leftItems = rawItems.filter((it) => it.x < midX);
+            const rightItems = rawItems.filter((it) => it.x >= midX);
+            pageLines = [
+              ...assemblePdfItemsIntoLines(leftItems),
+              ...assemblePdfItemsIntoLines(rightItems)
+            ];
+          } else {
+            pageLines = assemblePdfItemsIntoLines(rawItems);
+          }
+
+          const cleanPage = pageLines.filter(Boolean).join('\n');
           if (cleanPage) {
             pageTexts.push(`Page: ${p}\n${cleanPage}`);
           }
@@ -4153,7 +4317,7 @@
       }
 
       // 3. Detect tabular multi-set row: e.g. "1   A   B   C   D" or "1 | C | B | A | D" or "1. (A) (C) (B) (D)"
-      const tabularRowMatch = line.match(/^(?:Q\.?\s*)?(\d{1,3})\s*[|.:\-]?\s*\(?([A-Da-dअआइईब सदकखगघ])\)?[\s|,;]+\(?([A-Da-dअआइईबसदकखगघ])\)?(?:[\s|,;]+\(?([A-Da-dअआइईबसदकखगघ])\)?)?(?:[\s|,;]+\(?([A-Da-dअआइईबसदकखगघ])\)?)?\s*$/);
+      const tabularRowMatch = line.match(/^(?:Q\.?\s*)?(\d{1,4})\s*[|.:\-]?\s*\(?([A-Da-dअआइईब सदकखगघ])\)?[\s|,;]+\(?([A-Da-dअआइईबसदकखगघ])\)?(?:[\s|,;]+\(?([A-Da-dअआइईबसदकखगघ])\)?)?(?:[\s|,;]+\(?([A-Da-dअआइईबसदकखगघ])\)?)?\s*$/);
       if (tabularRowMatch) {
         const qNum = Number(tabularRowMatch[1]);
         const ansTokens = [tabularRowMatch[2], tabularRowMatch[3], tabularRowMatch[4], tabularRowMatch[5]].filter(Boolean);
@@ -4178,7 +4342,7 @@
       if (inlineSetPrefix) {
         const sCol = inlineSetPrefix[1].toUpperCase();
         detectedColumnsSet.add(sCol);
-        const pairRegex = /(?:^|[\s,;|\n\r])(?:Q\.?\s*|प्रश्न\s*|प्र\.?\s*)?(\d{1,3})\s*(?:[-:=.)>]+|\s+)\s*\(?([A-Da-d0-3अआइईबसदकखगघ])\)?(?=$|[\s,;|\n\r.)])/g;
+        const pairRegex = /(?:^|[\s,;|\n\r])(?:Q\.?\s*|प्रश्न\s*|प्र\.?\s*)?(\d{1,4})\s*(?:[-:=.)>]+|\s+)\s*\(?([A-Da-d0-3अआइईबसदकखगघ])\)?(?=$|[\s,;|\n\r.)])/g;
         let pm;
         while ((pm = pairRegex.exec(inlineSetPrefix[2])) !== null) {
           const qNum = Number(pm[1]);
@@ -4191,7 +4355,7 @@
       }
 
       // 5. Standard pairs ("1-A, 2-B, 3-C"): assign to currentSectionSet if active, otherwise to targetSet
-      const pairRegex = /(?:^|[\s,;|\n\r])(?:Q\.?\s*|प्रश्न\s*|प्र\.?\s*)?(\d{1,3})\s*(?:[-:=.)>]+|\s+)\s*\(?([A-Da-d0-3अआइईबसदकखगघ])\)?(?=$|[\s,;|\n\r.)])/g;
+      const pairRegex = /(?:^|[\s,;|\n\r])(?:Q\.?\s*|प्रश्न\s*|प्र\.?\s*)?(\d{1,4})\s*(?:[-:=.)>]+|\s+)\s*\(?([A-Da-d0-3अआइईबसदकखगघ])\)?(?=$|[\s,;|\n\r.)])/g;
       let match;
       while ((match = pairRegex.exec(line)) !== null) {
         const qNum = Number(match[1]);
@@ -4240,7 +4404,7 @@
       'आ': 1, 'इ': 2, 'ई': 3
     };
 
-    const pairRegex = /(?:^|[\s,;|\n\r])(?:Q\.?\s*|प्रश्न\s*|प्र\.?\s*)?(\d{1,3})\s*(?:[-:=.)>]+|\s+)\s*\(?([A-Da-d0-3अआइईबसदकखगघ])\)?(?=$|[\s,;|\n\r.)])/g;
+    const pairRegex = /(?:^|[\s,;|\n\r])(?:Q\.?\s*|प्रश्न\s*|प्र\.?\s*)?(\d{1,4})\s*(?:[-:=.)>]+|\s+)\s*\(?([A-Da-d0-3अआइईबसदकखगघ])\)?(?=$|[\s,;|\n\r.)])/g;
     let match;
     while ((match = pairRegex.exec(raw)) !== null) {
       const qNum = Number(match[1]);
@@ -4257,17 +4421,208 @@
     if (!clean) return { hi: '', en: '' };
     const hasDevanagari = /[\u0900-\u097F]/.test(clean);
     const hasLatin = /[A-Za-z]/.test(clean);
-    if (hasDevanagari && hasLatin) {
-      const parts = clean.split(/\s*(?:\/|\|\||\n)\s*/).map((p) => p.trim()).filter(Boolean);
-      if (parts.length >= 2) {
-        const hiParts = parts.filter((p) => /[\u0900-\u097F]/.test(p));
-        const enParts = parts.filter((p) => !/[\u0900-\u097F]/.test(p) && /[A-Za-z]/.test(p));
-        if (hiParts.length > 0 && enParts.length > 0) {
-          return { hi: hiParts.join(' '), en: enParts.join(' ') };
-        }
+    if (!hasDevanagari || !hasLatin) {
+      return { hi: clean, en: clean };
+    }
+
+    // 1. Split by explicit separators (/, ||, or newline)
+    const parts = clean.split(/\s*(?:\/|\|\||\r?\n)\s*/).map((p) => p.trim()).filter(Boolean);
+    if (parts.length >= 2) {
+      const hiParts = parts.filter((p) => /[\u0900-\u097F]/.test(p));
+      const enParts = parts.filter((p) => !/[\u0900-\u097F]/.test(p) && /[A-Za-z]/.test(p));
+      if (hiParts.length > 0 && enParts.length > 0) {
+        return { hi: hiParts.join(' '), en: enParts.join(' ') };
       }
     }
+
+    // 2. Parenthetical bilingual option/stem e.g. "1 नवंबर 2000 (1 November 2000)" or "Raipur (रायपुर)"
+    const parenHiFirst = clean.match(/^([^\n()]*[\u0900-\u097F][^\n()]*?)\s*\(\s*([A-Za-z0-9][^\n()]*?)\s*\)$/);
+    if (parenHiFirst && !/[\u0900-\u097F]/.test(parenHiFirst[2])) {
+      return { hi: parenHiFirst[1].trim(), en: parenHiFirst[2].trim() };
+    }
+    const parenEnFirst = clean.match(/^([A-Za-z0-9][^\n()]*?)\s*\(\s*([^\n()]*[\u0900-\u097F][^\n()]*?)\s*\)$/);
+    if (parenEnFirst && !/[\u0900-\u097F]/.test(parenEnFirst[1])) {
+      return { hi: parenEnFirst[2].trim(), en: parenEnFirst[1].trim() };
+    }
+
+    // 3. Inline sentence boundary e.g. "छत्तीसगढ़ का गठन कब हुआ था? When was Chhattisgarh formed?"
+    const hiSentenceFirst = clean.match(/^([\s\S]*?[\u0900-\u097F][\s\S]*?[।?!])\s+(?:\d{1,4}\s*[.):\-]\s*)?([A-Za-z][\s\S]+)$/);
+    if (hiSentenceFirst && !/[\u0900-\u097F]/.test(hiSentenceFirst[2])) {
+      return { hi: hiSentenceFirst[1].trim(), en: hiSentenceFirst[2].trim() };
+    }
+    const enSentenceFirst = clean.match(/^([A-Za-z][\s\S]*?[?.!])\s+(?:[0-9\u0966-\u096F]{1,4}\s*[.):\-]\s*)?([\s\S]*?[\u0900-\u097F][\s\S]+)$/);
+    if (enSentenceFirst && !/[\u0900-\u097F]/.test(enSentenceFirst[1])) {
+      return { hi: enSentenceFirst[2].trim(), en: enSentenceFirst[1].trim() };
+    }
+
+    // 4. Hyphen/dash separated bilingual option e.g. "रायपुर - Raipur" or "Raipur - रायपुर"
+    const dashParts = clean.split(/\s+[-–—]\s+/).map((p) => p.trim()).filter(Boolean);
+    if (dashParts.length === 2) {
+      const p0Hi = /[\u0900-\u097F]/.test(dashParts[0]);
+      const p1Hi = /[\u0900-\u097F]/.test(dashParts[1]);
+      if (p0Hi && !p1Hi && /[A-Za-z]/.test(dashParts[1])) {
+        return { hi: dashParts[0], en: dashParts[1] };
+      }
+      if (!p0Hi && p1Hi && /[A-Za-z]/.test(dashParts[0])) {
+        return { hi: dashParts[1], en: dashParts[0] };
+      }
+    }
+
     return { hi: clean, en: clean };
+  }
+
+  function extractBilingualStemAndOptionsFromBlock(textWithoutExp) {
+    const optTokenMap = {
+      A: 0, B: 1, C: 2, D: 3,
+      'अ': 0, 'ब': 1, 'स': 2, 'द': 3,
+      'क': 0, 'ख': 1, 'ग': 2, 'घ': 3,
+      'आ': 1, 'इ': 2, 'ई': 3,
+      '1': 0, '2': 1, '3': 2, '4': 3,
+      '१': 0, '२': 1, '३': 2, '४': 3
+    };
+
+    // Match bracketed options `(A)` / `[अ]` anywhere after whitespace, OR unbracketed `A)` / `A.` at line-start or after 2+ spaces (avoiding initials like "B. R.")
+    const optMarkerRegex = /(?:^|\n|\s)(?:[([]\s*([A-Da-dअआइईबसदकखगघ1-4१-४])\s*[)\]]|(?:^|\n|\s{2,})([A-Da-dअआइईबसदकखगघ])\s*[).:\-](?!\s*[A-Z]\.))\s*/g;
+    const rawMatches = [];
+    let m;
+    while ((m = optMarkerRegex.exec(textWithoutExp)) !== null) {
+      const rawTok = String(m[1] || m[2] || '').trim().toUpperCase();
+      const isBracketed = Boolean(m[1]);
+      // Unbracketed numeric "1." inside a stem is often a statement list, so only accept numeric 1-4 when bracketed `(1)`
+      if (!isBracketed && /^[1-4१-४]$/.test(rawTok)) continue;
+      const optIdx = optTokenMap[rawTok];
+      if (optIdx !== undefined) {
+        const leadingWsLen = (m[0].match(/^\s*/) || [''])[0].length;
+        rawMatches.push({
+          optIdx,
+          rawTok,
+          markerStart: m.index + leadingWsLen,
+          contentStart: m.index + m[0].length
+        });
+      }
+    }
+
+    if (rawMatches.length === 0) {
+      const stemSplit = splitBilingualText(textWithoutExp);
+      return {
+        stemHi: stemSplit.hi,
+        stemEn: stemSplit.en,
+        optsHi: ['', '', '', ''],
+        optsEn: ['', '', '', '']
+      };
+    }
+
+    // Group option markers into sequential sets of (0..3). Whenever optIdx === 0 appears after we already saw options >= 1, start a new option set!
+    const optionGroups = [];
+    let currentGroup = [];
+    rawMatches.forEach((rm) => {
+      if (rm.optIdx === 0 && currentGroup.some((x) => x.optIdx >= 1)) {
+        optionGroups.push(currentGroup);
+        currentGroup = [rm];
+      } else {
+        currentGroup.push(rm);
+      }
+    });
+    if (currentGroup.length > 0) optionGroups.push(currentGroup);
+
+    // Filter to groups that look like real option sets (at least 2 distinct options, or the only group)
+    const validGroups = optionGroups.filter((g) => {
+      const uniqueIndices = new Set(g.map((x) => x.optIdx));
+      return uniqueIndices.size >= 2 || optionGroups.length === 1;
+    });
+    const activeGroups = validGroups.length > 0 ? validGroups : [rawMatches];
+
+    // If there are TWO option groups in the same question block (e.g. Hindi options followed by English stem + English options)
+    if (activeGroups.length >= 2) {
+      const g1 = activeGroups[activeGroups.length - 2];
+      const g2 = activeGroups[activeGroups.length - 1];
+      const firstGroupStart = g1[0].markerStart;
+      const secondGroupStart = g2[0].markerStart;
+
+      const stem1Raw = textWithoutExp.slice(0, firstGroupStart).trim();
+      const g1Opts = ['', '', '', ''];
+      for (let i = 0; i < g1.length; i++) {
+        const cur = g1[i];
+        const nextStart = (i + 1 < g1.length) ? g1[i + 1].markerStart : secondGroupStart;
+        g1Opts[cur.optIdx] = textWithoutExp.slice(cur.contentStart, nextStart).trim();
+      }
+
+      // Check if the last option of g1 swallowed the second-language question stem before g2[0]
+      let stem2Raw = '';
+      const lastG1 = g1[g1.length - 1];
+      if (lastG1) {
+        const lastOptText = g1Opts[lastG1.optIdx] || '';
+        const lastOptLines = lastOptText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+        if (lastOptLines.length >= 2) {
+          g1Opts[lastG1.optIdx] = lastOptLines[0];
+          stem2Raw = lastOptLines.slice(1).join(' ').replace(/^\s*(?:Q(?:uestion)?\.?\s*|प्रश्न\s*|प्र\.?\s*)?[0-9\u0966-\u096F]{1,4}\s*[.):\-]\s*/i, '').trim();
+        } else {
+          const splitLast = splitBilingualText(lastOptText);
+          if (splitLast.hi !== splitLast.en && lastOptText.length > 25) {
+            const g1IsDevanagari = /[\u0900-\u097F]/.test(stem1Raw + ' ' + g1Opts[0]);
+            g1Opts[lastG1.optIdx] = g1IsDevanagari ? splitLast.hi : splitLast.en;
+            stem2Raw = (g1IsDevanagari ? splitLast.en : splitLast.hi).replace(/^\s*(?:Q(?:uestion)?\.?\s*|प्रश्न\s*|प्र\.?\s*)?[0-9\u0966-\u096F]{1,4}\s*[.):\-]\s*/i, '').trim();
+          }
+        }
+      }
+
+      const g2Opts = ['', '', '', ''];
+      for (let i = 0; i < g2.length; i++) {
+        const cur = g2[i];
+        const nextStart = (i + 1 < g2.length) ? g2[i + 1].markerStart : textWithoutExp.length;
+        g2Opts[cur.optIdx] = textWithoutExp.slice(cur.contentStart, nextStart).trim();
+      }
+
+      const g1HasHi = /[\u0900-\u097F]/.test(stem1Raw + ' ' + g1Opts.join(' '));
+      const g2HasHi = /[\u0900-\u097F]/.test(stem2Raw + ' ' + g2Opts.join(' '));
+
+      if (g1HasHi && !g2HasHi) {
+        const s1 = splitBilingualText(stem1Raw);
+        return {
+          stemHi: s1.hi || stem1Raw,
+          stemEn: stem2Raw || (s1.en !== s1.hi ? s1.en : stem1Raw),
+          optsHi: g1Opts.map((o, i) => o || g2Opts[i] || ''),
+          optsEn: g2Opts.map((o, i) => o || g1Opts[i] || '')
+        };
+      }
+      if (!g1HasHi && g2HasHi) {
+        const s1 = splitBilingualText(stem1Raw);
+        return {
+          stemHi: stem2Raw || (s1.hi !== s1.en ? s1.hi : stem1Raw),
+          stemEn: s1.en || stem1Raw,
+          optsHi: g2Opts.map((o, i) => o || g1Opts[i] || ''),
+          optsEn: g1Opts.map((o, i) => o || g2Opts[i] || '')
+        };
+      }
+    }
+
+    // Standard single option-set (take the last complete option group so statement labels A/B inside stem don't truncate the stem)
+    const targetGroup = activeGroups[activeGroups.length - 1];
+    const firstOptIndex = targetGroup[0].markerStart;
+    const stemRaw = (firstOptIndex > 0 ? textWithoutExp.slice(0, firstOptIndex) : textWithoutExp).trim();
+    const stemBilingual = splitBilingualText(stemRaw);
+
+    const extractedOpts = ['', '', '', ''];
+    for (let i = 0; i < targetGroup.length; i++) {
+      const cur = targetGroup[i];
+      const nextStart = (i + 1 < targetGroup.length) ? targetGroup[i + 1].markerStart : textWithoutExp.length;
+      extractedOpts[cur.optIdx] = textWithoutExp.slice(cur.contentStart, nextStart).trim();
+    }
+
+    const optsHi = [];
+    const optsEn = [];
+    for (let i = 0; i < 4; i++) {
+      const splitOpt = splitBilingualText(extractedOpts[i]);
+      optsHi.push(splitOpt.hi);
+      optsEn.push(splitOpt.en);
+    }
+
+    return {
+      stemHi: stemBilingual.hi,
+      stemEn: stemBilingual.en,
+      optsHi,
+      optsEn
+    };
   }
 
   function parsePdfOcrAndMatchAnswerKey(rawContent, fileName, answerKeyOverride, paperSetCodeOverride, answerKeySetColOverride) {
@@ -4317,12 +4672,26 @@
     const combinedAnswerKeyMap = multiSetParsed.selectedMap;
     const ambiguousSet = new Set(multiSetParsed.ambiguousQuestions || []);
 
-    const lines = bodyText.split(/\r?\n/);
+    // Pre-normalize lines where a 2-column bilingual PDF had both "1. Hindi..." and "1. English..." on the same line
+    const rawLinesInput = bodyText.split(/\r?\n/);
+    const lines = [];
+    rawLinesInput.forEach((rawLine) => {
+      const trimmed = rawLine.trim();
+      if (!trimmed) return;
+      const inlineRepeatMatch = trimmed.match(/^((?:Q(?:uestion|ues)?\.?\s*|प्रश्न\s*|प्र\.?\s*)?\(?([0-9\u0966-\u096F]{1,4})\)?\s*[.):\-]\s*.+?)\s+((?:Q(?:uestion|ues)?\.?\s*|प्रश्न\s*|प्र\.?\s*)?\(?([0-9\u0966-\u096F]{1,4})\)?\s*[.):\-]\s*[A-Za-z\u0900-\u097F].*)$/i);
+      if (inlineRepeatMatch && normalizeDevanagariDigits(inlineRepeatMatch[2]) === normalizeDevanagariDigits(inlineRepeatMatch[4])) {
+        lines.push(inlineRepeatMatch[1].trim());
+        lines.push(inlineRepeatMatch[3].trim());
+      } else {
+        lines.push(trimmed);
+      }
+    });
+
     const questionBlocks = [];
     let currentBlock = null;
     let currentDetectedPage = 1;
 
-    const qStartRegex = /^\s*(?:Q(?:uestion|ues)?\.?\s*|प्रश्न\s*(?:क्र(?:मांक)?\.?)?\s*|प्र\.?\s*)?(?:\(?([0-9\u0966-\u096F]{1,3})\)?\s*[.):\-]|(?:\(([0-9\u0966-\u096F]{1,3})\)))\s*(.+)$/i;
+    const qStartRegex = /^\s*(?:Q(?:uestion|ues)?\.?\s*|प्रश्न\s*(?:क्र(?:मांक)?\.?)?\s*|प्र\.?\s*)?(?:\(?([0-9\u0966-\u096F]{1,4})\)?\s*[.):\-]|(?:\(([0-9\u0966-\u096F]{1,4})\)))\s*(.+)$/i;
     const pageMarkerRegex = /(?:^|\s)(?:Page|पृष्ठ)\s*[:\-]?\s*([0-9\u0966-\u096F]{1,4})\b/i;
 
     lines.forEach((rawLine, idx) => {
@@ -4368,6 +4737,7 @@
       };
     }
 
+    const preliminaryItems = [];
     questionBlocks.forEach((block, idx) => {
       const fullBlockText = block.rawLines.join('\n');
       let inlineAnswer = null;
@@ -4410,37 +4780,7 @@
         .replace(/\[\s*(?:Exam|Category|Subject|Topic|Subtopic|Difficulty|परीक्षा|विषय|टॉपिक|अध्याय|उपटॉपिक|कठिनाई|स्तर)\s*:[^\]]+\]/gi, '')
         .trim();
 
-      const optRegex = /(?:^|\n|\s)(?:[([]\s*([A-Da-dअआइईबसदकखगघ1-4१-४])\s*[)\]]|([A-Da-dअआइईबसदकखगघ])\s*[).:\-])\s*([\s\S]*?)(?=(?:\n|\s)(?:[([]\s*[A-Da-dअआइईबसदकखगघ1-4१-४]\s*[)\]]|[A-Da-dअआइईबसदकखगघ]\s*[).:\-])|$)/g;
-      const extractedOpts = ['', '', '', ''];
-      let firstOptIndex = -1;
-      let optMatch;
-      const optTokenMap = {
-        A: 0, B: 1, C: 2, D: 3,
-        'अ': 0, 'ब': 1, 'स': 2, 'द': 3,
-        'क': 0, 'ख': 1, 'ग': 2, 'घ': 3,
-        'आ': 1, 'इ': 2, 'ई': 3,
-        '1': 0, '2': 1, '3': 2, '4': 3,
-        '१': 0, '२': 1, '३': 2, '४': 3
-      };
-
-      while ((optMatch = optRegex.exec(textWithoutExp)) !== null) {
-        const rawLetter = String(optMatch[1] || optMatch[2] || '').trim().toUpperCase();
-        const optIdx = optTokenMap[rawLetter];
-        if (optIdx !== undefined) {
-          if (firstOptIndex === -1) firstOptIndex = optMatch.index;
-          extractedOpts[optIdx] = String(optMatch[3] || '').trim();
-        }
-      }
-
-      const stemRaw = (firstOptIndex > 0 ? textWithoutExp.slice(0, firstOptIndex) : textWithoutExp).trim();
-      const stemBilingual = splitBilingualText(stemRaw);
-      const optsHi = [];
-      const optsEn = [];
-      for (let i = 0; i < 4; i++) {
-        const splitOpt = splitBilingualText(extractedOpts[i]);
-        optsHi.push(splitOpt.hi);
-        optsEn.push(splitOpt.en);
-      }
+      const extracted = extractBilingualStemAndOptionsFromBlock(textWithoutExp);
 
       const isAmbiguous = ambiguousSet.has(block.questionNumber);
       const matchedFromKey = !isAmbiguous && combinedAnswerKeyMap.has(block.questionNumber)
@@ -4454,14 +4794,14 @@
         ? `Correct answer is Option ${['A', 'B', 'C', 'D'][matchedFromKey]} (Set ${selectedAnswerKeyColumn}).`
         : '');
 
-      rawItems.push({
+      preliminaryItems.push({
         rowNumber: block.rowNumber || (idx + 1),
         questionNumber: block.questionNumber || (idx + 1),
         id: '',
-        questionHi: stemBilingual.hi,
-        questionEn: stemBilingual.en,
-        optionsHi: optsHi,
-        optionsEn: optsEn,
+        questionHi: extracted.stemHi,
+        questionEn: extracted.stemEn,
+        optionsHi: extracted.optsHi,
+        optionsEn: extracted.optsEn,
         rawCorrectIndex: matchedFromKey !== null && matchedFromKey !== undefined ? matchedFromKey : '',
         answerKeyMatched: matchedFromKey !== null && matchedFromKey !== undefined,
         answerKeySetColumn: selectedAnswerKeyColumn,
@@ -4477,13 +4817,52 @@
         questionType: 'MCQ',
         sourceDocument: fileName || 'uploaded_paper.pdf',
         sourcePageNumber: String(block.pageNumber || 1),
-        languageAvailability: detectLanguageAvailability(stemBilingual.hi, stemBilingual.en),
+        languageAvailability: detectLanguageAvailability(extracted.stemHi, extracted.stemEn),
         pyqTag: `PDF Import (Set ${detectedPaperSet})`,
         tags: ['PDF Import', `Set ${detectedPaperSet}`, 'OCR Verified'],
         status: matchedFromKey !== null && matchedFromKey !== undefined ? 'verified' : 'unverified',
         adminVerified: matchedFromKey !== null && matchedFromKey !== undefined,
         importSource: 'pdf_ocr_answer_key'
       });
+    });
+
+    // Pair & merge same-numbered Hindi + English blocks (e.g. Q1 in Hindi and Q1 in English from 2-column or sequential bilingual papers)
+    const byQNum = new Map();
+    preliminaryItems.forEach((item) => {
+      const qNum = Number(item.questionNumber || 0);
+      const itemHasDevanagari = /[\u0900-\u097F]/.test(item.questionHi + ' ' + (item.optionsHi || []).join(' '));
+      const itemIsSingleLang = item.questionHi === item.questionEn;
+
+      if (qNum > 0 && byQNum.has(qNum)) {
+        const prev = byQNum.get(qNum);
+        const prevHasDevanagari = /[\u0900-\u097F]/.test(prev.questionHi + ' ' + (prev.optionsHi || []).join(' '));
+        const prevIsSingleLang = prev.questionHi === prev.questionEn;
+
+        // If one block is Hindi (Devanagari) and the other block is English (Latin), merge them into 1 complete bilingual question!
+        if (prevIsSingleLang && itemIsSingleLang && prevHasDevanagari !== itemHasDevanagari) {
+          const hiBlock = itemHasDevanagari ? item : prev;
+          const enBlock = itemHasDevanagari ? prev : item;
+          prev.questionHi = hiBlock.questionHi || enBlock.questionHi;
+          prev.questionEn = enBlock.questionEn || hiBlock.questionEn;
+          prev.optionsHi = [0, 1, 2, 3].map((i) => (hiBlock.optionsHi && hiBlock.optionsHi[i]) || (enBlock.optionsHi && enBlock.optionsHi[i]) || '');
+          prev.optionsEn = [0, 1, 2, 3].map((i) => (enBlock.optionsEn && enBlock.optionsEn[i]) || (hiBlock.optionsEn && hiBlock.optionsEn[i]) || '');
+          prev.languageAvailability = 'Both';
+          if (!prev.answerKeyMatched && item.answerKeyMatched) {
+            prev.rawCorrectIndex = item.rawCorrectIndex;
+            prev.answerKeyMatched = true;
+            prev.status = 'verified';
+            prev.adminVerified = true;
+          }
+          if (!prev.explanationHi && item.explanationHi) prev.explanationHi = item.explanationHi;
+          if (!prev.explanationEn && item.explanationEn) prev.explanationEn = item.explanationEn;
+          return;
+        }
+      }
+
+      if (qNum > 0 && !byQNum.has(qNum)) {
+        byQNum.set(qNum, item);
+      }
+      rawItems.push(item);
     });
 
     return {
@@ -4565,12 +4944,42 @@
           return;
         }
         const fallbackOpts = Array.isArray(item.options) ? item.options : [];
+        const rawQHiField = item.questionHi ?? item.question_hi ?? item.questionHindi ?? item.hindi_question ?? '';
+        const rawQEnField = item.questionEn ?? item.question_en ?? item.questionEnglish ?? item.english_question ?? item.question ?? '';
+        let resolvedQHi = String(rawQHiField).trim();
+        let resolvedQEn = String(rawQEnField).trim();
+        if (!resolvedQHi && resolvedQEn) {
+          const splitQ = splitBilingualText(resolvedQEn);
+          resolvedQHi = splitQ.hi;
+          resolvedQEn = splitQ.en;
+        } else if (resolvedQHi && !resolvedQEn) {
+          const splitQ = splitBilingualText(resolvedQHi);
+          resolvedQHi = splitQ.hi;
+          resolvedQEn = splitQ.en;
+        }
+
         const hiOpts = Array.isArray(item.optionsHi)
           ? item.optionsHi
-          : [item.optA_Hi ?? fallbackOpts[0], item.optB_Hi ?? fallbackOpts[1], item.optC_Hi ?? fallbackOpts[2], item.optD_Hi ?? fallbackOpts[3]];
+          : [item.optA_Hi ?? item.optionA_Hi ?? fallbackOpts[0], item.optB_Hi ?? item.optionB_Hi ?? fallbackOpts[1], item.optC_Hi ?? item.optionC_Hi ?? fallbackOpts[2], item.optD_Hi ?? item.optionD_Hi ?? fallbackOpts[3]];
         const enOpts = Array.isArray(item.optionsEn)
           ? item.optionsEn
-          : [item.optA_En ?? item.optA ?? fallbackOpts[0], item.optB_En ?? item.optB ?? fallbackOpts[1], item.optC_En ?? item.optC ?? fallbackOpts[2], item.optD_En ?? item.optD ?? fallbackOpts[3]];
+          : [item.optA_En ?? item.optionA_En ?? item.optA ?? item.optionA ?? fallbackOpts[0], item.optB_En ?? item.optionB_En ?? item.optB ?? item.optionB ?? fallbackOpts[1], item.optC_En ?? item.optionC_En ?? item.optC ?? item.optionC ?? fallbackOpts[2], item.optD_En ?? item.optionD_En ?? item.optD ?? item.optionD ?? fallbackOpts[3]];
+
+        const finalOptsHi = [];
+        const finalOptsEn = [];
+        for (let oi = 0; oi < 4; oi++) {
+          const hVal = hiOpts[oi] != null ? String(hiOpts[oi]).trim() : '';
+          const eVal = enOpts[oi] != null ? String(enOpts[oi]).trim() : '';
+          if (hVal && eVal && hVal !== eVal) {
+            finalOptsHi.push(hVal);
+            finalOptsEn.push(eVal);
+          } else {
+            const combined = splitBilingualText(hVal || eVal);
+            finalOptsHi.push(combined.hi);
+            finalOptsEn.push(combined.en);
+          }
+        }
+
         const parsedExamIds = Array.isArray(item.examIds)
           ? item.examIds
           : (item.examIds ? String(item.examIds).split(/[;|,]/).map((e) => e.trim()).filter(Boolean) : []);
@@ -4580,20 +4989,10 @@
           preferOneBased: jsonPreferOneBased,
           id: item.questionId || item.id || '',
           questionId: item.questionId || item.id || '',
-          questionHi: item.questionHi != null ? String(item.questionHi).trim() : '',
-          questionEn: item.questionEn != null ? String(item.questionEn).trim() : (item.question != null ? String(item.question).trim() : ''),
-          optionsHi: [
-            hiOpts[0] != null ? String(hiOpts[0]).trim() : '',
-            hiOpts[1] != null ? String(hiOpts[1]).trim() : '',
-            hiOpts[2] != null ? String(hiOpts[2]).trim() : '',
-            hiOpts[3] != null ? String(hiOpts[3]).trim() : ''
-          ],
-          optionsEn: [
-            enOpts[0] != null ? String(enOpts[0]).trim() : '',
-            enOpts[1] != null ? String(enOpts[1]).trim() : '',
-            enOpts[2] != null ? String(enOpts[2]).trim() : '',
-            enOpts[3] != null ? String(enOpts[3]).trim() : ''
-          ],
+          questionHi: resolvedQHi,
+          questionEn: resolvedQEn,
+          optionsHi: finalOptsHi,
+          optionsEn: finalOptsEn,
           rawCorrectIndex: item.correctIndex !== undefined ? item.correctIndex : (item.correctOptionIndex !== undefined ? item.correctOptionIndex : (item.correctAnswer !== undefined ? item.correctAnswer : item.answer)),
           explanationHi: item.explanationHi != null ? String(item.explanationHi).trim() : '',
           explanationEn: item.explanationEn != null ? String(item.explanationEn).trim() : (item.explanation != null ? String(item.explanation).trim() : ''),
@@ -4625,7 +5024,7 @@
       return { fileType: 'JSON', structureErrors, rawItems };
     }
 
-    // CSV File Parsing & Header Validation (100% compatible with legacy 14-column CSV + optional hierarchical columns + Hindi headers)
+    // CSV File Parsing & Header Validation (100% compatible with legacy 14-column CSV + optional hierarchical columns + Hindi/Bilingual headers)
     const csvRows = parseCsvWithRowNumbers(cleanText);
     if (csvRows.length === 0) {
       structureErrors.push({
@@ -4639,8 +5038,8 @@
 
     const firstRowCells = csvRows[0].cells;
     const looksLikeHeader = firstRowCells.some((c) => {
-      const k = String(c || '').toLowerCase().replace(/[\s_-]/g, '');
-      return k.includes('question') || k.includes('opta') || k.includes('correct') || k.includes('subject') || k.includes('explanation') ||
+      const k = String(c || '').toLowerCase().replace(/[()[\]./:,\s_-]/g, '');
+      return k.includes('question') || k.includes('opta') || k.includes('optiona') || k.includes('correct') || k.includes('subject') || k.includes('explanation') ||
         k.includes('प्रश्न') || k.includes('विकल्प') || k.includes('उत्तर') || k.includes('विषय');
     });
 
@@ -4651,7 +5050,7 @@
       dataStartIdx = 1;
       const unrecognizedCols = [];
       columnKeys = firstRowCells.map((rawCol) => {
-        const cleanCol = String(rawCol || '').trim().toLowerCase();
+        const cleanCol = String(rawCol || '').trim().toLowerCase().replace(/[()[\]./:]/g, ' ').replace(/\s+/g, ' ').trim();
         const snakeKey = cleanCol.replace(/[\s\-]+/g, '_');
         const compactKey = cleanCol.replace(/[\s\-_]+/g, '');
         const mapped = KNOWN_CSV_COLUMN_MAP[cleanCol] || KNOWN_CSV_COLUMN_MAP[snakeKey] || KNOWN_CSV_COLUMN_MAP[compactKey];
@@ -4685,11 +5084,19 @@
         });
       }
     } else if (firstRowCells.length >= 6 && firstRowCells.length <= 10) {
-      // Compact positional CSV (single-language 6-to-10 column format)
+      // Compact positional CSV (single-language or inline-bilingual 6-to-10 column format)
       columnKeys = [
         'questionHi',
         'optA_Hi', 'optB_Hi', 'optC_Hi', 'optD_Hi',
         'correctIndex', 'explanationHi', 'subjectTag', 'examCode', 'topic'
+      ];
+    } else if (firstRowCells.length >= 11 && firstRowCells.length <= 13) {
+      // 11-to-13 column Bilingual positional CSV (questionHi, questionEn, 4 Hi options, 4 En options, correctIndex, explanationHi, explanationEn)
+      columnKeys = [
+        'questionHi', 'questionEn',
+        'optA_Hi', 'optB_Hi', 'optC_Hi', 'optD_Hi',
+        'optA_En', 'optB_En', 'optC_En', 'optD_En',
+        'correctIndex', 'explanationHi', 'explanationEn'
       ];
     } else {
       // Positional fallback: legacy 14-column format + optional columns
@@ -4730,6 +5137,45 @@
       const parsedExamIds = mappedData.examIds
         ? String(mappedData.examIds).split(/[;|,]/).map((e) => e.trim()).filter(Boolean)
         : [];
+      let csvQHi = mappedData.questionHi != null ? String(mappedData.questionHi).trim() : '';
+      let csvQEn = mappedData.questionEn != null ? String(mappedData.questionEn).trim() : '';
+      if (csvQHi && !csvQEn) {
+        const splitQ = splitBilingualText(csvQHi);
+        csvQHi = splitQ.hi;
+        csvQEn = splitQ.en;
+      } else if (!csvQHi && csvQEn) {
+        const splitQ = splitBilingualText(csvQEn);
+        csvQHi = splitQ.hi;
+        csvQEn = splitQ.en;
+      }
+
+      const rawCsvOptsHi = [
+        mappedData.optA_Hi != null ? String(mappedData.optA_Hi).trim() : '',
+        mappedData.optB_Hi != null ? String(mappedData.optB_Hi).trim() : '',
+        mappedData.optC_Hi != null ? String(mappedData.optC_Hi).trim() : '',
+        mappedData.optD_Hi != null ? String(mappedData.optD_Hi).trim() : ''
+      ];
+      const rawCsvOptsEn = [
+        mappedData.optA_En != null ? String(mappedData.optA_En).trim() : '',
+        mappedData.optB_En != null ? String(mappedData.optB_En).trim() : '',
+        mappedData.optC_En != null ? String(mappedData.optC_En).trim() : '',
+        mappedData.optD_En != null ? String(mappedData.optD_En).trim() : ''
+      ];
+      const finalCsvOptsHi = [];
+      const finalCsvOptsEn = [];
+      for (let oi = 0; oi < 4; oi++) {
+        const hVal = rawCsvOptsHi[oi];
+        const eVal = rawCsvOptsEn[oi];
+        if (hVal && eVal && hVal !== eVal) {
+          finalCsvOptsHi.push(hVal);
+          finalCsvOptsEn.push(eVal);
+        } else {
+          const splitOpt = splitBilingualText(hVal || eVal);
+          finalCsvOptsHi.push(splitOpt.hi);
+          finalCsvOptsEn.push(splitOpt.en);
+        }
+      }
+
       rawItems.push({
         rowNumber: rowObj.rowNumber,
         questionNumber: qCounter,
@@ -4738,20 +5184,10 @@
         columnCountDetected: cells.length,
         id: mappedData.questionId || mappedData.id || '',
         questionId: mappedData.questionId || mappedData.id || '',
-        questionHi: mappedData.questionHi != null ? String(mappedData.questionHi).trim() : '',
-        questionEn: mappedData.questionEn != null ? String(mappedData.questionEn).trim() : '',
-        optionsHi: [
-          mappedData.optA_Hi != null ? String(mappedData.optA_Hi).trim() : '',
-          mappedData.optB_Hi != null ? String(mappedData.optB_Hi).trim() : '',
-          mappedData.optC_Hi != null ? String(mappedData.optC_Hi).trim() : '',
-          mappedData.optD_Hi != null ? String(mappedData.optD_Hi).trim() : ''
-        ],
-        optionsEn: [
-          mappedData.optA_En != null ? String(mappedData.optA_En).trim() : '',
-          mappedData.optB_En != null ? String(mappedData.optB_En).trim() : '',
-          mappedData.optC_En != null ? String(mappedData.optC_En).trim() : '',
-          mappedData.optD_En != null ? String(mappedData.optD_En).trim() : ''
-        ],
+        questionHi: csvQHi,
+        questionEn: csvQEn,
+        optionsHi: finalCsvOptsHi,
+        optionsEn: finalCsvOptsEn,
         rawCorrectIndex: mappedData.correctIndex,
         explanationHi: mappedData.explanationHi != null ? String(mappedData.explanationHi).trim() : '',
         explanationEn: mappedData.explanationEn != null ? String(mappedData.explanationEn).trim() : '',

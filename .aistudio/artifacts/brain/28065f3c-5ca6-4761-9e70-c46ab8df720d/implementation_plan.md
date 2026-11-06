@@ -1,105 +1,51 @@
-# Question Bank — Hindi Devanagari Detection, File Reading, Auto-Categorisation & Post-Upload Fixes
+# Question Bank — Bilingual (Hindi + English) Question Paper Fix Plan
 
-यह प्लान केवल **Question Bank** में फ़ाइल को पढ़ने (File Reading), **हिन्दी देवनागरी (Devanagari)** को सही ढंग से पहचानने, **Auto-Categorisation (Subject → Topic → Subtopic)** को सटीक बनाने, और **फ़ाइल अपलोड के बाद (Post-Upload Preview & Import)** आने वाली समस्याओं को ठीक करने के लिए है। इसके अतिरिक्त ऐप के किसी अन्य हिस्से में कोई बदलाव नहीं किया जाएगा।
+## Root Cause Diagnosis: English Paper क्यों चला और Hindi + English (Bilingual) Paper में क्यों दिक्कत आई?
 
----
+कोड की गहन जांच (`admin-console.js`) में **5 मुख्य तकनीकी कारण** मिले हैं जिनकी वजह से केवल-अंग्रेज़ी (English-only) प्रश्न-पत्र काम कर गया, लेकिन **हिन्दी + अंग्रेज़ी (Bilingual)** प्रश्न-पत्र में समस्या आई:
 
-## User Review & Critical Findings (जाँच में मिली मुख्य समस्याएं)
+1. **Two-Column Bilingual PDF में हिन्दी और अंग्रेज़ी की लाइनें आपस में मिल जाना (`extractTextFromUploadedFile`):**
+   - CGPSC, Vyapam, SSC आदि के द्विभाषी (Bilingual) PDF पेपर में अक्सर बाईं ओर (Left Column) हिन्दी और दाईं ओर (Right Column) अंग्रेज़ी के प्रश्न होते हैं।
+   - `PDF.js` लाइन निकालते समय केवल `Y` (ऊंचाई) को देख रहा था, `X` (बाएं-दाएं कॉलम) को नहीं। इस कारण एक ही ऊंचाई (`Y`) पर लिखे बाएं कॉलम के हिन्दी प्रश्न और दाएं कॉलम के अंग्रेज़ी प्रश्न **एक ही लाइन में जुड़कर खराब हो रहे थे** (जबकि Single-column English पेपर में यह दिक्कत नहीं होती)।
 
-> [!IMPORTANT]
-> कोड की गहन जाँच करने पर आपकी तीनों शंकाएं (**फ़ाइल पढ़ने में**, **हिन्दी देवनागरी डिटेक्ट करने में**, **कैटेगराइज़ करने में**, और **अपलोड के बाद की प्रक्रिया में**) बिल्कुल सही पाई गईं। नीचे मुख्य कारण और उनके समाधान दिए गए हैं:
+2. **एक ही प्रश्न में हिन्दी `(अ)-(द)` और अंग्रेज़ी `(A)-(D)` दोनों विकल्प होने पर Overwrite होना (`parsePdfOcrAndMatchAnswerKey`):**
+   - जब किसी द्विभाषी प्रश्न में पहले हिन्दी प्रश्न + 4 विकल्प और उसके नीचे अंग्रेज़ी प्रश्न + 4 विकल्प होते हैं:
+     - सिस्टम पहले विकल्प `(अ)` पर ही प्रश्न का टेक्स्ट (`firstOptIndex`) काट देता था, जिससे नीचे लिखा **अंग्रेज़ी प्रश्न विकल्प (D) के अंदर चला जाता था**।
+     - इसके बाद जब नीचे के अंग्रेज़ी विकल्प `(A)-(D)` पढ़े जाते थे, तो `extractedOpts[optIdx] = ...` **पुराने हिन्दी विकल्पों को मिटाकर (Overwrite) केवल अंग्रेज़ी विकल्प बचाता था**।
 
-- **1. हिन्दी देवनागरी (Devanagari) डिटेक्ट करने में समस्या (सबसे मुख्य कारण):**
-  - **हिन्दी मात्राओं (`ा, ि, ी, ु, ू, े, ै, ो, ौ, ं, ्`) का कट जाना:** टेक्स्ट नॉर्मलाइज़ेशन और PDF स्ट्रीम क्लीनर में `/[^\p{L}\p{N}\s]/gu` रेगेक्स लगा था। यूनिकोड (Unicode) में हिन्दी के स्वर-चिह्न (मात्राएं) `\p{L}` (Letters) में नहीं बल्कि **`\p{M}` (Combining Marks)** में आते हैं। `\p{M}` न होने के कारण हर हिन्दी शब्द की मात्राएं हटकर स्पेस बन रही थीं (जैसे `"छत्तीसगढ़ की राजधानी"` → `"छत त सगढ क र जध न"`), जिससे हिन्दी टेक्स्ट पहचानने, डुप्लीकेट मिलाने और PDF पढ़ने में गड़बड़ी हो रही थी।
-  - **हिन्दी विकल्प `(अ), (ब), (स), (द)` और `(क), (ख), (ग), (घ)` का छूट जाना:** विकल्प पहचानने वाले रेगेक्स में `[अ-द]` लिखा था। यूनिकोड क्रम में `'द'` (`U+0926`) के बाद `'ब'` (`U+092C`) और `'स'` (`U+0938`) आते हैं! इसलिए `[अ-द]` रेंज **`(ब)` और `(स)` तथा `(क), (ख), (ग), (घ)` को कभी पहचान ही नहीं पा रही थी**, जिससे अपलोड के बाद विकल्प B और C गायब (`Missing Answer Options`) दिखते थे।
-  - **देवनागरी अंकों (`१, २, ३, ४...`) और PDF CMap फॉन्ट का सपोर्ट न होना:** हिन्दी प्रश्नपत्रों में `प्रश्न १.`, `२)` या उत्तर कुंजी में `१-अ, २-ब` होने पर `\d` उन्हें नहीं पहचान पाता था, और PDF.js में हिन्दी CIDFont/Identity-H फॉन्ट्स के लिए `cMapUrl` कॉन्फ़िगर नहीं था।
+3. **समान प्रश्न क्रमांक (`1.` हिन्दी और `1.` अंग्रेज़ी) वाले प्रश्नों का आपस में Merge न होना:**
+   - कई द्विभाषी प्रश्न-पत्रों में एक ही प्रश्न दो बार नंबर के साथ आता है—एक बार हिन्दी में (`1. छत्तीसगढ़...`) और एक बार अंग्रेज़ी में (`1. Chhattisgarh...`)।
+   - अभी सिस्टम इन्हें एक द्विभाषी प्रश्न बनाने के बजाय दो अलग-अलग अधूरे प्रश्न (`Q1` और `Q1`) बना देता था।
 
-- **2. अपलोड की गई फ़ाइल पढ़ने (File Reading & Answer Parsing) में समस्या:**
-  - **UTF-16 (Excel Unicode CSV) और BOM एनकोडिंग:** Excel से सेव की गई कई हिन्दी CSV फ़ाइलें `UTF-16LE/BE` में होती हैं, जिन्हें केवल `UTF-8` मानकर पढ़ने से अक्षर खराब हो जाते हैं।
-  - **उत्तर कॉलम (`correctIndex` / `answer`) के अलग-अलग फ़ॉर्मेट:** कई फ़ाइलों में सही उत्तर `0, 1, 2, 3` के बजाय `1, 2, 3, 4` (1-आधारित), `(A), (B), (C), (D)`, हिन्दी में `अ, ब, स, द` / `क, ख, ग, घ`, या सीधे **सही विकल्प का पूरा टेक्स्ट** (जैसे `"रायपुर"`) लिखा होता है, जिन्हें सिस्टम `Invalid correctIndex` बताकर रिजेक्ट कर रहा था।
+4. **एक ही लाइन में लिखे Bilingual Text / Options (`रायपुर (Raipur)` या `हिन्दी प्रश्न? English question?`) का अलग न होना (`splitBilingualText`):**
+   - `splitBilingualText` केवल `/`, `||` या नई लाइन (`\n`) होने पर ही हिन्दी और अंग्रेज़ी को अलग करता था। यदि एक ही लाइन में बिना `/` के हिन्दी और अंग्रेज़ी साथ लिखे हों (जैसे `(A) 1 नवंबर 2000 (1 November 2000)` या `छत्तीसगढ़ का गठन कब हुआ? When was CG formed?`), तो वह दोनों को अलग नहीं कर पाता था।
 
-- **3. प्रश्नों को Categorise (Subject → Topic → Subtopic) करने में समस्या:**
-  - **CSV/JSON में Auto-Categorisation का न चलना:** ऑटो-कैटेगराइज़ेशन केवल PDF पर चल रहा था। यदि किसी CSV या JSON फ़ाइल में Subject या Topic खाली या सामान्य (`General`) हो, तो वह हर प्रश्न को डिफ़ॉल्ट रूप से `"History of Chhattisgarh"` बना देता था।
-  - **Subject मिलने पर भी Topic न मिलने से `Needs Categorisation` में अटकना:** जब किसी प्रश्न में Subject (जैसे `सामान्य हिन्दी`, `गणित`, `छत्तीसगढ़ सामान्य ज्ञान`, `संविधान`) के कीवर्ड मिल जाते थे परंतु कोई बारीक Topic कीवर्ड मैच नहीं होता था, तो सिस्टम पूरे प्रश्न को `Needs Categorisation` (20% confidence) में डाल देता था।
-
-- **4. फ़ाइल अपलोड करने के बाद (Post-Upload Preview & Save) होने वाली दिक्कतें:**
-  - **बिना Answer Key वाले PDF प्रश्नों का सीधे Reject (`❌ REJECTED`) हो जाना:** जब यूज़र पहले केवल Question Paper PDF अपलोड करता था (जिसमें साथ में उत्तर न लिखे हों), तो सभी प्रश्न `Missing Correct Answer` एरर के कारण लाल रंग में `REJECTED` दिखते थे और सेव करने पर छोड़ दिए जाते थे।
-  - **Preview Card पर सीधे उत्तर (`A / B / C / D`) चुनने की सुविधा न होना:** किसी प्रश्न का सही उत्तर बदलने के लिए हर बार पूरा मोडल खोलना पड़ता था।
-  - **Inline Edit (`✏️ Fix Inline`) मोडल में एकल-भाषा (सिर्फ़ हिन्दी) प्रश्न सेव न होना:** प्रीव्यू में किसी हिन्दी प्रश्न की कैटेगरी या उत्तर सुधारते समय मोडल दोनों भाषाओं (Hindi + English) के भरे होने की शर्त लगाकर सेव करने से रोक देता था।
+5. **प्रश्न के बीच में आने वाले `A.`, `B.` (जैसे `Dr. B. R. Ambedkar`, `Article 21-A`) या CSV के Bilingual Header (`Question (Hindi)`) की समस्या:**
+   - प्रश्न के बीच में `B.` या `A.` आने पर `optRegex` उसे विकल्प मानकर प्रश्न को बीच से ही काट देता था, जिससे विकल्प अधूरे रह जाते थे और प्रश्न `❌ REJECTED (Missing Answer Options)` हो जाता था।
 
 ---
 
-## 1. Overview & Core Concept
+## Proposed Fixes (Strictly Inside Question Bank Only)
 
-- **What It Does**: Question Bank के फ़ाइल अपलोड इंजन को हिन्दी देवनागरी (मात्राएं, विकल्प `अ/ब/स/द`, `क/ख/ग/घ`, देवनागरी अंक `०-९`, और PDF CMap फॉन्ट्स), स्मार्ट `Subject → Topic → Subtopic` ऑटो-कैटेगराइज़ेशन, और पोस्ट-अपलोड प्रीव्यू वर्कबेंच के साथ पूरी तरह सटीक और एरर-मुक्त बनाता है।
-- **Target Audience**: प्लेटफ़ॉर्म के Owner Admin (`usahu0304@gmail.com`) और अधिकृत एडमिन स्टाफ।
-- **Key Value**: कोई भी हिन्दी, अंग्रेज़ी या द्विभाषी (Bilingual) CSV, JSON या PDF फ़ाइल अपलोड करने पर अक्षर या मात्राएं नहीं टूटेंगी, सभी 4 विकल्प सही निकलेंगे, प्रश्न अपने सही Subject व Topic में वर्गीकृत होंगे, और अपलोड के बाद प्रीव्यू से 1-क्लिक में वेरीफाई व सेव हो सकेंगे।
+### 1. Two-Column Bilingual PDF Layout Detection (`/admin-console.js`)
+- `extractTextFromUploadedFile` में प्रत्येक PDF पेज के शब्दों के `X` और `Y` कोऑर्डिनेट्स की जांच करना।
+- यदि पेज **Two-Column (Left + Right)** लेआउट में है, तो पहले पूरे **Left Column** की लाइनें क्रम से निकालना और फिर **Right Column** की लाइनें निकालना, ताकि हिन्दी और अंग्रेज़ी के कॉलम आपस में न मिलें।
 
----
+### 2. Dual-Block & Dual-Option Bilingual Parser (`/admin-console.js`)
+- यदि एक ही प्रश्न ब्लॉक में **हिन्दी प्रश्न + 4 विकल्प** और उसके नीचे **अंग्रेज़ी प्रश्न + 4 विकल्प** हैं, तो:
+  - पहले विकल्प सेट के बाद आने वाले अंग्रेज़ी/हिन्दी प्रश्न टेक्स्ट को विकल्प (D) से अलग करके `questionEn` / `questionHi` में रखना।
+  - दोनों विकल्प सेट्स को मिटाने (Overwrite) के बजाय देवनागरी विकल्पों को `optionsHi[0..3]` में और अंग्रेज़ी विकल्पों को `optionsEn[0..3]` में सुरक्षित रखना।
+- यदि PDF में समान प्रश्न क्रमांक (`Q1` हिन्दी और `Q1` अंग्रेज़ी) दो अलग-अलग ब्लॉक्स में मिलें, तो उन्हें स्वचालित रूप से **एक ही Bilingual Question (`Q1`)** में जोड़ना (Merge)।
 
-## 2. User Experience & Post-Upload Workflow
+### 3. Smart Bilingual Line & Option Splitter (`splitBilingualText`)
+- `/`, `||`, `\n` के अलावा एक ही लाइन में लिखे **`हिन्दी टेक्स्ट (English Text)`**, **`हिन्दी - English`**, और **देवनागरी वाक्य के बाद शुरू होने वाले अंग्रेज़ी वाक्य** को साफ़ तौर पर `hi` और `en` में अलग करना।
 
-- **Step 1 — File Selection & Encoding-Safe Reading**:
-  - `.csv`, `.json`, `.pdf`, या `.txt` फ़ाइल चुनते ही सिस्टम बाइट-लेवल पर `UTF-8`, `UTF-16LE`, `UTF-16BE` या PDF स्ट्रीम (`cMapPacked: true` + `FlateDecode` + UTF-16BE hex operator decoding) को पहचानकर बिना कोई मात्रा (`\p{M}`) खोए साफ़ देवनागरी टेक्स्ट निकालेगा।
-  - फ़ाइल लोड होते ही पेज अपने-आप **Import Preview Workbench** तक स्मूथ-स्क्रॉल करेगा ताकि एडमिन को तुरंत प्रीव्यू दिखे।
-- **Step 2 — Smart Hindi Option & Answer Key Detection**:
-  - PDF या टेक्स्ट में `(अ) (ब) (स) (द)`, `(क) (ख) (ग) (घ)`, `(A) (B) (C) (D)`, या `(1) (2) (3) (4)` — चाहे एक ही लाइन में हों या अलग-अलग लाइनों में — चारों विकल्प सटीक रूप से अलग किए जाएंगे।
-  - `correctIndex` में `0–3`, `1–4`, `A–D`, `अ/ब/स/द`, `क/ख/ग/घ`, या विकल्प का टेक्स्ट होने पर सही विकल्प (`0–3`) अपने-आप मैच हो जाएगा।
-- **Step 3 — Post-Upload Preview Cards with 1-Click Controls**:
-  - यदि किसी PDF में अभी Answer Key नहीं जुड़ी है, तो प्रश्नों को `❌ REJECTED` करके हटाने के बजाय **`⏳ Unverified (Answer Key Pending)`** के रूप में रखा जाएगा।
-  - हर Preview Card पर विकल्पों के साथ **1-Click Correct Answer Selector (`Set Answer: [A] [B] [C] [D]`)** होगा जिससे बिना मोडल खोले सीधे कार्ड पर ही सही उत्तर चुना जा सकेगा।
-  - `✏️ Change Category / Edit` मोडल में यदि प्रश्न केवल हिन्दी या केवल अंग्रेज़ी में है, तो सेव करते समय दूसरी भाषा अपने-आप भर जाएगी और कोई रुकावट नहीं आएगी।
+### 4. Safe Option Regex & Bilingual CSV Header Support (`/admin-console.js`)
+- `optRegex` को सुधारना ताकि प्रश्न के बीच में आने वाले नाम/अनुच्छेद (`Dr. B. R. Ambedkar`, `Vitamin A.`, `Article 21-A`) को विकल्प न समझा जाए, और हमेशा अंतिम 4 वास्तविक विकल्पों `(A)-(D)` / `(अ)-(द)` को ही विकल्प माना जाए।
+- CSV हेडर मैपिंग में ब्रैकेट/स्पेस वाले सभी द्विभाषी नाम जैसे `Question (Hindi)`, `Question (English)`, `Option A (Hindi)`, `Option A (English)`, `question_hindi`, `question_english` को सपोर्ट करना।
 
 ---
 
-## 3. Key Product Decisions & Trade-Offs
-
-- **Decision 1: Preserve Unicode Combining Marks (`\p{M}`) Everywhere**
-  - *Chosen Approach*: सभी टेक्स्ट नॉर्मलाइज़ेशन, डुप्लीकेट सिमिलैरिटी और PDF टेक्स्ट एक्सट्रैक्शन रेगेक्स में `\p{L}\p{M}\p{N}` का उपयोग करना।
-  - *Why*: देवनागरी की सभी मात्राएं (`ा` से `ौ`), अनुस्वार (`ं`), चंद्रबिंदु (`ँ`), विसर्ग (`ः`), हलन्त (`्`) और नुक्ता (`़`) सुरक्षित रहते हैं।
-- **Decision 2: Comprehensive Hindi & English Auto-Categorisation Across PDF, CSV & JSON**
-  - *Chosen Approach*: विस्तृत हिन्दी एवं अंग्रेज़ी कीवर्ड डिक्शनरी के साथ `autoCategorizeQuestionFromMaster` को PDF के साथ-साथ उन CSV/JSON प्रश्नों पर भी चलाना जहाँ Subject या Topic खाली/सामान्य है; और Subject मिलने पर उसके प्राथमिक Topic को असाइन करना।
-  - *Why*: इससे प्रश्न अनावश्यक रूप से `Needs Categorisation` में नहीं अटकते और न ही सभी प्रश्नों पर एक ही गलत डिफ़ॉल्ट टॉपिक लगता है।
-- **Decision 3: Non-Destructive Handling of Missing PDF Answer Keys**
-  - *Chosen Approach*: जिन PDF प्रश्नों की Answer Key अभी मैच नहीं हुई है, उन्हें एरर में रिजेक्ट करने के बजाय `Unverified` स्टेटस और चेतावनी (`Warning`) के साथ इम्पोर्ट करने की अनुमति देना + प्रीव्यू कार्ड पर ही `A / B / C / D` बटन देना।
-  - *Why*: एडमिन के मेहनत से अपलोड किए गए प्रश्न कभी डिलीट या रिजेक्ट नहीं होंगे।
-
----
-
-## 4. Technical Architecture & Data Strategy *(Technical Reference)*
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                   QUESTION BANK FILE UPLOAD & PARSING ENGINE                │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  1. File Reader & Decoder (CSV / JSON / PDF / Answer Key)                   │
-│     ├─ Auto-BOM Detection: UTF-8 / UTF-16LE / UTF-16BE                      │
-│     ├─ PDF.js Loader with CMap Support (Identity-H Devanagari Fonts)        │
-│     └─ FlateDecode + UTF-16BE Hex (<FEFF...>) & Literal (Tj/TJ) Fallback    │
-│                                    │                                        │
-│                                    ▼                                        │
-│  2. Devanagari & Structure Parser                                           │
-│     ├─ Unicode Matra-Safe Normalization (/[^\p{L}\p{M}\p{N}\s]/gu)          │
-│     ├─ Devanagari Digits Converter (०-९ ──► 0-9)                            │
-│     ├─ Hindi Option Parser: (अ/ब/स/द), (क/ख/ग/घ), (A/B/C/D), (1/2/3/4)      │
-│     └─ Smart Answer Resolver: 0-3 | 1-4 | A-D | अ-द | क-घ | Option Text     │
-│                                    │                                        │
-│                                    ▼                                        │
-│  3. Hierarchical Auto-Categorisation (Exam → Subject → Topic → Subtopic)    │
-│     ├─ Expanded Hindi + English Keyword Scoring across 13 Subjects          │
-│     ├─ Runs on PDF + Uncategorised CSV/JSON Rows                            │
-│     └─ Subject-Matched Default Topic Fallback (Prevents False Unmapped)     │
-│                                    │                                        │
-│                                    ▼                                        │
-│  4. Post-Upload Preview Workbench & Cloud Batch Commit                      │
-│     ├─ Auto-Scroll to Preview Workbench on File Load                        │
-│     ├─ 1-Click Inline Answer Buttons ([A] [B] [C] [D]) on Preview Cards     │
-│     ├─ Single-Language Safe Inline Edit Modal & Duplicate Review Modal      │
-│     └─ Firestore Batch Commit + Query Cache Invalidation                    │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-### Interactive Component & State Mapping
-- **Preview Card Inline Answer Selector (`[data-set-preview-ans]`)**: प्रीव्यू कार्ड पर `A`, `B`, `C`, या `D` बटन दबाते ही उस प्रश्न का `rawCorrectIndex`, `correctOptionIndex`, और `answerKeyMatched = true` अपडेट होकर तुरंत कार्ड री-रेंडर होगा।
-- **Inline Question Edit Modal (`openQuestionFormModal`)**: यदि केवल हिन्दी या केवल अंग्रेज़ी टेक्स्ट/विकल्प भरे हैं, तो सेव करते समय खाली भाषा को अपने-आप मिरर करेगा और `languageAvailability` (`Hindi` / `English` / `Both`) को सही सेट करेगा।
-- **Batch Import Execution (`executeValidatedImport`)**: इम्पोर्ट बटन पर प्रोग्रेस स्टेट दिखाएगा, नए Subject/Topic को मास्टर में जोड़ेगा, Firestore में बैच सेव करेगा, और `invalidateQuestionBankQueryCache()` कॉल करेगा ताकि नए प्रश्न तुरंत Question Bank में दिखें।
+## Strict Scope Guarantee
+- **केवल Question Bank** के फ़ाइल रीडिंग और Bilingual (Hindi + English) पार्सिंग लॉजिक में ही सुधार किया जाएगा।
+- ऐप के किसी भी अन्य सेक्शन, डिज़ाइन या डेटा में कोई बदलाव नहीं होगा।
