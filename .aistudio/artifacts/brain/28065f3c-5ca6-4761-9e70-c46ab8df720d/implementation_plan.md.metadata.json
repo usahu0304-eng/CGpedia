@@ -1,6 +1,6 @@
 {
-  "summary": "Diagnostic and targeted fix plan for Question Bank file upload issues (Android WebView file picker MIME type handling, PDF binary stream/PDF.js extraction, Answer Key file state persistence, and non-blocking CSV/JSON/PDF validation for single-language or missing-explanation rows).",
-  "updatedAt": "2026-11-06T04:27:29.631415197Z",
+  "summary": "Comprehensive diagnostic audit and targeted fix plan for Hindi Devanagari detection (preserving Unicode matras \\p{M}, fixing [अ-द] option range for ब/स and क-घ, supporting Devanagari numerals ०-९ and PDF CMap/UTF-16 decoding), file encoding & answer format parsing, smart Subject/Topic/Subtopic auto-categorisation for PDF/CSV/JSON, and post-upload Preview Workbench improvements without modifying any other part of the application.",
+  "updatedAt": "2026-11-06T05:14:09.876331254Z",
   "requestFeedback": true,
   "userFacing": true
 }

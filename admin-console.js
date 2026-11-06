@@ -2355,19 +2355,19 @@
       ? window.CGpediaCloud.DEFAULT_SUBJECTS
       : [];
     const builtinSubjectFallbacks = [
-      { id: 'sub_cg_gk', subjectId: 'sub_cg_gk', titleEn: 'Chhattisgarh General Knowledge', titleHi: 'छत्तीसगढ़ सामान्य ज्ञान', examCode: 'CGPSC', aliases: ['Chhattisgarh General Studies', 'Chhattisgarh GS', 'CG GK', 'CG GS', 'Chhattisgarh History', 'Chhattisgarh Geography'], topics: ['History of Chhattisgarh', 'Geography & Climate of CG', 'Tribes, Art & Culture', 'Panchayati Raj & Local Administration', 'CG Economy, Forest & Agriculture'] },
-      { id: 'sub_history', subjectId: 'sub_history', titleEn: 'History', titleHi: 'इतिहास', examCode: 'ALL', aliases: ['Indian History', 'History of India', 'Ancient History', 'Modern History'], topics: ['Ancient Indian History', 'Medieval Indian History', 'Modern Indian History', 'Indian National Movement', 'Art & Culture'] },
-      { id: 'sub_geography', subjectId: 'sub_geography', titleEn: 'Geography', titleHi: 'भूगोल', examCode: 'ALL', aliases: ['Indian Geography', 'World Geography', 'Physical Geography', 'Indian & World Geography'], topics: ['Indian Geography', 'World Geography', 'Physical Geography', 'Chhattisgarh Geography', 'Environment & Ecology'] },
-      { id: 'sub_polity', subjectId: 'sub_polity', titleEn: 'Indian Polity', titleHi: 'भारतीय राजव्यवस्था एवं संविधान', examCode: 'ALL', aliases: ['Polity', 'Indian Polity & Governance', 'Constitution', 'Governance'], topics: ['Constitution', 'Fundamental Rights', 'Directive Principles', 'Parliament', 'President and Governor', 'Judiciary & Panchayati Raj'] },
-      { id: 'sub_economics', subjectId: 'sub_economics', titleEn: 'Economics', titleHi: 'अर्थव्यवस्था', examCode: 'ALL', aliases: ['Indian Economy', 'Economy'], topics: ['National Income & Planning', 'Banking, RBI & Monetary Policy', 'Union & State Budget, Economic Survey', 'Agriculture, Industry & Infrastructure'] },
-      { id: 'sub_science', subjectId: 'sub_science', titleEn: 'General Science', titleHi: 'सामान्य विज्ञान एवं प्रौद्योगिकी', examCode: 'ALL', aliases: ['Science', 'General Science & Tech', 'Science & Technology'], topics: ['Physics', 'Chemistry', 'Biology & Human Health', 'Space (ISRO), Defence (DRDO) & Environment'] },
-      { id: 'sub_mathematics', subjectId: 'sub_mathematics', titleEn: 'Mathematics', titleHi: 'गणित एवं संख्यात्मक अभियोग्यता', examCode: 'ALL', aliases: ['Maths', 'Quantitative Aptitude', 'Arithmetic', 'CSAT Maths'], topics: ['Number System & Simplification', 'Percentage, Profit & Loss, SI & CI', 'Ratio, Time & Work, Speed & Distance', 'Data Interpretation, Algebra & Mensuration'] },
-      { id: 'sub_reasoning', subjectId: 'sub_reasoning', titleEn: 'Reasoning', titleHi: 'तार्किक अभियोग्यता (Reasoning)', examCode: 'ALL', aliases: ['Logical Reasoning', 'General Intelligence & Reasoning', 'Aptitude & Reasoning', 'CSAT Quantitative Aptitude & Reasoning'], topics: ['Coding-Decoding, Series & Analogy', 'Blood Relations, Direction & Syllogism', 'Puzzles, Seating Arrangement & Venn Diagrams', 'Analytical & Non-Verbal Reasoning'] },
-      { id: 'sub_hindi', subjectId: 'sub_hindi', titleEn: 'Hindi', titleHi: 'सामान्य हिन्दी व्याकरण एवं भाषा', examCode: 'ALL', aliases: ['General Hindi', 'Hindi Language', 'Hindi Grammar', 'General Hindi & Chhattisgarhi Language'], topics: ['वर्णमाला, संधि एवं समास', 'तत्सम-तद्भव, उपसर्ग एवं प्रत्यय', 'पर्यायवाची, विलोम एवं मुहावरे', 'छत्तीसगढ़ी भाषा एवं व्याकरण'] },
-      { id: 'sub_english', subjectId: 'sub_english', titleEn: 'English', titleHi: 'General English & Comprehension', examCode: 'ALL', aliases: ['General English', 'English Language', 'English Grammar'], topics: ['Parts of Speech, Tenses & Articles', 'Active-Passive Voice & Direct-Indirect Narration', 'Synonyms, Antonyms, Idioms & One-Word Substitution', 'Reading Comprehension & Error Spotting'] },
-      { id: 'sub_computer', subjectId: 'sub_computer', titleEn: 'Computer Knowledge', titleHi: 'कम्प्यूटर सामान्य ज्ञान', examCode: 'ALL', aliases: ['Computer', 'Computer Awareness', 'ICT'], topics: ['Computer Architecture, Hardware & Software', 'Operating System, MS Office & Shortcut Keys', 'Internet, Networking, Cyber Security & AI', 'Multimedia, Printers & Input/Output Devices'] },
-      { id: 'sub_cdp', subjectId: 'sub_cdp', titleEn: 'Child Development & Pedagogy', titleHi: 'बाल विकास एवं शिक्षाशास्त्र (CDP)', examCode: 'TET', aliases: ['CDP', 'Pedagogy', 'Teaching Aptitude'], topics: ['Child Development & Learning Theories', 'Inclusive Education & Special Needs', 'Assessment, Evaluation & NCF / NEP 2020', 'Educational Psychology & Classroom Pedagogy'] },
-      { id: 'sub_current_affairs', subjectId: 'sub_current_affairs', titleEn: 'Current Affairs', titleHi: 'समसामयिकी (Current Affairs)', examCode: 'ALL', aliases: ['Chhattisgarh, National & International Current Affairs', 'Daily Current Affairs'], topics: ['Chhattisgarh Current Affairs & Schemes', 'National & International Events', 'Awards, Sports, Summits & Reports', 'Science, Defence & Important Personalities'] }
+      { id: 'sub_cg_gs', subjectId: 'sub_cg_gs', titleEn: 'Chhattisgarh General Knowledge', titleHi: 'छत्तीसगढ़ सामान्य ज्ञान', examCode: 'CGPSC', aliases: ['sub_cg_gk', 'Chhattisgarh General Studies', 'Chhattisgarh GS', 'CG GK', 'CG GS', 'Chhattisgarh History', 'Chhattisgarh Geography', 'छत्तीसगढ़ सामान्य अध्ययन', 'छत्तीसगढ़ जीके', 'छत्तीसगढ़'], topics: ['History of Chhattisgarh', 'Geography & Climate of CG', 'Tribes, Art & Culture', 'Panchayati Raj & Local Administration', 'CG Economy, Forest & Agriculture', 'Chhattisgarh Current Affairs'] },
+      { id: 'sub_history', subjectId: 'sub_history', titleEn: 'History', titleHi: 'इतिहास', examCode: 'ALL', aliases: ['Indian History', 'History of India', 'Ancient History', 'Modern History', 'भारत का इतिहास', 'इतिहास'], topics: ['Ancient Indian History', 'Medieval Indian History', 'Modern Indian History', 'Indian National Movement', 'Art & Architecture'] },
+      { id: 'sub_geography', subjectId: 'sub_geography', titleEn: 'Geography', titleHi: 'भूगोल', examCode: 'ALL', aliases: ['Indian Geography', 'World Geography', 'Physical Geography', 'Indian & World Geography', 'भारत का भूगोल', 'विश्व का भूगोल', 'भूगोल'], topics: ['Indian Geography', 'World Geography', 'Physical Geography', 'Chhattisgarh Geography', 'Environment & Ecology'] },
+      { id: 'sub_polity', subjectId: 'sub_polity', titleEn: 'Indian Polity', titleHi: 'भारतीय राजव्यवस्था एवं संविधान', examCode: 'ALL', aliases: ['Polity', 'Indian Polity & Governance', 'Constitution', 'Governance', 'संविधान', 'राजव्यवस्था', 'भारतीय संविधान'], topics: ['Constitution', 'Fundamental Rights', 'Directive Principles', 'Parliament', 'President and Governor', 'Judiciary & Panchayati Raj'] },
+      { id: 'sub_economy', subjectId: 'sub_economy', titleEn: 'Economics', titleHi: 'अर्थव्यवस्था', examCode: 'ALL', aliases: ['sub_economics', 'Indian Economy', 'Economy', 'भारतीय अर्थव्यवस्था', 'अर्थशास्त्र'], topics: ['National Income & Planning', 'Banking, RBI & Monetary Policy', 'Union & State Budget, Economic Survey', 'Agriculture, Industry & Infrastructure'] },
+      { id: 'sub_science', subjectId: 'sub_science', titleEn: 'General Science', titleHi: 'सामान्य विज्ञान एवं प्रौद्योगिकी', examCode: 'ALL', aliases: ['Science', 'General Science & Tech', 'Science & Technology', 'विज्ञान', 'सामान्य विज्ञान', 'भौतिकी', 'रसायन', 'जीव विज्ञान'], topics: ['Physics & Chemistry in Daily Life', 'Biology & Human Health', 'Space (ISRO), Defence (DRDO) & IT', 'Environment & Ecology'] },
+      { id: 'sub_mathematics', subjectId: 'sub_mathematics', titleEn: 'Mathematics', titleHi: 'गणित एवं संख्यात्मक अभियोग्यता', examCode: 'ALL', aliases: ['Maths', 'Quantitative Aptitude', 'Arithmetic', 'CSAT Maths', 'गणित'], topics: ['Number System & Simplification', 'Percentage, Profit & Loss, SI & CI', 'Ratio, Time & Work, Speed & Distance', 'Algebra, Geometry & Mensuration'] },
+      { id: 'sub_reasoning', subjectId: 'sub_reasoning', titleEn: 'Reasoning', titleHi: 'तार्किक अभियोग्यता (Reasoning)', examCode: 'ALL', aliases: ['Logical Reasoning', 'General Intelligence & Reasoning', 'Aptitude & Reasoning', 'CSAT Quantitative Aptitude & Reasoning', 'रीजनिंग', 'तर्कशक्ति'], topics: ['Coding-Decoding & Series', 'Blood Relations & Direction Sense', 'Syllogism, Statement & Conclusion', 'Puzzles, Seating & Non-Verbal Reasoning'] },
+      { id: 'sub_hindi', subjectId: 'sub_hindi', titleEn: 'Hindi', titleHi: 'सामान्य हिन्दी व्याकरण एवं भाषा', examCode: 'ALL', aliases: ['General Hindi', 'Hindi Language', 'Hindi Grammar', 'General Hindi & Chhattisgarhi Language', 'सामान्य हिन्दी', 'हिन्दी', 'हिंदी', 'हिन्दी व्याकरण', 'छत्तीसगढ़ी भाषा'], topics: ['वर्णमाला, संधि एवं समास (Sandhi & Samas)', 'तत्सम-तद्भव, पर्यायवाची एवं विलोम', 'पर्यायवाची, विलोम एवं मुहावरे', 'छत्तीसगढ़ी भाषा एवं व्याकरण'] },
+      { id: 'sub_english', subjectId: 'sub_english', titleEn: 'English', titleHi: 'General English & Comprehension', examCode: 'ALL', aliases: ['General English', 'English Language', 'English Grammar', 'अंग्रेजी', 'सामान्य अंग्रेजी'], topics: ['Parts of Speech, Tenses & Voice', 'Direct/Indirect Speech & Error Spotting', 'Synonyms, Antonyms, Idioms & One-Word', 'Reading Comprehension & Cloze Test'] },
+      { id: 'sub_computer', subjectId: 'sub_computer', titleEn: 'Computer Knowledge', titleHi: 'कम्प्यूटर सामान्य ज्ञान', examCode: 'ALL', aliases: ['Computer', 'Computer Awareness', 'ICT', 'कंप्यूटर', 'कम्प्यूटर'], topics: ['Computer Architecture, Hardware & Memory', 'Operating System & MS Office (Word, Excel, PowerPoint)', 'Internet, Networking, Email & Cyber Security', 'Multimedia, Printers & Antivirus'] },
+      { id: 'sub_pedagogy', subjectId: 'sub_pedagogy', titleEn: 'Child Development & Pedagogy', titleHi: 'बाल विकास एवं शिक्षाशास्त्र (CDP)', examCode: 'TET', aliases: ['sub_cdp', 'CDP', 'Pedagogy', 'Teaching Aptitude', 'बाल विकास', 'शिक्षाशास्त्र'], topics: ['Learning Theories', 'Inclusive Education', 'Teaching Aptitude & Assessment'] },
+      { id: 'sub_current_affairs', subjectId: 'sub_current_affairs', titleEn: 'Current Affairs', titleHi: 'समसामयिकी (Current Affairs)', examCode: 'ALL', aliases: ['Chhattisgarh, National & International Current Affairs', 'Daily Current Affairs', 'समसामयिकी', 'करंट अफेयर्स'], topics: ['National & International Events', 'Chhattisgarh Current Affairs & Schemes', 'Awards, Sports, Summits & Reports'] }
     ];
 
     const subjectsById = new Map();
@@ -3003,6 +3003,105 @@
     if (api && typeof api.saveState === 'function') api.saveState();
   }
 
+  // Expanded Hindi (Devanagari) & English Keyword Rules for High-Accuracy Categorisation
+  const EXTRA_SUBJECT_TOPIC_RULES = [
+    {
+      subjectId: 'sub_cg_gs',
+      topicTitle: 'History of Chhattisgarh',
+      keywords: ['कलचुरी', 'रतनपुर', 'रायपुर शाखा', 'कलिंगराज', 'रत्नदेव', 'जाजल्लदेव', 'प्रतापमल्ल', 'मराठा', 'बिंबाजी', 'भोंसले', 'सूबा शासन', 'हल्बा विद्रोह', 'परलकोट', 'गेंदसिंह', 'वीर नारायण सिंह', 'सोनाखान', 'भूमकाल', 'गुण्डाधूर', 'सिरपुर', 'शरभपुरीय', 'पाण्डु वंश', 'बाण वंश', 'छिंदक नागवंश', 'काकतीय', 'अन्नमदेव', 'बस्तर का इतिहास', 'जंगल सत्याग्रह', 'गट्टासिल्ली', 'रुद्री नवागांव', 'kalchuri', 'ratanpur', 'sonakhan', 'veer narayan', 'bhumkal', 'gundadhur', 'sirpur']
+    },
+    {
+      subjectId: 'sub_cg_gs',
+      topicTitle: 'Tribes, Art & Culture',
+      keywords: ['जनजाति', 'गोंड', 'बैगा', 'अबूझमाड़िया', 'कमार', 'कोरवा', 'बिरहोर', 'उरांव', 'कंवर', 'हलबा', 'भतरा', 'मुरिया', 'माड़िया', 'घोटुल', 'धुमकुड़िया', 'सुआ नृत्य', 'पंथी', 'राउत नाचा', 'करमा', 'सरहुल', 'ककसार', 'गौर नृत्य', 'पंडवानी', 'तीजन बाई', 'चक्रधर समारोह', 'बस्तर दशहरा', 'हरेली', 'छेरछेरा', 'पोला', 'भोजली', 'तीजा', 'कमरछठ', 'मातर', 'मड़ई', 'गोदना', 'बांस गीत', 'ददरिया', 'भरथरी', 'चंदैनी गोंदा', 'नाचा', 'दाऊ मंदराजी', 'हबीब तनवीर', 'gond', 'baiga', 'abujhmaria', 'pandwani', 'panthi', 'karma', 'raut nacha', 'hareli', 'cherchera', 'bastar dussehra']
+    },
+    {
+      subjectId: 'sub_cg_gs',
+      topicTitle: 'Geography & Climate of CG',
+      keywords: ['छत्तीसगढ़', 'रायपुर', 'बिलासपुर', 'बस्तर', 'सरगुजा', 'दुर्ग', 'राजनांदगांव', 'कोरबा', 'रायगढ़', 'जगदलपुर', 'अंबिकापुर', 'धमतरी', 'महासमुंद', 'कांकेर', 'दंतेवाड़ा', 'बीजापुर', 'सुकमा', 'नारायणपुर', 'कोंडागांव', 'कबीरधाम', 'कवर्धा', 'बेमेतरा', 'बालोद', 'बलौदाबाजार', 'गरियाबंद', 'मुंगेली', 'जांजगीर', 'चांपा', 'सूरजपुर', 'बलरामपुर', 'जशपुर', 'कोरिया', 'मनेंद्रगढ़', 'सक्ती', 'सारंगढ़', 'मोहला', 'खैरागढ़', 'महानदी', 'शिवनाथ', 'इंद्रावती', 'हसदेव', 'अरपा', 'पैरी', 'सोंढूर', 'खारून', 'सबरी', 'कोटरी', 'रिहंद', 'कन्हार', 'केलो', 'मांड', 'जोंक', 'सिहावा', 'चित्रकोट', 'तीरथगढ़', 'अमृतधारा', 'सातधारा', 'रानीदाह', 'केंदई', 'गौरलाटा', 'सामरी पाट', 'मैनपाट', 'जशपुर पाट', 'दण्डकारण्य', 'बैलाडीला', 'नंदराज', 'दलहा पहाड़', 'मैक़ल', 'छुरी उदयपुर', 'कांगेर घाटी', 'इंद्रावती राष्ट्रीय उद्यान', 'गुरु घासीदास', 'अचानकमार', 'उदंती', 'सीतानदी', 'बारनवापारा', 'तमोर पिंगला', 'सेमरसोत', 'बादलखोल', 'भोरमदेव', 'गंगरेल', 'मिनीमाता बांगो', 'तांदुला', 'दुधवा', 'खूंटाघाट', 'कोडार', 'chhattisgarh', 'mahanadi', 'indravati', 'shivnath', 'hasdeo', 'chitrakote', 'tirathgarh', 'bailadila', 'mainpat', 'gaurlata']
+    },
+    {
+      subjectId: 'sub_cg_gs',
+      topicTitle: 'Panchayati Raj & Local Administration',
+      keywords: ['पंचायती राज', 'ग्राम सभा', 'ग्राम पंचायत', 'जनपद पंचायत', 'जिला पंचायत', 'सरपंच', 'उपसरपंच', 'पंच', '73वां संशोधन', '74वां संशोधन', 'नगर निगम', 'नगर पालिका', 'नगर पंचायत', 'महापौर', 'पार्षद', 'बलवंत राय मेहता', 'अशोक मेहता', 'अनुसूचित क्षेत्र', 'पेसा', 'pesa', 'panchayati raj', 'gram sabha', 'zila panchayat', 'janpad panchayat', 'sarpanch']
+    },
+    {
+      subjectId: 'sub_cg_gs',
+      topicTitle: 'CG Economy, Forest & Agriculture',
+      keywords: ['तेंदूपत्ता', 'साल वन', 'सागौन', 'लाख', 'कोसा', 'टिन', 'कोयला', 'लौह अयस्क', 'बॉक्साइट', 'डोलोमाइट', 'चूना पत्थर', 'कोरंडम', 'हीरा', 'भिलाई इस्पात', 'बाल्को', 'एनटीपीसी', 'धान का कटोरा', 'समर्थन मूल्य', 'आर्थिक सर्वेक्षण', 'छत्तीसगढ़ बजट', 'महतारी वंदन', 'कृषक उन्नति', 'tendu', 'bhilai steel', 'balco', 'tin ore']
+    },
+    {
+      subjectId: 'sub_hindi',
+      topicTitle: 'वर्णमाला, संधि एवं समास (Sandhi & Samas)',
+      keywords: ['वर्णमाला', 'स्वर', 'व्यंजन', 'अल्पप्राण', 'महाप्राण', 'अघोष', 'सघोष', 'कंठ्य', 'तालव्य', 'मूर्धन्य', 'दंत्य', 'ओष्ठ्य', 'अनुस्वार', 'विसर्ग', 'संधि', 'स्वर संधि', 'दीर्घ संधि', 'गुण संधि', 'वृद्धि संधि', 'यण संधि', 'अयादि संधि', 'व्यंजन संधि', 'विसर्ग संधि', 'समास', 'अव्ययीभाव', 'तत्पुरुष', 'कर्मधारय', 'द्विगु', 'द्वंद्व', 'बहुव्रीहि', 'समास विग्रह', 'संधि विच्छेद', 'छत्तीसगढ़ी भाषा', 'छत्तीसगढ़ी व्याकरण', 'जनउला', 'हाना']
+    },
+    {
+      subjectId: 'sub_hindi',
+      topicTitle: 'तत्सम-तद्भव, पर्यायवाची एवं विलोम',
+      keywords: ['तत्सम', 'तद्भव', 'देशज', 'विदेशज', 'उपसर्ग', 'प्रत्यय', 'पर्यायवाची', 'विलोम', 'अनेकार्थी', 'वाक्यांश के लिए एक शब्द', 'मुहावरा', 'मुहावरे', 'लोकोक्ति', 'वर्तनी', 'वाक्य शुद्धि', 'रस', 'छंद', 'अलंकार', 'श्रृंगार रस', 'वीर रस', 'अनुप्रास', 'यमक', 'श्लेष', 'उपमा', 'रूपक', 'उत्प्रेक्षा', 'दोहा', 'चौपाई', 'सोरठा', 'संज्ञा', 'सर्वनाम', 'विशेषण', 'क्रिया', 'अव्यय', 'कारक', 'लिंग', 'वचन', 'काल']
+    },
+    {
+      subjectId: 'sub_polity',
+      topicTitle: 'Constitution',
+      keywords: ['संविधान', 'अनुच्छेद', 'अनुसूची', 'प्रस्तावना', 'मौलिक अधिकार', 'मूल अधिकार', 'नीति निदेशक', 'मूल कर्तव्य', 'मौलिक कर्तव्य', 'संविधान संशोधन', 'संविधान सभा', 'प्रारूप समिति', 'अंबेडकर', 'राष्ट्रपति', 'उपराष्ट्रपति', 'प्रधानमंत्री', 'मंत्रिपरिषद', 'राज्यपाल', 'मुख्यमंत्री', 'संसद', 'लोकसभा', 'राज्यसभा', 'विधानसभा', 'विधान परिषद', 'धन विधेयक', 'वित्त विधेयक', 'अध्यादेश', 'महाभियोग', 'सर्वोच्च न्यायालय', 'उच्चतम न्यायालय', 'उच्च न्यायालय', 'रिट', 'बंदी प्रत्यक्षीकरण', 'निर्वाचन आयोग', 'नियंत्रक एवं महालेखा परीक्षक', 'संघ लोक सेवा आयोग', 'वित्त आयोग', 'आपातकाल', 'article ', 'constitution', 'parliament', 'fundamental right', 'directive principle', 'supreme court', 'president', 'governor', 'lok sabha', 'rajya sabha']
+    },
+    {
+      subjectId: 'sub_history',
+      topicTitle: 'Ancient Indian History',
+      keywords: ['सिंधु घाटी', 'हड़प्पा', 'मोहनजोदड़ो', 'लोथल', 'कालीबंगा', 'धौलावीरा', 'वैदिक', 'ऋग्वेद', 'सामवेद', 'यजुर्वेद', 'अथर्ववेद', 'उपनिषद', 'महाजनपद', 'मगध', 'गौतम बुद्ध', 'बौद्ध धर्म', 'महावीर स्वामी', 'जैन धर्म', 'त्रिपिटक', 'मौर्य', 'चन्द्रगुप्त', 'अशोक', 'चाणक्य', 'कौटिल्य', 'अर्थशास्त्र', 'शिलालेख', 'गुप्त वंश', 'समुद्रगुप्त', 'विक्रमादित्य', 'हर्षवर्धन', 'चोल', 'पल्लव', 'चालुक्य', 'खजुराहो', 'अजंता', 'एलोरा', 'harappa', 'indus valley', 'vedic', 'maurya', 'ashoka', 'gupta', 'buddha', 'jain']
+    },
+    {
+      subjectId: 'sub_history',
+      topicTitle: 'Medieval Indian History',
+      keywords: ['दिल्ली सल्तनत', 'कुतुबुद्दीन ऐबक', 'इल्तुतमिश', 'रजिया', 'बलबन', 'खिलजी', 'अलाउद्दीन', 'तुगलक', 'लोदी', 'मुगल', 'बाबर', 'हुमायूँ', 'अकबर', 'जहाँगीर', 'शाहजहाँ', 'औरंगजेब', 'शेरशाह सूरी', 'पानीपत का युद्ध', 'हल्दीघाटी', 'तराइन', 'शिवाजी', 'मराठा साम्राज्य', 'अष्टप्रधान', 'विजयनगर', 'कृष्णदेव राय', 'भक्ति आंदोलन', 'कबीर', 'तुलसीदास', 'सूफी', 'मनसबदारी', 'जजिया', 'sultanate', 'mughal', 'akbar', 'babur', 'aurangzeb', 'shivaji', 'vijayanagara']
+    },
+    {
+      subjectId: 'sub_history',
+      topicTitle: 'Modern Indian History',
+      keywords: ['1857 की क्रांति', '1857 का विद्रोह', 'मंगल पांडे', 'रानी लक्ष्मीबाई', 'तात्या टोपे', 'कांग्रेस अधिवेशन', 'बंगाल विभाजन', 'स्वदेशी आंदोलन', 'मुस्लिम लीग', 'सूरत विभाजन', 'होमरूल', 'चंपारण', 'खेड़ा', 'रौलेट एक्ट', 'जलियांवाला बाग', 'खिलाफत', 'असहयोग आंदोलन', 'चौरी चौरा', 'स्वराज पार्टी', 'साइमन कमीशन', 'पूर्ण स्वराज', 'दांडी मार्च', 'सविनय अवज्ञा', 'गांधी इरविन', 'पूना पैक्ट', 'भारत छोड़ो आंदोलन', 'सुभाष चंद्र बोस', 'आजाद हिंद फौज', 'भगत सिंह', 'चंद्रशेखर आजाद', 'कैबिनेट मिशन', 'माउंटबेटन', 'गवर्नर जनरल', 'वायसराय', 'ब्रिटिश', 'आर्य समाज', 'ब्रह्म समाज', 'राजा राममोहन राय', 'स्वामी दयानंद', 'स्वामी विवेकानंद', 'mahatma gandhi', 'quit india', 'non-cooperation', 'dandi', '1857', 'viceroy', 'governor general']
+    },
+    {
+      subjectId: 'sub_geography',
+      topicTitle: 'Indian Geography',
+      keywords: ['हिमालय', 'काराकोरम', 'शिवालिक', 'अरावली', 'विंध्याचल', 'सतपुड़ा', 'पश्चिमी घाट', 'पूर्वी घाट', 'नीलगिरि', 'एवरेस्ट', 'कंचनजंगा', 'गंगा', 'यमुना', 'ब्रह्मपुत्र', 'सिंधु', 'गोदावरी', 'कृष्णा', 'कावेरी', 'नर्मदा', 'ताप्ती', 'चिल्का', 'वुलर', 'सांभर', 'लोकटक', 'मानसून', 'जलोढ़ मृदा', 'काली मिट्टी', 'लैटेराइट', 'जनगणना 2011', 'साक्षरता दर', 'लिंगानुपात', 'राष्ट्रीय उद्यान', 'टाइगर रिजर्व', 'जैवमंडल', 'सौरमंडल', 'ग्रह', 'पृथ्वी', 'अक्षांश', 'देशांतर', 'वायुमंडल', 'क्षोभमंडल', 'समतापमंडल', 'ओजोन परत', 'भूकंप', 'ज्वालामुखी', 'चट्टान', 'महाद्वीप', 'महासागर', 'himalaya', 'monsoon', 'ganga', 'brahmaputra', 'godavari', 'narmada', 'atmosphere', 'latitude', 'longitude', 'solar system']
+    },
+    {
+      subjectId: 'sub_economy',
+      topicTitle: 'National Income & Planning',
+      keywords: ['अर्थव्यवस्था', 'राष्ट्रीय आय', 'सकल घरेलू उत्पाद', 'जीडीपी', 'प्रति व्यक्ति आय', 'नीति आयोग', 'योजना आयोग', 'पंचवर्षीय योजना', 'रिजर्व बैंक', 'आरबीआई', 'रेपो दर', 'रिवर्स रेपो', 'सीआरआर', 'एसएलआर', 'मुद्रास्फीति', 'मौद्रिक नीति', 'राजकोषीय घाटा', 'जीएसटी', 'बजट', 'कर प्रणाली', 'नाबार्ड', 'सेबी', 'बैंकिंग', 'बेरोजगारी', 'गरीबी', 'हरित क्रांति', 'श्वेत क्रांति', 'gdp', 'rbi', 'repo rate', 'inflation', 'monetary policy', 'fiscal deficit', 'gst', 'niti aayog', 'five year plan', 'nabard']
+    },
+    {
+      subjectId: 'sub_science',
+      topicTitle: 'Biology & Human Health',
+      keywords: ['कोशिका', 'माइटोकॉन्ड्रिया', 'राइबोसोम', 'डीएनए', 'आरएनए', 'गुणसूत्र', 'रक्त समूह', 'हीमोग्लोबिन', 'हृदय', 'मस्तिष्क', 'वृक्क', 'यकृत', 'पाचन', 'श्वसन', 'प्रकाश संश्लेषण', 'क्लोरोफिल', 'जाइलम', 'फ्लोएम', 'विटामिन', 'प्रोटीन', 'कार्बोहाइड्रेट', 'हार्मोन', 'इंसुलिन', 'जीवाणु', 'विषाणु', 'प्रोटोजोआ', 'कवक', 'टीका', 'मलेरिया', 'डेंगू', 'तपेदिक', 'विद्युत धारा', 'प्रतिरोध', 'ओम का नियम', 'लेंस', 'दर्पण', 'अपवर्तन', 'परावर्तन', 'ध्वनि', 'आवृत्ति', 'गुरुत्वाकर्षण', 'न्यूटन', 'ऊर्जा', 'कार्य', 'शक्ति', 'अम्ल', 'क्षार', 'लवण', 'पीएच मान', 'आवर्त सारणी', 'परमाणु', 'इलेक्ट्रॉन', 'प्रोटॉन', 'न्यूट्रॉन', 'समस्थानिक', 'धातु', 'अधातु', 'मिश्रधातु', 'इसरो', 'उपग्रह', 'चंद्रयान', 'vitamin', 'cell', 'photosynthesis', 'blood', 'hormone', 'bacteria', 'virus', 'ohm', 'lens', 'mirror', 'acid', 'periodic table', 'atom', 'electron']
+    },
+    {
+      subjectId: 'sub_mathematics',
+      topicTitle: 'Percentage, Profit & Loss, SI & CI',
+      keywords: ['प्रतिशत', 'लाभ और हानि', 'लाभ-हानि', 'क्रय मूल्य', 'विक्रय मूल्य', 'बट्टा', 'छूट', 'साधारण ब्याज', 'चक्रवृद्धि ब्याज', 'मूलधन', 'मिश्रधन', 'अनुपात', 'समानुपात', 'औसत', 'समय और कार्य', 'चाल समय दूरी', 'रेलगाड़ी', 'नाव और धारा', 'लघुत्तम समापवर्त्य', 'महत्तम समापवर्तक', 'ल.स.', 'म.स.', 'अभाज्य संख्या', 'वर्गमूल', 'घनमूल', 'क्षेत्रफल', 'आयतन', 'परिमाप', 'त्रिभुज', 'वृत्त', 'आयत', 'वर्ग', 'बेलन', 'शंकु', 'गोला', 'बीजगणित', 'समीकरण', 'percentage', 'profit and loss', 'simple interest', 'compound interest', 'ratio', 'average', 'time and work', 'speed and distance', 'lcm', 'hcf', 'area', 'volume', 'triangle', 'circle']
+    },
+    {
+      subjectId: 'sub_reasoning',
+      topicTitle: 'Coding-Decoding & Series',
+      keywords: ['कोडिंग', 'डिकोडिंग', 'श्रृंखला', 'लुप्त संख्या', 'अगला पद', 'सादृश्यता', 'रक्त संबंध', 'दिशा परीक्षण', 'कथन और निष्कर्ष', 'न्याय निगमन', 'वेन आरेख', 'पासा', 'कैलेंडर', 'घड़ी', 'बैठक व्यवस्था', 'दर्पण प्रतिबिंब', 'जल प्रतिबिंब', 'विषम चुनिए', 'coding', 'decoding', 'blood relation', 'syllogism', 'missing number', 'series', 'direction']
+    },
+    {
+      subjectId: 'sub_computer',
+      topicTitle: 'Computer Architecture, Hardware & Memory',
+      keywords: ['कंप्यूटर', 'कम्प्यूटर', 'सीपीयू', 'रैम', 'रोम', 'कैश मेमोरी', 'हार्ड डिस्क', 'इनपुट डिवाइस', 'आउटपुट डिवाइस', 'कीबोर्ड', 'माउस', 'मॉनिटर', 'प्रिंटर', 'लेजर प्रिंटर', 'इंकजेट', 'स्कैनर', 'प्लॉटर', 'ऑपरेटिंग सिस्टम', 'विंडोज', 'लिनक्स', 'यूनिक्स', 'एमएस वर्ड', 'एमएस एक्सेल', 'पॉवरपॉइंट', 'स्प्रेडशीट', 'शॉर्टकट कुंजी', 'इंटरनेट', 'ब्राउज़र', 'सर्च इंजन', 'ईमेल', 'वायरस', 'एंटीवायरस', 'मैलवेयर', 'फायरवॉल', 'बाइनरी', 'बिट', 'बाइट', 'मेगाबाइट', 'गीगाबाइट', 'cpu', 'ram', 'rom', 'input device', 'output device', 'printer', 'operating system', 'ms word', 'ms excel', 'powerpoint', 'internet', 'browser', 'virus', 'firewall', 'shortcut key']
+    },
+    {
+      subjectId: 'sub_pedagogy',
+      topicTitle: 'Learning Theories',
+      keywords: ['बाल विकास', 'शिक्षाशास्त्र', 'अधिगम', 'जीन पियाजे', 'वायगोत्स्की', 'कोहलबर्ग', 'स्किनर', 'पावलव', 'थार्नडाइक', 'बुद्धि लब्धि', 'समावेशी शिक्षा', 'सतत एवं व्यापक मूल्यांकन', 'शिक्षण विधि', 'एनसीएफ', 'आरटीई', 'राष्ट्रीय शिक्षा नीति', 'piaget', 'vygotsky', 'kohlberg', 'pedagogy', 'child development', 'inclusive education']
+    },
+    {
+      subjectId: 'sub_english',
+      topicTitle: 'Parts of Speech, Tenses & Voice',
+      keywords: ['synonym', 'antonym', 'passive voice', 'active voice', 'indirect speech', 'direct speech', 'narration', 'fill in the blank', 'preposition', 'article', 'idiom', 'one word substitution', 'correctly spelt', 'grammatical error', 'tense']
+    }
+  ];
+
   // Automatic Categorisation Engine using Subject, Topic & Subtopic Master (Section 6)
   function autoCategorizeQuestionFromMaster(item, catalog, defaultExamIds) {
     const combinedText = [
@@ -3031,10 +3130,15 @@
     }
     const finalExamIds = incomingExams.length > 0 ? incomingExams : ['CGPSC'];
 
+    const rawSubInput = String(item.subjectId || item.subjectTag || '').trim();
+    const isGenericSubInput = !rawSubInput || ['general', 'general studies', 'gs', 'gk', 'general knowledge', 'unknown', 'needs categorisation'].includes(rawSubInput.toLowerCase());
+    const rawTopInput = String(item.topicId || item.topic || '').trim();
+    const isGenericTopInput = !rawTopInput || ['general', 'general knowledge', 'miscellaneous', 'unknown', 'needs categorisation'].includes(rawTopInput.toLowerCase());
+
     // 1. Check if item already has explicit Subject/Topic/Subtopic that matches Master
-    let matchedSub = item.subjectId || item.subjectTag ? catalog.findSubject(item.subjectId || item.subjectTag) : null;
-    let matchedTop = (item.topicId || item.topic)
-      ? catalog.findTopic(matchedSub ? matchedSub.subjectId : '', item.topicId || item.topic)
+    let matchedSub = (!isGenericSubInput) ? catalog.findSubject(rawSubInput) : null;
+    let matchedTop = (!isGenericTopInput)
+      ? catalog.findTopic(matchedSub ? matchedSub.subjectId : '', rawTopInput)
       : null;
     let matchedSubtop = (item.subtopicId || item.subtopic)
       ? catalog.findSubtopic(matchedTop ? matchedTop.topicId : '', item.subtopicId || item.subtopic, matchedSub ? matchedSub.subjectId : '')
@@ -3069,11 +3173,11 @@
         matchedSubtop = bestSubtop;
         if (!matchedTop) matchedTop = catalog.findTopic('', bestSubtop.topicId);
         if (!matchedSub && matchedTop) matchedSub = catalog.findSubject(matchedTop.subjectId);
-        confidence = Math.max(confidence, Math.min(98, 72 + bestSubtopHits * 6));
+        confidence = Math.max(confidence, Math.min(98, 74 + bestSubtopHits * 5));
       }
     }
 
-    // 3. Score Topic Master keywords if Topic not yet matched
+    // 3. Score Topic Master keywords + Expanded Hindi/English Domain Rules if Topic not yet matched
     if (!matchedTop) {
       let bestTop = null;
       let bestTopHits = 0;
@@ -3092,16 +3196,37 @@
           bestTop = top;
         }
       }
+
+      // Also score against EXTRA_SUBJECT_TOPIC_RULES (rich Hindi Devanagari + English keyword bank)
+      for (const rule of EXTRA_SUBJECT_TOPIC_RULES) {
+        const ruleSub = catalog.findSubject(rule.subjectId);
+        if (matchedSub && ruleSub && ruleSub.subjectId !== matchedSub.subjectId) continue;
+        let hits = 0;
+        rule.keywords.forEach((kw) => {
+          const cleanKw = String(kw || '').trim().toLowerCase();
+          if (cleanKw && combinedText.includes(cleanKw)) {
+            hits += cleanKw.length >= 5 ? 3 : 2;
+          }
+        });
+        if (hits > bestTopHits && ruleSub) {
+          const ruleTop = catalog.findTopic(ruleSub.subjectId, rule.topicTitle) ||
+            (catalog.getTopicsForSubject(ruleSub.subjectId)[0] || null);
+          if (ruleTop) {
+            bestTopHits = hits;
+            bestTop = ruleTop;
+          }
+        }
+      }
+
       if (bestTop && bestTopHits >= 2) {
         matchedTop = bestTop;
         if (!matchedSub) matchedSub = catalog.findSubject(bestTop.subjectId);
-        confidence = Math.max(confidence, Math.min(92, 62 + bestTopHits * 6));
-        // Now check if a subtopic under matchedTop also matches
+        confidence = Math.max(confidence, Math.min(94, 66 + bestTopHits * 5));
         if (!matchedSubtop) {
           const candidateSubtopics = catalog.getSubtopicsForTopic(matchedTop.topicId);
           for (const st of candidateSubtopics) {
             const stTerms = [st.titleEn.toLowerCase(), st.titleHi.toLowerCase(), ...(st.keywords || [])];
-            if (stTerms.some((kw) => kw && kw.length >= 3 && combinedText.includes(kw.toLowerCase()))) {
+            if (stTerms.some((kw) => kw && kw.length >= 2 && combinedText.includes(kw.toLowerCase()))) {
               matchedSubtop = st;
               confidence = Math.min(96, confidence + 8);
               break;
@@ -3120,7 +3245,7 @@
         const terms = [s.titleEn.toLowerCase(), s.titleHi.toLowerCase(), ...(s.aliases || [])];
         terms.forEach((kw) => {
           const cleanKw = String(kw || '').trim().toLowerCase();
-          if (cleanKw && cleanKw.length >= 3 && combinedText.includes(cleanKw)) {
+          if (cleanKw && cleanKw.length >= 2 && combinedText.includes(cleanKw)) {
             hits += 2;
           }
         });
@@ -3131,7 +3256,16 @@
       }
       if (bestSub && bestSubHits >= 2) {
         matchedSub = bestSub;
-        confidence = Math.max(confidence, 45);
+        confidence = Math.max(confidence, 68);
+      }
+    }
+
+    // 5. If Subject is matched (either from file or keywords) but Topic wasn't matched yet, assign the Subject's primary Topic in Master so it doesn't fail categorisation
+    if (matchedSub && !matchedTop) {
+      const subTopics = catalog.getTopicsForSubject(matchedSub.subjectId);
+      if (subTopics && subTopics.length > 0) {
+        matchedTop = subTopics[0];
+        confidence = Math.max(confidence, 68);
       }
     }
 
@@ -3338,14 +3472,19 @@
     return state.migrationState;
   }
 
+  function normalizeDevanagariDigits(str) {
+    return String(str == null ? '' : str).replace(/[\u0966-\u096F]/g, (d) => String(d.charCodeAt(0) - 0x0966));
+  }
+
   function normalizeTextForComparison(str) {
-    return String(str == null ? '' : str)
-      .normalize ? String(str == null ? '' : str).normalize('NFC')
-      .toLowerCase()
-      .replace(/[^\p{L}\p{N}\s]/gu, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-      : String(str == null ? '' : str).toLowerCase().replace(/\s+/g, ' ').trim();
+    const raw = normalizeDevanagariDigits(str == null ? '' : str);
+    return raw.normalize
+      ? raw.normalize('NFC')
+        .toLowerCase()
+        .replace(/[^\p{L}\p{M}\p{N}\s]/gu, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+      : raw.toLowerCase().replace(/\s+/g, ' ').trim();
   }
 
   function computeTextSimilarity(strA, strB) {
@@ -3429,19 +3568,25 @@
   }
 
   function detectLanguageAvailability(qHi, qEn) {
-    const hasHi = Boolean(String(qHi || '').trim());
-    const hasEn = Boolean(String(qEn || '').trim());
-    if (hasHi && hasEn) return 'Both';
-    if (hasHi) return 'Hindi';
-    if (hasEn) return 'English';
+    const hiStr = String(qHi || '').trim();
+    const enStr = String(qEn || '').trim();
+    const hasDevanagari = /[\u0900-\u097F]/.test(hiStr + ' ' + enStr);
+    const hasLatin = /[A-Za-z]{2,}/.test(hiStr + ' ' + enStr);
+    if (hiStr && enStr && hiStr !== enStr) return 'Both';
+    if (hasDevanagari && hasLatin) return 'Both';
+    if (hasDevanagari) return 'Hindi';
+    if (hasLatin) return 'English';
+    if (hiStr && enStr) return 'Both';
+    if (hiStr) return 'Hindi';
+    if (enStr) return 'English';
     return 'Both';
   }
 
   function normalizeDifficulty(val) {
     const low = String(val || '').trim().toLowerCase();
-    if (low === 'easy' || low === 'सरल') return 'Easy';
+    if (low === 'easy' || low === 'सरल' || low === 'आसान') return 'Easy';
     if (low === 'difficult' || low === 'hard' || low === 'कठिन') return 'Hard';
-    if (low === 'moderate' || low === 'medium' || low === 'मध्यम') return 'Moderate';
+    if (low === 'moderate' || low === 'medium' || low === 'मध्यम' || low === 'सामान्य') return 'Moderate';
     return '';
   }
 
@@ -3449,23 +3594,60 @@
     return normalizeDifficulty(val);
   }
 
-  function parseCorrectIndexValue(rawVal) {
+  function parseCorrectIndexValue(rawVal, optsHi, optsEn, preferOneBased) {
     if (rawVal === undefined || rawVal === null || String(rawVal).trim() === '') {
       return { valid: false, missing: true, index: null, reason: 'Missing correct answer (correctIndex is empty).' };
     }
-    const str = String(rawVal).trim().toUpperCase();
-    if (str === '0' || str === '1' || str === '2' || str === '3') {
-      return { valid: true, missing: false, index: Number(str), reason: '' };
+    const rawStr = normalizeDevanagariDigits(String(rawVal).trim());
+    const cleanToken = rawStr
+      .toUpperCase()
+      .replace(/^(?:OPTION|OPT|ANS(?:WER)?|विकल्प|उत्तर|सही\s*उत्तर)[\s.:=\-]*/i, '')
+      .replace(/^[([{\s]+|[)\]}\s.:-]+$/g, '')
+      .trim();
+
+    if (preferOneBased) {
+      if (cleanToken === '1') return { valid: true, missing: false, index: 0, reason: '' };
+      if (cleanToken === '2') return { valid: true, missing: false, index: 1, reason: '' };
+      if (cleanToken === '3') return { valid: true, missing: false, index: 2, reason: '' };
+      if (cleanToken === '4') return { valid: true, missing: false, index: 3, reason: '' };
     }
-    if (str === 'A' || str === 'OPTION A') return { valid: true, missing: false, index: 0, reason: '' };
-    if (str === 'B' || str === 'OPTION B') return { valid: true, missing: false, index: 1, reason: '' };
-    if (str === 'C' || str === 'OPTION C') return { valid: true, missing: false, index: 2, reason: '' };
-    if (str === 'D' || str === 'OPTION D') return { valid: true, missing: false, index: 3, reason: '' };
+
+    if (cleanToken === '0' || cleanToken === '1' || cleanToken === '2' || cleanToken === '3') {
+      return { valid: true, missing: false, index: Number(cleanToken), reason: '' };
+    }
+    if (cleanToken === '4') {
+      return { valid: true, missing: false, index: 3, reason: '' };
+    }
+
+    const tokenMap = {
+      A: 0, B: 1, C: 2, D: 3,
+      'अ': 0, 'ब': 1, 'स': 2, 'द': 3,
+      'क': 0, 'ख': 1, 'ग': 2, 'घ': 3,
+      'आ': 1, 'इ': 2, 'ई': 3
+    };
+    if (tokenMap[cleanToken] !== undefined) {
+      return { valid: true, missing: false, index: tokenMap[cleanToken], reason: '' };
+    }
+
+    // Match if rawVal is the actual option text (e.g., "रायपुर" or "Raipur")
+    const normTarget = normalizeTextForComparison(rawStr);
+    if (normTarget) {
+      const hiArr = Array.isArray(optsHi) ? optsHi : [];
+      const enArr = Array.isArray(optsEn) ? optsEn : [];
+      for (let i = 0; i < 4; i++) {
+        const nHi = normalizeTextForComparison(hiArr[i] || '');
+        const nEn = normalizeTextForComparison(enArr[i] || '');
+        if ((nHi && nHi === normTarget) || (nEn && nEn === normTarget)) {
+          return { valid: true, missing: false, index: i, reason: '' };
+        }
+      }
+    }
+
     return {
       valid: false,
       missing: false,
       index: null,
-      reason: `Invalid correctIndex value "${String(rawVal).trim()}". Must be 0, 1, 2, or 3 (or A, B, C, D).`
+      reason: `Invalid correctIndex value "${String(rawVal).trim()}". Must be 0-3, 1-4, A-D, अ-द, क-घ, or matching option text.`
     };
   }
 
@@ -3628,7 +3810,38 @@
     status: 'status',
     id: 'id',
     questionid: 'questionId',
-    question_id: 'questionId'
+    question_id: 'questionId',
+    'प्रश्न': 'questionHi',
+    'हिन्दी_प्रश्न': 'questionHi',
+    'हिंदी_प्रश्न': 'questionHi',
+    'विकल्प_a': 'optA_Hi',
+    'विकल्प_b': 'optB_Hi',
+    'विकल्प_c': 'optC_Hi',
+    'विकल्प_d': 'optD_Hi',
+    'विकल्प_अ': 'optA_Hi',
+    'विकल्प_ब': 'optB_Hi',
+    'विकल्प_स': 'optC_Hi',
+    'विकल्प_द': 'optD_Hi',
+    'विकल्प_क': 'optA_Hi',
+    'विकल्प_ख': 'optB_Hi',
+    'विकल्प_ग': 'optC_Hi',
+    'विकल्प_घ': 'optD_Hi',
+    'विकल्प_1': 'optA_Hi',
+    'विकल्प_2': 'optB_Hi',
+    'विकल्प_3': 'optC_Hi',
+    'विकल्प_4': 'optD_Hi',
+    'उत्तर': 'correctIndex',
+    'सही_उत्तर': 'correctIndex',
+    'सही_विकल्प': 'correctIndex',
+    'व्याख्या': 'explanationHi',
+    'उत्तर_व्याख्या': 'explanationHi',
+    'विषय': 'subjectTag',
+    'टॉपिक': 'topic',
+    'अध्याय': 'topic',
+    'उपटॉपिक': 'subtopic',
+    'परीक्षा': 'examCode',
+    'कठिनाई': 'difficulty',
+    'स्तर': 'difficulty'
   };
 
   function decodePdfEscapedLiteral(raw) {
@@ -3642,6 +3855,26 @@
       .replace(/\\([0-7]{1,3})/g, (_, oct) => String.fromCharCode(parseInt(oct, 8)));
   }
 
+  function decodePdfHexLiteral(hexStr) {
+    const clean = String(hexStr || '').replace(/[^0-9A-Fa-f]/g, '');
+    if (!clean) return '';
+    // Check UTF-16BE BOM or 4-hex-digit Devanagari sequences (09xx)
+    if (clean.length % 4 === 0 && (/^(?:FEFF|09[0-7][0-9A-Fa-f]|00[2-7][0-9A-Fa-f])/i.test(clean))) {
+      let out16 = '';
+      for (let i = 0; i < clean.length; i += 4) {
+        const code = parseInt(clean.slice(i, i + 4), 16);
+        if (code && code !== 0xFEFF) out16 += String.fromCharCode(code);
+      }
+      if (out16.trim()) return out16;
+    }
+    let out8 = '';
+    for (let i = 0; i < clean.length; i += 2) {
+      const code = parseInt(clean.slice(i, i + 2), 16);
+      if (code) out8 += String.fromCharCode(code);
+    }
+    return out8;
+  }
+
   function extractTextOperatorsFromPdfChunk(chunkStr) {
     const out = [];
     const tjRegex = /\(([^()\\]*(?:\\.[^()\\]*)*)\)\s*(?:Tj|'|")/g;
@@ -3650,14 +3883,20 @@
       const dec = decodePdfEscapedLiteral(m[1]).trim();
       if (dec) out.push(dec);
     }
+    const hexTjRegex = /<([0-9A-Fa-f\s]+)>\s*(?:Tj|'|")/g;
+    while ((m = hexTjRegex.exec(chunkStr)) !== null) {
+      const dec = decodePdfHexLiteral(m[1]).trim();
+      if (dec) out.push(dec);
+    }
     const tjArrRegex = /\[((?:[^[\]]|\([^()\\]*(?:\\.[^()\\]*)*\))*)\]\s*TJ/gi;
     while ((m = tjArrRegex.exec(chunkStr)) !== null) {
       const inner = m[1];
       const strParts = [];
-      const litRegex = /\(([^()\\]*(?:\\.[^()\\]*)*)\)/g;
+      const tokenRegex = /\(([^()\\]*(?:\\.[^()\\]*)*)\)|<([0-9A-Fa-f\s]+)>/g;
       let lm;
-      while ((lm = litRegex.exec(inner)) !== null) {
-        strParts.push(decodePdfEscapedLiteral(lm[1]));
+      while ((lm = tokenRegex.exec(inner)) !== null) {
+        if (lm[1] !== undefined) strParts.push(decodePdfEscapedLiteral(lm[1]));
+        else if (lm[2] !== undefined) strParts.push(decodePdfHexLiteral(lm[2]));
       }
       const joined = strParts.join('').trim();
       if (joined) out.push(joined);
@@ -3685,7 +3924,7 @@
     return str
       .replace(/^%PDF-[^\n]*$/gm, '')
       .replace(/\b(?:obj|endobj|stream|endstream|xref|trailer|startxref)\b/g, '\n')
-      .replace(/[^\p{L}\p{N}\p{P}\p{Z}\n\r]/gu, ' ');
+      .replace(/[^\p{L}\p{M}\p{N}\p{P}\p{Z}\n\r]/gu, ' ');
   }
 
   let pdfJsLoaderPromise = null;
@@ -3698,7 +3937,7 @@
     }
     if (pdfJsLoaderPromise) return pdfJsLoaderPromise;
     pdfJsLoaderPromise = new Promise((resolve) => {
-      const timer = setTimeout(() => resolve(null), 4500);
+      const timer = setTimeout(() => resolve(null), 5000);
       const script = document.createElement('script');
       script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
       script.async = true;
@@ -3766,30 +4005,38 @@
     const fileName = String(file.name || '').toLowerCase();
     const isPdf = fileName.endsWith('.pdf') || String(file.type || '').toLowerCase() === 'application/pdf';
 
-    if (!isPdf) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (ev) => resolve(String((ev && ev.target && ev.target.result) || ''));
-        reader.onerror = () => reject(new Error('Failed to read text file.'));
-        reader.readAsText(file, 'UTF-8');
-      });
-    }
-
     const arrayBuffer = await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (ev) => resolve(ev && ev.target ? ev.target.result : null);
-      reader.onerror = () => reject(new Error('Failed to read PDF file.'));
+      reader.onerror = () => reject(new Error('Failed to read uploaded file.'));
       reader.readAsArrayBuffer(file);
     });
 
-    if (!arrayBuffer) return 'Method: PDF_OCR\n';
+    if (!arrayBuffer) return isPdf ? 'Method: PDF_OCR\n' : '';
     const uint8 = new Uint8Array(arrayBuffer);
 
-    // 1. Try PDF.js page-by-page extraction if available
+    if (!isPdf) {
+      // Detect UTF-16LE / UTF-16BE BOMs (e.g. Excel "Unicode Text" CSV exports containing Hindi Devanagari)
+      if (uint8.length >= 2 && uint8[0] === 0xFF && uint8[1] === 0xFE) {
+        return new TextDecoder('utf-16le', { fatal: false }).decode(uint8.subarray(2));
+      }
+      if (uint8.length >= 2 && uint8[0] === 0xFE && uint8[1] === 0xFF) {
+        return new TextDecoder('utf-16be', { fatal: false }).decode(uint8.subarray(2));
+      }
+      const utf8Text = new TextDecoder('utf-8', { fatal: false }).decode(uint8);
+      return utf8Text.replace(/^\uFEFF/, '');
+    }
+
+    // 1. Try PDF.js page-by-page extraction with CMap support for Hindi Devanagari fonts
     try {
       const pdfjsLib = await ensurePdfJsLoaded();
       if (pdfjsLib && typeof pdfjsLib.getDocument === 'function') {
-        const loadingTask = pdfjsLib.getDocument({ data: uint8.slice(0) });
+        const loadingTask = pdfjsLib.getDocument({
+          data: uint8.slice(0),
+          cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
+          cMapPacked: true,
+          standardFontDataUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/standard_fonts/'
+        });
         const pdfDoc = await loadingTask.promise;
         const pageTexts = [];
         for (let p = 1; p <= pdfDoc.numPages; p++) {
@@ -3842,7 +4089,7 @@
 
   function parseMultiSetAnswerKeyFromPdf(answerKeyText, preferredSetCode) {
     const targetSet = String(preferredSetCode || 'A').trim().toUpperCase().replace(/^SET[\s\-_]*/i, '') || 'A';
-    const raw = extractReadableTextFromPdfStream(String(answerKeyText || ''));
+    const raw = normalizeDevanagariDigits(extractReadableTextFromPdfStream(String(answerKeyText || '')));
     const columnMaps = {
       A: new Map(),
       B: new Map(),
@@ -3866,7 +4113,8 @@
       A: 0, B: 1, C: 2, D: 3,
       '0': 0, '1': 1, '2': 2, '3': 3,
       'अ': 0, 'ब': 1, 'स': 2, 'द': 3,
-      'क': 0, 'ख': 1, 'ग': 2, 'घ': 3
+      'क': 0, 'ख': 1, 'ग': 2, 'घ': 3,
+      'आ': 1, 'इ': 2, 'ई': 3
     };
 
     const normalizeOpt = (tok) => {
@@ -3897,7 +4145,7 @@
       }
 
       // 2. Detect single-set section header e.g., "SET - B" or "Answer Key Set B"
-      const singleSetHeader = line.match(/^(?:ANSWER\s*KEY\s*(?:FOR)?\s*)?(?:SET|SERIES|PAPER\s*SET)[\s\-_:]*([ABCD])\b[:\-]?$/i);
+      const singleSetHeader = line.match(/^(?:ANSWER\s*KEY\s*(?:FOR)?\s*)?(?:SET|SERIES|PAPER\s*SET|सेट)[\s\-_:]*([ABCD])\b[:\-]?$/i);
       if (singleSetHeader) {
         currentSectionSet = singleSetHeader[1].toUpperCase();
         detectedColumnsSet.add(currentSectionSet);
@@ -3905,7 +4153,7 @@
       }
 
       // 3. Detect tabular multi-set row: e.g. "1   A   B   C   D" or "1 | C | B | A | D" or "1. (A) (C) (B) (D)"
-      const tabularRowMatch = line.match(/^(?:Q\.?\s*)?(\d{1,3})\s*[|.:\-]?\s*\(?([A-Da-dअ-दक-घ])\)?[\s|,;]+\(?([A-Da-dअ-दक-घ])\)?(?:[\s|,;]+\(?([A-Da-dअ-दक-घ])\)?)?(?:[\s|,;]+\(?([A-Da-dअ-दक-घ])\)?)?\s*$/);
+      const tabularRowMatch = line.match(/^(?:Q\.?\s*)?(\d{1,3})\s*[|.:\-]?\s*\(?([A-Da-dअआइईब सदकखगघ])\)?[\s|,;]+\(?([A-Da-dअआइईबसदकखगघ])\)?(?:[\s|,;]+\(?([A-Da-dअआइईबसदकखगघ])\)?)?(?:[\s|,;]+\(?([A-Da-dअआइईबसदकखगघ])\)?)?\s*$/);
       if (tabularRowMatch) {
         const qNum = Number(tabularRowMatch[1]);
         const ansTokens = [tabularRowMatch[2], tabularRowMatch[3], tabularRowMatch[4], tabularRowMatch[5]].filter(Boolean);
@@ -3926,11 +4174,11 @@
       }
 
       // 4. Detect inline explicit Set-tagged pairs e.g. "Set B: 1-A, 2-C"
-      const inlineSetPrefix = line.match(/^(?:SET|SERIES)[\s\-_]*([ABCD])\s*[:\-]\s*(.+)$/i);
+      const inlineSetPrefix = line.match(/^(?:SET|SERIES|सेट)[\s\-_]*([ABCD])\s*[:\-]\s*(.+)$/i);
       if (inlineSetPrefix) {
         const sCol = inlineSetPrefix[1].toUpperCase();
         detectedColumnsSet.add(sCol);
-        const pairRegex = /(?:^|[\s,;|\n\r])(?:Q\.?\s*|प्रश्न\s*|प्र\.?\s*)?(\d{1,3})\s*(?:[-:=.)>]+|\s+)\s*\(?([A-Da-d0-3अ-दक-घ])\)?(?=$|[\s,;|\n\r.)])/g;
+        const pairRegex = /(?:^|[\s,;|\n\r])(?:Q\.?\s*|प्रश्न\s*|प्र\.?\s*)?(\d{1,3})\s*(?:[-:=.)>]+|\s+)\s*\(?([A-Da-d0-3अआइईबसदकखगघ])\)?(?=$|[\s,;|\n\r.)])/g;
         let pm;
         while ((pm = pairRegex.exec(inlineSetPrefix[2])) !== null) {
           const qNum = Number(pm[1]);
@@ -3943,7 +4191,7 @@
       }
 
       // 5. Standard pairs ("1-A, 2-B, 3-C"): assign to currentSectionSet if active, otherwise to targetSet
-      const pairRegex = /(?:^|[\s,;|\n\r])(?:Q\.?\s*|प्रश्न\s*|प्र\.?\s*)?(\d{1,3})\s*(?:[-:=.)>]+|\s+)\s*\(?([A-Da-d0-3अ-दक-घ])\)?(?=$|[\s,;|\n\r.)])/g;
+      const pairRegex = /(?:^|[\s,;|\n\r])(?:Q\.?\s*|प्रश्न\s*|प्र\.?\s*)?(\d{1,3})\s*(?:[-:=.)>]+|\s+)\s*\(?([A-Da-d0-3अआइईबसदकखगघ])\)?(?=$|[\s,;|\n\r.)])/g;
       let match;
       while ((match = pairRegex.exec(line)) !== null) {
         const qNum = Number(match[1]);
@@ -3981,17 +4229,18 @@
       return parseMultiSetAnswerKeyFromPdf(answerKeyText, preferredSetCode).selectedMap;
     }
     const keyMap = new Map();
-    const raw = String(answerKeyText || '');
+    const raw = normalizeDevanagariDigits(String(answerKeyText || ''));
     if (!raw.trim()) return keyMap;
 
     const optionLetterToIdx = {
       A: 0, B: 1, C: 2, D: 3,
       '0': 0, '1': 1, '2': 2, '3': 3,
       'अ': 0, 'ब': 1, 'स': 2, 'द': 3,
-      'क': 0, 'ख': 1, 'ग': 2, 'घ': 3
+      'क': 0, 'ख': 1, 'ग': 2, 'घ': 3,
+      'आ': 1, 'इ': 2, 'ई': 3
     };
 
-    const pairRegex = /(?:^|[\s,;|\n\r])(?:Q\.?\s*|प्रश्न\s*|प्र\.?\s*)?(\d{1,3})\s*(?:[-:=.)>]+|\s+)\s*\(?([A-Da-d0-3अ-दक-घ])\)?(?=$|[\s,;|\n\r.)])/g;
+    const pairRegex = /(?:^|[\s,;|\n\r])(?:Q\.?\s*|प्रश्न\s*|प्र\.?\s*)?(\d{1,3})\s*(?:[-:=.)>]+|\s+)\s*\(?([A-Da-d0-3अआइईबसदकखगघ])\)?(?=$|[\s,;|\n\r.)])/g;
     let match;
     while ((match = pairRegex.exec(raw)) !== null) {
       const qNum = Number(match[1]);
@@ -4054,7 +4303,7 @@
 
     let bodyText = readableText;
     let embeddedAnswerKeySection = '';
-    const akHeaderMatch = readableText.match(/(?:^|\n)\s*(?:ANSWER\s*KEY|ANSWERS|उत्तर\s*माला|उत्तर\s*कुंजी)\s*[:\-]?\s*([\s\S]*)$/i);
+    const akHeaderMatch = readableText.match(/(?:^|\n)\s*(?:ANSWER\s*KEY|ANSWERS|उत्तर\s*माला|उत्तर\s*कुंजी|मॉडल\s*उत्तर)\s*[:\-]?\s*([\s\S]*)$/i);
     if (akHeaderMatch) {
       embeddedAnswerKeySection = akHeaderMatch[1] || '';
       bodyText = readableText.slice(0, akHeaderMatch.index);
@@ -4073,26 +4322,27 @@
     let currentBlock = null;
     let currentDetectedPage = 1;
 
-    const qStartRegex = /^\s*(?:Q(?:uestion)?\.?\s*|प्रश्न\s*|प्र\.?\s*)?(\d{1,3})\s*[.):\-]\s*(.+)$/i;
-    const pageMarkerRegex = /(?:^|\s)(?:Page|पृष्ठ)\s*[:\-]?\s*(\d{1,4})\b/i;
+    const qStartRegex = /^\s*(?:Q(?:uestion|ues)?\.?\s*|प्रश्न\s*(?:क्र(?:मांक)?\.?)?\s*|प्र\.?\s*)?(?:\(?([0-9\u0966-\u096F]{1,3})\)?\s*[.):\-]|(?:\(([0-9\u0966-\u096F]{1,3})\)))\s*(.+)$/i;
+    const pageMarkerRegex = /(?:^|\s)(?:Page|पृष्ठ)\s*[:\-]?\s*([0-9\u0966-\u096F]{1,4})\b/i;
 
     lines.forEach((rawLine, idx) => {
       const line = rawLine.trim();
       if (!line) return;
       const pageMatch = line.match(pageMarkerRegex);
       if (pageMatch && line.length < 32) {
-        currentDetectedPage = Number(pageMatch[1]) || currentDetectedPage;
+        currentDetectedPage = Number(normalizeDevanagariDigits(pageMatch[1])) || currentDetectedPage;
         return;
       }
       const qMatch = line.match(qStartRegex);
-      if (qMatch && Number(qMatch[1]) > 0) {
-        const qNum = Number(qMatch[1]);
+      const qNumDigits = qMatch ? normalizeDevanagariDigits(qMatch[1] || qMatch[2] || '') : '';
+      if (qMatch && Number(qNumDigits) > 0) {
+        const qNum = Number(qNumDigits);
         if (currentBlock) questionBlocks.push(currentBlock);
         currentBlock = {
           rowNumber: idx + 1,
           questionNumber: qNum,
           pageNumber: currentDetectedPage,
-          rawLines: [qMatch[2].trim()]
+          rawLines: [String(qMatch[3] || '').trim()]
         };
       } else if (currentBlock) {
         currentBlock.rawLines.push(line);
@@ -4105,7 +4355,7 @@
         rowNumber: 1,
         questionNumber: '-',
         errorType: 'No Numbered Questions Found in PDF',
-        reason: 'Could not detect numbered questions (e.g., "1. Question...", "Q1. ...") in the uploaded PDF.'
+        reason: 'Could not detect numbered questions (e.g., "1. प्रश्न...", "प्र. 1 ...", "Q1. ...") in the uploaded PDF.'
       });
       return {
         fileType: 'PDF',
@@ -4129,24 +4379,24 @@
       let subtopic = '';
       let difficulty = '';
 
-      const examMatch = fullBlockText.match(/\[\s*(?:Exam|Category)\s*:\s*([^\]]+)\]/i);
+      const examMatch = fullBlockText.match(/\[\s*(?:Exam|Category|परीक्षा)\s*:\s*([^\]]+)\]/i);
       if (examMatch) examCode = examMatch[1].trim();
-      const subjMatch = fullBlockText.match(/\[\s*Subject\s*:\s*([^\]]+)\]/i);
+      const subjMatch = fullBlockText.match(/\[\s*(?:Subject|विषय)\s*:\s*([^\]]+)\]/i);
       if (subjMatch) subjectTag = subjMatch[1].trim();
-      const topicMatch = fullBlockText.match(/\[\s*Topic\s*:\s*([^\]]+)\]/i);
+      const topicMatch = fullBlockText.match(/\[\s*(?:Topic|टॉपिक|अध्याय)\s*:\s*([^\]]+)\]/i);
       if (topicMatch) topic = topicMatch[1].trim();
-      const subtopicMatch = fullBlockText.match(/\[\s*Subtopic\s*:\s*([^\]]+)\]/i);
+      const subtopicMatch = fullBlockText.match(/\[\s*(?:Subtopic|उपटॉपिक)\s*:\s*([^\]]+)\]/i);
       if (subtopicMatch) subtopic = subtopicMatch[1].trim();
-      const diffMatch = fullBlockText.match(/\[\s*Difficulty\s*:\s*([^\]]+)\]/i);
+      const diffMatch = fullBlockText.match(/\[\s*(?:Difficulty|कठिनाई|स्तर)\s*:\s*([^\]]+)\]/i);
       if (diffMatch) difficulty = diffMatch[1].trim();
 
-      const inlineAnsMatch = fullBlockText.match(/(?:^|\n)\s*(?:Ans(?:wer)?|Correct\s*Answer|उत्तर|सही\s*उत्तर)\s*[:\-=]\s*\(?([A-Da-d0-3अ-दक-घ])\)?/i);
+      const inlineAnsMatch = fullBlockText.match(/(?:^|\n)\s*(?:Ans(?:wer)?|Correct\s*Answer|उत्तर|सही\s*उत्तर|सही\s*विकल्प)\s*[:\-=]\s*\(?([A-Da-d0-3अआइईबसदकखगघ])\)?/i);
       if (inlineAnsMatch) {
         const inlineMap = parseAnswerKeyMap(`1-${inlineAnsMatch[1]}`);
         if (inlineMap.has(1)) inlineAnswer = inlineMap.get(1);
       }
 
-      const expMatch = fullBlockText.match(/(?:^|\n)\s*(?:Explanation|Sol(?:ution)?|व्याख्या|उत्तर\s*व्याख्या)\s*[:\-]\s*([\s\S]+)$/i);
+      const expMatch = fullBlockText.match(/(?:^|\n)\s*(?:Explanation|Sol(?:ution)?|व्याख्या|उत्तर\s*व्याख्या|हल)\s*[:\-]\s*([\s\S]+)$/i);
       let textWithoutExp = fullBlockText;
       if (expMatch) {
         const expBilingual = splitBilingualText(expMatch[1].trim());
@@ -4156,18 +4406,25 @@
       }
 
       textWithoutExp = textWithoutExp
-        .replace(/(?:^|\n)\s*(?:Ans(?:wer)?|Correct\s*Answer|उत्तर|सही\s*उत्तर)\s*[:\-=]\s*\(?[A-Da-d0-3अ-दक-घ]\b[^\n]*/gi, '')
-        .replace(/\[\s*(?:Exam|Category|Subject|Topic|Subtopic|Difficulty)\s*:[^\]]+\]/gi, '')
+        .replace(/(?:^|\n)\s*(?:Ans(?:wer)?|Correct\s*Answer|उत्तर|सही\s*उत्तर|सही\s*विकल्प)\s*[:\-=]\s*\(?[A-Da-d0-3अआइईबसदकखगघ]\b[^\n]*/gi, '')
+        .replace(/\[\s*(?:Exam|Category|Subject|Topic|Subtopic|Difficulty|परीक्षा|विषय|टॉपिक|अध्याय|उपटॉपिक|कठिनाई|स्तर)\s*:[^\]]+\]/gi, '')
         .trim();
 
-      const optRegex = /(?:^|\n|\s)(?:\(([A-Da-dअ-द])\)|([A-Da-d])\s*[).:\-])\s*([\s\S]*?)(?=(?:\n|\s)(?:\([A-Da-dअ-द]\)|[A-Da-d]\s*[).:\-])|$)/g;
+      const optRegex = /(?:^|\n|\s)(?:[([]\s*([A-Da-dअआइईबसदकखगघ1-4१-४])\s*[)\]]|([A-Da-dअआइईबसदकखगघ])\s*[).:\-])\s*([\s\S]*?)(?=(?:\n|\s)(?:[([]\s*[A-Da-dअआइईबसदकखगघ1-4१-४]\s*[)\]]|[A-Da-dअआइईबसदकखगघ]\s*[).:\-])|$)/g;
       const extractedOpts = ['', '', '', ''];
       let firstOptIndex = -1;
       let optMatch;
-      const optTokenMap = { A: 0, B: 1, C: 2, D: 3, 'अ': 0, 'ब': 1, 'स': 2, 'द': 3 };
+      const optTokenMap = {
+        A: 0, B: 1, C: 2, D: 3,
+        'अ': 0, 'ब': 1, 'स': 2, 'द': 3,
+        'क': 0, 'ख': 1, 'ग': 2, 'घ': 3,
+        'आ': 1, 'इ': 2, 'ई': 3,
+        '1': 0, '2': 1, '3': 2, '4': 3,
+        '१': 0, '२': 1, '३': 2, '४': 3
+      };
 
       while ((optMatch = optRegex.exec(textWithoutExp)) !== null) {
-        const rawLetter = String(optMatch[1] || optMatch[2] || '').toUpperCase();
+        const rawLetter = String(optMatch[1] || optMatch[2] || '').trim().toUpperCase();
         const optIdx = optTokenMap[rawLetter];
         if (optIdx !== undefined) {
           if (firstOptIndex === -1) firstOptIndex = optMatch.index;
@@ -4220,7 +4477,7 @@
         questionType: 'MCQ',
         sourceDocument: fileName || 'uploaded_paper.pdf',
         sourcePageNumber: String(block.pageNumber || 1),
-        languageAvailability: 'Both',
+        languageAvailability: detectLanguageAvailability(stemBilingual.hi, stemBilingual.en),
         pyqTag: `PDF Import (Set ${detectedPaperSet})`,
         tags: ['PDF Import', `Set ${detectedPaperSet}`, 'OCR Verified'],
         status: matchedFromKey !== null && matchedFromKey !== undefined ? 'verified' : 'unverified',
@@ -4291,6 +4548,12 @@
         return { fileType: 'JSON', structureErrors, rawItems };
       }
 
+      // Detect if JSON batch uses 1-based answer numbering (1..4 with no 0)
+      const jsonRawIndices = arr
+        .map((it) => (it && typeof it === 'object' ? normalizeDevanagariDigits(String(it.correctIndex ?? it.correctOptionIndex ?? it.correctAnswer ?? it.answer ?? '')).trim() : ''))
+        .filter(Boolean);
+      const jsonPreferOneBased = jsonRawIndices.includes('4') && !jsonRawIndices.includes('0');
+
       arr.forEach((item, idx) => {
         if (!item || typeof item !== 'object' || Array.isArray(item)) {
           rawItems.push({
@@ -4301,14 +4564,20 @@
           });
           return;
         }
-        const hiOpts = Array.isArray(item.optionsHi) ? item.optionsHi : [item.optA_Hi, item.optB_Hi, item.optC_Hi, item.optD_Hi];
-        const enOpts = Array.isArray(item.optionsEn) ? item.optionsEn : [item.optA_En || item.optA, item.optB_En || item.optB, item.optC_En || item.optC, item.optD_En || item.optD];
+        const fallbackOpts = Array.isArray(item.options) ? item.options : [];
+        const hiOpts = Array.isArray(item.optionsHi)
+          ? item.optionsHi
+          : [item.optA_Hi ?? fallbackOpts[0], item.optB_Hi ?? fallbackOpts[1], item.optC_Hi ?? fallbackOpts[2], item.optD_Hi ?? fallbackOpts[3]];
+        const enOpts = Array.isArray(item.optionsEn)
+          ? item.optionsEn
+          : [item.optA_En ?? item.optA ?? fallbackOpts[0], item.optB_En ?? item.optB ?? fallbackOpts[1], item.optC_En ?? item.optC ?? fallbackOpts[2], item.optD_En ?? item.optD ?? fallbackOpts[3]];
         const parsedExamIds = Array.isArray(item.examIds)
           ? item.examIds
           : (item.examIds ? String(item.examIds).split(/[;|,]/).map((e) => e.trim()).filter(Boolean) : []);
         rawItems.push({
           rowNumber: idx + 1,
           questionNumber: idx + 1,
+          preferOneBased: jsonPreferOneBased,
           id: item.questionId || item.id || '',
           questionId: item.questionId || item.id || '',
           questionHi: item.questionHi != null ? String(item.questionHi).trim() : '',
@@ -4325,7 +4594,7 @@
             enOpts[2] != null ? String(enOpts[2]).trim() : '',
             enOpts[3] != null ? String(enOpts[3]).trim() : ''
           ],
-          rawCorrectIndex: item.correctIndex !== undefined ? item.correctIndex : (item.correctOptionIndex !== undefined ? item.correctOptionIndex : item.correctAnswer),
+          rawCorrectIndex: item.correctIndex !== undefined ? item.correctIndex : (item.correctOptionIndex !== undefined ? item.correctOptionIndex : (item.correctAnswer !== undefined ? item.correctAnswer : item.answer)),
           explanationHi: item.explanationHi != null ? String(item.explanationHi).trim() : '',
           explanationEn: item.explanationEn != null ? String(item.explanationEn).trim() : (item.explanation != null ? String(item.explanation).trim() : ''),
           examCode: item.examCode || item.examCategory || (parsedExamIds[0] || ''),
@@ -4356,7 +4625,7 @@
       return { fileType: 'JSON', structureErrors, rawItems };
     }
 
-    // CSV File Parsing & Header Validation (100% compatible with legacy 14-column CSV + optional hierarchical columns)
+    // CSV File Parsing & Header Validation (100% compatible with legacy 14-column CSV + optional hierarchical columns + Hindi headers)
     const csvRows = parseCsvWithRowNumbers(cleanText);
     if (csvRows.length === 0) {
       structureErrors.push({
@@ -4371,7 +4640,8 @@
     const firstRowCells = csvRows[0].cells;
     const looksLikeHeader = firstRowCells.some((c) => {
       const k = String(c || '').toLowerCase().replace(/[\s_-]/g, '');
-      return k.includes('question') || k.includes('opta') || k.includes('correct') || k.includes('subject') || k.includes('explanation');
+      return k.includes('question') || k.includes('opta') || k.includes('correct') || k.includes('subject') || k.includes('explanation') ||
+        k.includes('प्रश्न') || k.includes('विकल्प') || k.includes('उत्तर') || k.includes('विषय');
     });
 
     let columnKeys = [];
@@ -4385,7 +4655,7 @@
         const snakeKey = cleanCol.replace(/[\s\-]+/g, '_');
         const compactKey = cleanCol.replace(/[\s\-_]+/g, '');
         const mapped = KNOWN_CSV_COLUMN_MAP[cleanCol] || KNOWN_CSV_COLUMN_MAP[snakeKey] || KNOWN_CSV_COLUMN_MAP[compactKey];
-        if (!mapped && cleanCol && !['qno', 'q_no', 'sno', 's_no', 'srno', 'serial'].includes(compactKey)) {
+        if (!mapped && cleanCol && !['qno', 'q_no', 'sno', 's_no', 'srno', 'serial', 'क्रमांक', 'क्र'].includes(compactKey)) {
           unrecognizedCols.push(rawCol);
         }
         return mapped || null;
@@ -4432,6 +4702,16 @@
       ];
     }
 
+    const corrColPosition = columnKeys.indexOf('correctIndex');
+    const csvRawCorrectValues = [];
+    if (corrColPosition >= 0) {
+      for (let r = dataStartIdx; r < csvRows.length; r++) {
+        const v = normalizeDevanagariDigits(String((csvRows[r].cells || [])[corrColPosition] || '')).trim();
+        if (v) csvRawCorrectValues.push(v);
+      }
+    }
+    const csvPreferOneBased = csvRawCorrectValues.includes('4') && !csvRawCorrectValues.includes('0');
+
     let qCounter = 0;
     for (let r = dataStartIdx; r < csvRows.length; r++) {
       const rowObj = csvRows[r];
@@ -4453,6 +4733,7 @@
       rawItems.push({
         rowNumber: rowObj.rowNumber,
         questionNumber: qCounter,
+        preferOneBased: csvPreferOneBased,
         hasFewerColumns: missingColumnCount,
         columnCountDetected: cells.length,
         id: mappedData.questionId || mappedData.id || '',
@@ -4558,23 +4839,27 @@
         detectedAnswerKeyCols = parsed.detectedAnswerKeyColumns;
       }
       sourceRecords = parsed.rawItems.map((item) => {
-        // Section 6: Automatic Categorisation During PDF Import
-        if (fileType === 'PDF' && !(batchDefaults && batchDefaults.overrideAll)) {
+        const hasSpecificSubject = item.subjectTag && !/^(?:general|general\s*studies|gs|gk|सामान्य\s*अध्ययन|needs[\s_]*categorisation|unknown|-)$/i.test(String(item.subjectTag).trim());
+        const hasSpecificTopic = item.topic && !/^(?:general|general\s*knowledge|gk|gs|सामान्य\s*ज्ञान|needs[\s_]*categorisation|unknown|-)$/i.test(String(item.topic).trim());
+        const shouldAutoCat = !(batchDefaults && batchDefaults.overrideAll) && (fileType === 'PDF' || !hasSpecificSubject || !hasSpecificTopic);
+
+        if (shouldAutoCat) {
           const predicted = autoCategorizeQuestionFromMaster(item, catalog, defaultExamIds);
+          const isPdf = fileType === 'PDF';
           return Object.assign({}, item, {
-            examCode: predicted.examCode,
-            examIds: predicted.examIds,
-            subjectId: predicted.subjectId,
-            subjectTag: predicted.subjectTag || item.subjectTag || '',
-            topicId: predicted.topicId,
-            topic: predicted.topic || item.topic || '',
-            subtopicId: predicted.subtopicId,
+            examCode: item.examCode || predicted.examCode,
+            examIds: (Array.isArray(item.examIds) && item.examIds.length > 0) ? item.examIds : predicted.examIds,
+            subjectId: predicted.subjectId || item.subjectId || '',
+            subjectTag: predicted.subjectTag || item.subjectTag || (batchDefaults && batchDefaults.subjectTag) || 'Chhattisgarh General Knowledge',
+            topicId: predicted.topicId || item.topicId || '',
+            topic: predicted.topic || item.topic || (batchDefaults && batchDefaults.topic) || 'History of Chhattisgarh',
+            subtopicId: predicted.subtopicId || item.subtopicId || '',
             subtopic: predicted.subtopic || item.subtopic || '',
             categorisationConfidence: predicted.categorisationConfidence,
-            needsCategorisation: predicted.needsCategorisation,
-            verificationStatus: predicted.verificationStatus,
-            status: predicted.needsCategorisation ? 'needs_categorisation' : (item.answerKeyMatched ? 'verified' : 'unverified'),
-            adminVerified: !predicted.needsCategorisation && Boolean(item.answerKeyMatched),
+            needsCategorisation: isPdf ? predicted.needsCategorisation : false,
+            verificationStatus: isPdf ? (predicted.needsCategorisation ? 'needs_categorisation' : (item.answerKeyMatched ? 'verified' : 'unverified')) : (item.verificationStatus || 'verified'),
+            status: isPdf ? (predicted.needsCategorisation ? 'needs_categorisation' : (item.answerKeyMatched ? 'verified' : 'unverified')) : (item.status || 'verified'),
+            adminVerified: isPdf ? (!predicted.needsCategorisation && Boolean(item.answerKeyMatched)) : (item.adminVerified !== false),
             duplicateResolution: 'merge_exams'
           });
         }
@@ -4652,7 +4937,7 @@
           rowNumber,
           questionNumber,
           errorType: 'Missing CSV Columns',
-          reason: `Row has only ${item.columnCountDetected} column(s); expected at least 11 columns (questionHi, questionEn, 8 options, correctIndex).`
+          reason: `Row has only ${item.columnCountDetected} column(s); expected at least 6 columns (question, 4 options, correctIndex).`
         });
       }
 
@@ -4726,7 +5011,7 @@
         subtopic: effectiveSubtopic
       });
 
-      const idxCheck = parseCorrectIndexValue(item.rawCorrectIndex);
+      const idxCheck = parseCorrectIndexValue(item.rawCorrectIndex, optsHi, optsEn, item.preferOneBased);
       const corrLetter = idxCheck.valid ? ['A', 'B', 'C', 'D'][idxCheck.index] : 'A';
       const expHi = rawExpHi || rawExpEn || (idxCheck.valid ? `सही उत्तर विकल्प ${corrLetter} है।` : '');
       const expEn = rawExpEn || rawExpHi || (idxCheck.valid ? `Correct answer is Option ${corrLetter}.` : '');
@@ -4772,16 +5057,23 @@
           });
         }
 
-        // 4. Check missing or invalid correctIndex
+        // 4. Check missing or invalid correctIndex (For PDF without answer key, mark as Unverified warning instead of rejecting)
         if (!idxCheck.valid) {
-          errors.push({
-            rowNumber,
-            questionNumber,
-            errorType: idxCheck.missing ? 'Missing Correct Answer' : 'Invalid correctIndex',
-            reason: fileType === 'PDF' && idxCheck.missing
-              ? `Answer key not matched for Q${questionNumber}. Provide "${questionNumber}-A" in the Answer Key box or edit inline.`
-              : idxCheck.reason
-          });
+          if (fileType === 'PDF' && idxCheck.missing) {
+            warnings.push({
+              rowNumber,
+              questionNumber,
+              warningType: 'Unverified — Answer Key Pending',
+              reason: `Answer key not matched for Q${questionNumber}. Click Option A/B/C/D on the card or paste "${questionNumber}-A" in the Answer Key box.`
+            });
+          } else {
+            errors.push({
+              rowNumber,
+              questionNumber,
+              errorType: idxCheck.missing ? 'Missing Correct Answer' : 'Invalid correctIndex',
+              reason: idxCheck.reason
+            });
+          }
         }
 
         // 5. Check missing explanations
@@ -4914,26 +5206,27 @@
           questionEn: qEn,
           optionsHi: optsHi,
           optionsEn: optsEn,
-          correctOptionIndex: parseCorrectIndexValue(item.rawCorrectIndex).index || 0,
+          correctOptionIndex: idxCheck.index || 0,
           explanationHi: expHi,
           explanationEn: expEn,
           subjectTag: resolvedHierarchy.subjectTag || effectiveSubject
         });
       }
 
-      const parsedIdx = parseCorrectIndexValue(item.rawCorrectIndex);
-      const isVerifiedFlag = !needsCategorisationFlag && item.adminVerified !== false && item.status !== 'unverified' && item.verificationStatus !== 'needs_categorisation';
+      const parsedIdx = idxCheck;
+      const isVerifiedFlag = !needsCategorisationFlag && parsedIdx.valid && item.adminVerified !== false && item.status !== 'unverified' && item.verificationStatus !== 'needs_categorisation';
 
       return {
         rowNumber,
         questionNumber,
+        preferOneBased: Boolean(item.preferOneBased),
         id: item.questionId || item.id || '',
         questionId: item.questionId || item.id || '',
         questionHi: qHi,
         questionEn: qEn,
         optionsHi: optsHi,
         optionsEn: optsEn,
-        rawCorrectIndex: item.rawCorrectIndex,
+        rawCorrectIndex: parsedIdx.valid ? parsedIdx.index : item.rawCorrectIndex,
         correctOptionIndex: parsedIdx.valid ? parsedIdx.index : 0,
         answerKeyMatched: Boolean(item.answerKeyMatched || parsedIdx.valid),
         explanationHi: expHi,
@@ -4957,7 +5250,7 @@
         categorisationConfidence: item.categorisationConfidence != null ? item.categorisationConfidence : (needsCategorisationFlag ? 25 : 95),
         needsCategorisation: needsCategorisationFlag,
         verificationStatus: needsCategorisationFlag ? 'needs_categorisation' : (isVerifiedFlag ? 'verified' : 'unverified'),
-        languageAvailability: detectLanguageAvailability(qHi, qEn),
+        languageAvailability: detectLanguageAvailability(rawQHi, rawQEn),
         pyqTag: item.pyqTag || '',
         tags: mergedTags,
         status: needsCategorisationFlag ? 'needs_categorisation' : (isVerifiedFlag ? 'verified' : 'unverified'),
@@ -5165,7 +5458,11 @@
   }
 
   // Modal Helpers for Question Bank
-  function openDuplicateReviewModal(rec, onUpdated) {
+  function openDuplicateReviewModal(rec, stateRef, onUpdated) {
+    if (typeof stateRef === 'function' && !onUpdated) {
+      onUpdated = stateRef;
+      stateRef = null;
+    }
     const modalRoot = document.getElementById('genericModalContainer');
     if (!modalRoot || !rec || !rec.duplicateInfo) return;
     const existing = rec.duplicateInfo.matchedQuestion || {};
@@ -5264,6 +5561,7 @@
       openQuestionFormModal({
         title: `✏️ Edit Preview Question (Row #${rec.rowNumber})`,
         question: rec,
+        stateRef,
         isPreviewRow: true,
         onSave: (updatedFields) => {
           Object.assign(rec, updatedFields, {
@@ -5497,32 +5795,41 @@
     document.getElementById('closeEditQModalBtn').onclick = () => { modalRoot.innerHTML = ''; };
     document.getElementById('cancelEditQModalBtn').onclick = () => { modalRoot.innerHTML = ''; };
     document.getElementById('saveEditQModalBtn').onclick = () => {
-      const qHi = document.getElementById('eqStemHi').value.trim();
-      const qEn = document.getElementById('eqStemEn').value.trim();
-      const newOptsHi = [
+      const rawQHi = document.getElementById('eqStemHi').value.trim();
+      const rawQEn = document.getElementById('eqStemEn').value.trim();
+      const qHi = rawQHi || rawQEn;
+      const qEn = rawQEn || rawQHi;
+
+      const rawOptsHi = [
         document.getElementById('eqOpt0Hi').value.trim(),
         document.getElementById('eqOpt1Hi').value.trim(),
         document.getElementById('eqOpt2Hi').value.trim(),
         document.getElementById('eqOpt3Hi').value.trim()
       ];
-      const newOptsEn = [
+      const rawOptsEn = [
         document.getElementById('eqOpt0En').value.trim(),
         document.getElementById('eqOpt1En').value.trim(),
         document.getElementById('eqOpt2En').value.trim(),
         document.getElementById('eqOpt3En').value.trim()
       ];
-      const expHi = document.getElementById('eqExpHi').value.trim();
-      const expEn = document.getElementById('eqExpEn').value.trim();
+      const newOptsHi = [0, 1, 2, 3].map((i) => rawOptsHi[i] || rawOptsEn[i] || '');
+      const newOptsEn = [0, 1, 2, 3].map((i) => rawOptsEn[i] || rawOptsHi[i] || '');
+
+      const corrIdx = Number(document.getElementById('eqCorrectIdx').value || 0);
+      const corrLetter = ['A', 'B', 'C', 'D'][corrIdx] || 'A';
+      const rawExpHi = document.getElementById('eqExpHi').value.trim();
+      const rawExpEn = document.getElementById('eqExpEn').value.trim();
+      const expHi = rawExpHi || rawExpEn || `सही उत्तर विकल्प ${corrLetter} है।`;
+      const expEn = rawExpEn || rawExpHi || `Correct answer is Option ${corrLetter}.`;
+
       const subjectTag = document.getElementById('eqSubjectTag').value.trim();
       const topic = document.getElementById('eqTopic').value.trim();
       const subtopic = document.getElementById('eqSubtopic').value.trim();
       const errBanner = document.getElementById('editQValidationErrorBanner');
 
       const errs = [];
-      if (!qHi) errs.push('Hindi Question text is required.');
-      if (!qEn) errs.push('English Question text is required.');
-      if (newOptsHi.some((o) => !o) || newOptsEn.some((o) => !o)) errs.push('All 4 Hindi and 4 English options (A–D) are required.');
-      if (!expHi && !expEn) errs.push('Explanation (Hindi/English) is required.');
+      if (!qHi && !qEn) errs.push('Question text (Hindi or English) is required.');
+      if (newOptsHi.some((o) => !o)) errs.push('All 4 options (A–D) are required (in Hindi or English).');
       if (!subjectTag || !topic) errs.push('Subject and Topic are required.');
 
       if (errs.length > 0) {
@@ -5547,7 +5854,6 @@
       const tagsArr = document.getElementById('eqTags').value.split(',').map((t) => t.trim()).filter(Boolean);
       const diffVal = normalizeDifficultyValue(document.getElementById('eqDifficulty').value) || 'Moderate';
       const statusVal = document.getElementById('eqStatus').value || 'verified';
-      const corrIdx = Number(document.getElementById('eqCorrectIdx').value || 0);
       const nowIso = new Date().toISOString();
 
       const updated = {
@@ -5564,7 +5870,7 @@
         status: statusVal,
         verificationStatus: statusVal,
         needsCategorisation: statusVal === 'needs_categorisation',
-        languageAvailability: detectLanguageAvailability(qHi, qEn),
+        languageAvailability: detectLanguageAvailability(rawQHi, rawQEn),
         sourceExam: sourceParts[0] || question.sourceExam || '',
         sourceYear: sourceParts[1] || question.sourceYear || '',
         paperSetCode: sourceParts[2] || question.paperSetCode || '',
@@ -5584,8 +5890,8 @@
         optionsEn: newOptsEn,
         correctIndex: corrIdx,
         correctOptionIndex: corrIdx,
-        explanationHi: expHi || expEn,
-        explanationEn: expEn || expHi,
+        explanationHi: expHi,
+        explanationEn: expEn,
         updatedAt: nowIso,
         updatedAtIso: nowIso
       };
@@ -6583,7 +6889,14 @@
                       ${rec.subtopic ? `<span class="badge badge-draft">Subtopic: ${esc(rec.subtopic)}</span>` : ''}
                       <span class="badge ${diffClass}">${esc(diffVal)}</span>
                     </div>
-                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+                      <div style="display:inline-flex;align-items:center;gap:3px;padding:2px 6px;border-radius:6px;background:var(--surface-alt);border:1px solid var(--border);font-size:0.72rem;">
+                        <span style="font-weight:700;color:var(--text-secondary);">उत्तर:</span>
+                        ${[0, 1, 2, 3].map((oi) => {
+                          const isSelectedAns = rec.answerKeyMatched && Number(rec.correctOptionIndex) === oi;
+                          return `<button type="button" class="btn ${isSelectedAns ? 'btn-success' : 'btn-outline'} btn-sm" style="padding:1px 6px;min-height:22px;font-size:0.7rem;" data-set-preview-ans="${origIdx}:${oi}" title="Set Option ${letters[oi]} as Correct Answer">${letters[oi]}</button>`;
+                        }).join('')}
+                      </div>
                       <button class="btn ${isVerifiedRec ? 'btn-success' : 'btn-outline'} btn-sm" data-toggle-verify-preview="${origIdx}" title="Toggle Admin Verification for Automatic Test Generation">
                         ${isVerifiedRec ? '✓ Admin Verified' : '⏳ Mark Verified'}
                       </button>
@@ -6604,9 +6917,9 @@
                   <!-- All 4 Answer Options with Highlighted Correct Answer -->
                   <div class="qb-options-grid">
                     ${[0, 1, 2, 3].map((optIdx) => {
-                      const isCorr = parseCorrectIndexValue(rec.rawCorrectIndex).valid && rec.correctOptionIndex === optIdx;
+                      const isCorr = Boolean(rec.answerKeyMatched) && Number(rec.correctOptionIndex) === optIdx;
                       return `
-                        <div class="qb-option-pill ${isCorr ? 'is-correct' : ''}">
+                        <div class="qb-option-pill ${isCorr ? 'is-correct' : ''}" style="cursor:pointer;" data-set-preview-ans="${origIdx}:${optIdx}" title="Click to set Option ${letters[optIdx]} as Correct Answer">
                           <div>
                             <div><strong>${letters[optIdx]} (Hi):</strong> ${esc(rec.optionsHi[optIdx] || '(Missing)')}</div>
                             <div style="font-size:0.74rem;color:var(--text-secondary);"><strong>${letters[optIdx]} (En):</strong> ${esc(rec.optionsEn[optIdx] || '(Missing)')}</div>
@@ -7456,6 +7769,12 @@
         qbState.lastImportReport = null;
         api.toast(`📋 Loaded ${qbState.previewSession.records.length} question(s) into Import Preview (${qbState.previewSession.fileType} • Set ${qbState.previewSession.paperSetCode}).`);
         renderAdminConsole(rootEl, state, api);
+        setTimeout(() => {
+          const previewEl = document.getElementById('qbImportPreviewWorkbench');
+          if (previewEl && typeof previewEl.scrollIntoView === 'function') {
+            previewEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }, 80);
       } catch (readErr) {
         console.error('File upload parse error:', readErr);
         api.toast('⚠️ फ़ाइल पढ़ने में समस्या आई। कृपया फ़ाइल फ़ॉर्मेट जांचें।');
@@ -7633,12 +7952,46 @@
         };
       }
 
+      bodyEl.querySelectorAll('[data-set-preview-ans]').forEach((el) => {
+        el.onclick = (ev) => {
+          ev.stopPropagation();
+          const pair = String(el.getAttribute('data-set-preview-ans') || '').split(':');
+          const rIdx = Number(pair[0]);
+          const ansIdx = Number(pair[1]);
+          const rec = ps.records[rIdx];
+          if (!rec || Number.isNaN(ansIdx) || ansIdx < 0 || ansIdx > 3) return;
+          rec.rawCorrectIndex = ansIdx;
+          rec.correctOptionIndex = ansIdx;
+          rec.answerKeyMatched = true;
+          if (!rec.needsCategorisation) {
+            rec.adminVerified = true;
+            rec.status = 'verified';
+            rec.verificationStatus = 'verified';
+          }
+          qbState.previewSession = buildAndValidatePreviewSession(
+            ps.rawText,
+            ps.fileName,
+            ps.targetTestId,
+            ps.batchDefaults,
+            ps.records,
+            state,
+            ps.answerKeyText
+          );
+          api.toast(`✅ Q${rec.questionNumber}: Correct answer set to Option ${['A', 'B', 'C', 'D'][ansIdx]}!`);
+          renderAdminConsole(rootEl, state, api);
+        };
+      });
+
       bodyEl.querySelectorAll('[data-toggle-verify-preview]').forEach((btn) => {
         btn.onclick = () => {
           const idx = Number(btn.getAttribute('data-toggle-verify-preview'));
           const rec = ps.records[idx];
           if (!rec) return;
           rec.adminVerified = rec.adminVerified === false;
+          if (rec.adminVerified && (rec.rawCorrectIndex === '' || rec.rawCorrectIndex === undefined || rec.rawCorrectIndex === null)) {
+            rec.rawCorrectIndex = Number(rec.correctOptionIndex || 0);
+            rec.answerKeyMatched = true;
+          }
           rec.needsCategorisation = false;
           rec.status = rec.adminVerified ? 'verified' : 'unverified';
           rec.verificationStatus = rec.status;
@@ -7719,7 +8072,7 @@
             rec.duplicateResolution = action;
             renderAdminConsole(rootEl, state, api);
           } else if (action === 'review') {
-            openDuplicateReviewModal(rec, () => {
+            openDuplicateReviewModal(rec, state, () => {
               qbState.previewSession = buildAndValidatePreviewSession(
                 ps.rawText,
                 ps.fileName,
@@ -8033,6 +8386,17 @@
           });
         });
 
+        const topBtn = document.getElementById('qbValidateAndContinueBtn');
+        const botBtn = document.getElementById('qbValidateAndContinueBottomBtn');
+        if (topBtn) {
+          topBtn.disabled = true;
+          topBtn.textContent = '⏳ Importing & Syncing...';
+        }
+        if (botBtn) {
+          botBtn.disabled = true;
+          botBtn.textContent = '⏳ Importing & Syncing...';
+        }
+
         api.saveState();
 
         if (window.CGpediaCloud) {
@@ -8041,6 +8405,9 @@
           }
           if (targetTest) {
             await window.CGpediaCloud.saveCloudDoc('tests', targetTest.id, targetTest);
+          }
+          if (typeof window.CGpediaCloud.invalidateQuestionBankQueryCache === 'function') {
+            window.CGpediaCloud.invalidateQuestionBankQueryCache();
           }
         }
 
