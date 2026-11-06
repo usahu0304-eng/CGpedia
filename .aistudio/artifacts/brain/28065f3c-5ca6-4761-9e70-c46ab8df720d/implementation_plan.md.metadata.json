@@ -1,6 +1,6 @@
 {
-  "summary": "Implementation plan to fix the rawItems vs rows property mismatch causing 'No questions found' after scanning, implement page-by-page live question saving and fast reusable OCR worker for 10-30 page PDFs, restore the missing Answer Key upload status label in Box 2 HTML, and bust Service Worker cache so Web and Android immediately load the fix.",
-  "updatedAt": "2026-11-06T11:43:00.086303788Z",
+  "summary": "Comprehensive implementation plan to fix the null api.saveState() crash causing 'Scan karne me truti aayi', add full Shree-Dev 0708 Hindi font conversion + native PDF FlateDecode stream extraction so all 100 questions of CGPSC_court_manager_2026_QUESTIONS_PAPER.pdf scan in under 2 seconds, and add two non-intrusive popup buttons for AI Prompt Question Generation and Paragraph/Text Copy-Paste into Subject -> Topic folders.",
+  "updatedAt": "2026-11-06T12:35:40.178048152Z",
   "requestFeedback": true,
   "userFacing": true
 }

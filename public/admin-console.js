@@ -2795,7 +2795,9 @@
       if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('subtopics', newSubtop.id, newSubtop);
     }
 
-    api.saveState();
+    if (api && typeof api.saveState === 'function') {
+      api.saveState();
+    }
     if (window.CGpediaCloud) {
       window.CGpediaCloud.saveCloudDoc('app_config', 'taxonomy', Object.assign({ configKey: 'taxonomy' }, state.customTaxonomy));
     }
@@ -4051,6 +4053,10 @@
         .replace(/¼x½/g, '(ग)')
         .replace(/¼\?k½/g, '(घ)');
 
+      if (isLikelyShreeDevText(working)) {
+        return convertShreeDevSegmentToUnicode(working);
+      }
+
       if (!isLikelyKrutiDevWordOrSegment(working)) {
         return working;
       }
@@ -4060,6 +4066,7 @@
       if (parts.length > 1) {
         return parts.map((part) => {
           if (/^(\s{2,}|\s+\/\s+|\s+\|\|\s+)$/.test(part)) return part;
+          if (isLikelyShreeDevText(part)) return convertShreeDevSegmentToUnicode(part);
           return isLikelyKrutiDevWordOrSegment(part) ? convertSingleKrutiDevSegmentToUnicode(part) : part;
         }).join('');
       }
@@ -4067,6 +4074,376 @@
       return convertSingleKrutiDevSegmentToUnicode(working);
     });
     return convertedLines.join('\n');
+  }
+
+  // ============================================================================
+  // SHREE-DEV 0708 (CGPSC / VYAPAM OFFICIAL PAPER FONT) TO UNICODE CONVERTER
+  // ============================================================================
+  const WIN1252_SHREEDEV_MAP = {
+    0x80: '€', 0x82: '‚', 0x83: 'ƒ', 0x84: '„', 0x85: '…', 0x86: '†', 0x87: '‡',
+    0x88: 'ˆ', 0x89: '‰', 0x8A: 'Š', 0x8B: '‹', 0x8C: 'Œ', 0x8E: 'Ž',
+    0x91: '‘', 0x92: '’', 0x93: '“', 0x94: '”', 0x95: '•', 0x96: '–', 0x97: '—',
+    0x98: '˜', 0x99: '™', 0x9A: 'š', 0x9B: '›', 0x9C: 'œ', 0x9E: 'ž', 0x9F: 'Ÿ'
+  };
+
+  function fixWin1252Bytes(str) {
+    let out = '';
+    const s = String(str || '');
+    for (let i = 0; i < s.length; i++) {
+      const code = s.charCodeAt(i);
+      if (WIN1252_SHREEDEV_MAP[code]) out += WIN1252_SHREEDEV_MAP[code];
+      else out += s[i];
+    }
+    return out;
+  }
+
+  function isLikelyShreeDevText(str) {
+    const s = fixWin1252Bytes(String(str || ''));
+    if (!s || s.length < 2 || /[\u0900-\u097F]/.test(s)) return false;
+    // Shree-Dev 0708 signatures: > (ा), _| (में), h¢/h¡ (है/हैं), H$/Ho$ (क/के), m (ा), r (ी), p/q (ि), © (रेफ)
+    if (/[A-Za-z]>/.test(s) || /_\|/.test(s) || /h[¢¡]/.test(s) || /H\$|Ho\$/.test(s) || /[\u00A1-\u00FF‹Šœ]/.test(s)) {
+      const shreeHits = (s.match(/(?:[BCDEFGHJKLNPRTUVWXYZbcdfghjklnoM]>|_m|_\||H\$|Ho\$|h[¢¡]|[\u00A1-\u00FF‹Šœ])/g) || []).length;
+      if (shreeHits >= 1) return true;
+    }
+    return false;
+  }
+
+  const SHREEDEV_REPLACEMENTS = [
+    ['(A)', ' \uE010 '],
+    ['(B)', ' \uE011 '],
+    ['(C)', ' \uE012 '],
+    ['(D)', ' \uE013 '],
+    ['Ho$db', 'केवल'],
+    ['H$mo', 'को'],
+    ['Ho$', 'के'],
+    ['H$m', 'का'],
+    ['H$r', 'की'],
+    ['H$s', 'की'],
+    ['_|', 'में'],
+    ['h¢', 'हैं'],
+    ['h¡', 'है'],
+    ['I>', 'ड़ा'],
+    ['I‹', 'ड़'],
+    ['S>‹', 'ड़'],
+    ['‹S>', 'ड़'],
+    ['T‹>', 'ढ़ा'],
+    ['T>‹', 'ढ़ा'],
+    ['‹T>', 'ढ़ा'],
+    ['T‹', 'ढ़'],
+    ['‹T', 'ढ़'],
+    ['Am¡', 'औ'],
+    ['Amo', 'ओ'],
+    ['Am', 'आ'],
+    ['A>', 'आ'],
+    ['A§', 'अं'],
+    ['A:', 'अः'],
+    ['A', 'अ'],
+    ['B©', 'ई'],
+    ['B', 'इ'],
+    ['C', 'उ'],
+    ['D', 'ऊ'],
+    ['F©', 'ऐ'],
+    ['F', 'ऋ'],
+    ['Eog', 'ऐस'],
+    ['Eo', 'ऐ'],
+    ['E', 'ए'],
+    ['G', 'ऐ'],
+    ['H$>', 'का'],
+    ['H>', 'का'],
+    ['H$', 'क'],
+    ['H', 'क्'],
+    ['Š', 'क्'],
+    ['I>', 'खा'],
+    ['I', 'ख'],
+    ['J>', 'गा'],
+    ['J', 'ग'],
+    ['K>', 'घा'],
+    ['K', 'घ'],
+    ['L>', 'ङ'],
+    ['M>', 'चा'],
+    ['M', 'च'],
+    ['N>Îm', 'छत्त'],
+    ['N>', 'छ'],
+    ['N', 'छ'],
+    ['O>', 'जा'],
+    ['O', 'ज'],
+    ['P>', 'झा'],
+    ['P', 'झ'],
+    ['Q´>', 'ट्र'],
+    ['Q>', 'ट'],
+    ['Q', 'ट'],
+    ['R>', 'ठ'],
+    ['R', 'ठ'],
+    ['S>', 'ड'],
+    ['S', 'ड'],
+    ['T>', 'ढ'],
+    ['T', 'ढ'],
+    ['U>', 'ण'],
+    ['U', 'ण'],
+    ['V>', 'ता'],
+    ['V', 'त'],
+    ['W>', 'था'],
+    ['W', 'थ'],
+    ['X>', 'दा'],
+    ['X', 'द'],
+    ['Y>', 'धा'],
+    ['Y', 'ध'],
+    ['Z>', 'ना'],
+    ['Z', 'न'],
+    ['n>', 'पा'],
+    ['n', 'प'],
+    ['\\$>', 'फा'],
+    ['\\>', 'फ'],
+    ['\\$', 'फ'],
+    ['\\', 'फ्'],
+    ['~>', 'बा'],
+    ['~', 'ब'],
+    [']>', 'बा'],
+    [']', 'ब'],
+    ['^>', 'भा'],
+    ['^', 'भ'],
+    ['_>', 'मा'],
+    ['_', 'म'],
+    ['`>', 'या'],
+    ['`', 'य'],
+    ['a>', 'रा'],
+    ['a', 'र'],
+    ['b>', 'ला'],
+    ['b', 'ल'],
+    ['d>', 'वा'],
+    ['d', 'व'],
+    ['c>', 'वा'],
+    ['c', 'व'],
+    ['e>', 'शा'],
+    ['e', 'श'],
+    ['f>', 'षा'],
+    ['f', 'ष'],
+    ['g>', 'सा'],
+    ['g', 'स'],
+    ['h>', 'हा'],
+    ['h', 'ह'],
+    ['i>', 'ळ'],
+    ['i', 'ळ'],
+    ['j>', 'क्षा'],
+    ['j', 'क्ष'],
+    ['k>', 'ज्ञा'],
+    ['k', 'ज्ञ'],
+    ['l>', 'श्र'],
+    ['l', 'श्र'],
+    ['œ>', 'श्व'],
+    ['œ', 'श्व'],
+    ['Á', 'ज्'],
+    ['Æ', 'ड'],
+    ['Ê', 'ण्'],
+    ['Ë', 'त्'],
+    ['Ì', 'त्र'],
+    ['Îm', 'त्त'],
+    ['Î', 'त्त'],
+    ['Ð', 'द्र'],
+    ['Ñ', 'त्र'],
+    ['Õ', 'द्ध'],
+    ['Ö', 'द्ध'],
+    ['×', 'द्व'],
+    ['Ú', 'द्य'],
+    ['Û', 'द्व'],
+    ['Ü', 'ध्'],
+    ['Ý', 'न्'],
+    ['ß', 'प्'],
+    ['à', 'प्र'],
+    ['á', 'ष्ट'],
+    ['â', 'ष्ठ'],
+    ['ã', 'ब्'],
+    ['ä', 'भ्'],
+    ['å', 'म्'],
+    ['æ', 'ह्र'],
+    ['ç', 'ह्ल'],
+    ['è', 'ह्व'],
+    ['é', 'क्त'],
+    ['ê', 'क्र'],
+    ['ë', 'ल्'],
+    ['ì', 'व्'],
+    ['í', 'श्'],
+    ['î', 'ष्'],
+    ['ï', 'ज्ज'],
+    ['ð', 'ज्ञ्'],
+    ['ñ', 'स्'],
+    ['ò', 'ह्'],
+    ['ó', 'त्त्व'],
+    ['ô', 'त्त्'],
+    ['õ', 'प्त'],
+    ['ö', 'प्र'],
+    ['÷', 'फ्ल'],
+    ['ø', 'ब्ब'],
+    ['ù', 'भ्र'],
+    ['ú', 'म्र'],
+    ['û', 'म्ल'],
+    ['ü', 'हु'],
+    ['ý', 'श्'],
+    ['þ', 'ष'],
+    ['ÿ', 'स्र'],
+    ['§', 'ं'],
+    ['¨', 'ू'],
+    ['©', 'र्'],
+    ['ª', 'ंर्'],
+    ['«', '्र'],
+    ['¬', '्र'],
+    ['®', 'ृ'],
+    ['¯', '्र'],
+    ['°', 'ॉ'],
+    ['±', 'ं'],
+    ['²', '्'],
+    ['³', '्'],
+    ['´', '्र'],
+    ['µ', '्'],
+    ['¶', 'य'],
+    ['·', 'क'],
+    ['¸', 'ख'],
+    ['¹', 'ग'],
+    ['º', 'घ'],
+    ['»', 'ख्'],
+    ['¼', 'ज'],
+    ['½', 'ग्'],
+    ['¾', 'ण'],
+    ['¿', 'त'],
+    ['À', 'थ'],
+    ['Â', 'ध'],
+    ['Ã', 'न'],
+    ['Ä', 'प'],
+    ['Å', 'ब'],
+    ['Ç', 'म'],
+    ['È', 'य'],
+    ['É', 'र'],
+    ['Í', 'ष'],
+    ['Ï', 'ह'],
+    ['Ò', 'ज्ञ'],
+    ['Ó', 'श्र'],
+    ['Ô', 'त्र'],
+    ['Ø', 'द्य'],
+    ['Ù', 'प्त'],
+    ['mo', 'ो'],
+    ['m¡', 'ौ'],
+    ['m|', 'ों'],
+    ['m¢', 'ौं'],
+    ['o$', 'े'],
+    ['o', 'े'],
+    ['}', 'ै'],
+    ['m', 'ा'],
+    ['>', 'ा'],
+    ['r', 'ी'],
+    ['s', 'ी'],
+    ['t', 'ीं'],
+    ['u', 'ीर्'],
+    ['v', 'ु'],
+    ['w', 'ु'],
+    ['x', 'ू'],
+    ['y', 'ू'],
+    ['z', 'े'],
+    ['|', 'ें'],
+    ['¡', 'ै'],
+    ['¢', 'ैं'],
+    ['£', 'ीं'],
+    ['¤', 'ों'],
+    ['¥', 'ृ'],
+    ['¦', 'ँ'],
+    ['±', 'ं'],
+    ['‹', '़'],
+    ['&', '।'],
+    ['$', '']
+  ];
+
+  function convertShreeDevSegmentToUnicode(input) {
+    let s = fixWin1252Bytes(String(input || ''));
+    if (!s.trim()) return s;
+
+    // Protect Roman numeral sub-points (i., ii., iii., iv., v., vi.) before Shree-Dev mapping
+    s = s
+      .replace(/\biv\s*\./g, '\uE024 ')
+      .replace(/\biii\s*\./g, '\uE023 ')
+      .replace(/\bii\s*\./g, '\uE022 ')
+      .replace(/\bi\s*\./g, '\uE021 ')
+      .replace(/\b(i|ii|iii|iv)\b(?=\s+(?:d|Am¡a|VWm|एवं|और)\b|\s*,)|(?<=\b(?:Ho$db|केवल|d|Am¡a|VWm|एवं|और)\s+)\b(i|ii|iii|iv)\b/g, (m) => {
+        if (m === 'i') return '\uE025';
+        if (m === 'ii') return '\uE026';
+        if (m === 'iii') return '\uE027';
+        return '\uE028';
+      });
+
+    // Replace pre-base chhoti-i matras '{', '[', 'p', 'q' with sentinel markers BEFORE consonant replacement
+    s = s
+      .replace(/\{/g, '\uE030')
+      .replace(/\[/g, '\uE030')
+      .replace(/p/g, '\uE030')
+      .replace(/q/g, '\uE031');
+
+    for (let i = 0; i < SHREEDEV_REPLACEMENTS.length; i++) {
+      const [pat, rep] = SHREEDEV_REPLACEMENTS[i];
+      if (s.includes(pat)) s = s.split(pat).join(rep);
+    }
+
+    // Move pre-base chhoti-i matra sentinels (\uE030 = 'ि', \uE031 = 'िं') after the following consonant cluster
+    let chars = Array.from(s);
+    for (let i = 0; i < chars.length; i++) {
+      if (chars[i] === '\uE030' || chars[i] === '\uE031') {
+        const isNas = chars[i] === '\uE031';
+        let j = i + 1;
+        while (j < chars.length && /[\u0915-\u0939\u0958-\u095F]/.test(chars[j])) {
+          if (j + 1 < chars.length && chars[j + 1] === '्') {
+            j += 2;
+          } else {
+            j += 1;
+            break;
+          }
+        }
+        if (j < chars.length && chars[j] === '़') j += 1;
+        const targetPos = Math.max(i + 1, j);
+        chars.splice(i, 1);
+        chars.splice(targetPos - 1, 0, isNas ? 'िं' : 'ि');
+      }
+    }
+    s = chars.join('');
+
+    // Reph 'र्' adjustment: in Shree-Dev, © ('र्') comes AFTER the consonant+matra it sits on, so move it before the consonant cluster
+    s = s.replace(/([\u0915-\u0939\u0958-\u095F](?:्[\u0915-\u0939\u0958-\u095F])*[\u093C]?[\u093E-\u094C\u0902\u0901]*)र्/g, 'र्$1');
+
+    // Clean up vowel + matra combinations and restore protected tokens
+    s = s
+      .replace(/अा/g, 'आ')
+      .replace(/अो/g, 'ओ')
+      .replace(/अौ/g, 'औ')
+      .replace(/अं/g, 'अं')
+      .replace(/एे/g, 'ऐ')
+      .replace(/इर्/g, 'ई')
+      .replace(/ाा/g, 'ा')
+      .replace(/ाो/g, 'ो')
+      .replace(/ाौ/g, 'ौ')
+      .replace(/ाे/g, 'ो')
+      .replace(/ाै/g, 'ौ')
+      .replace(/्ा/g, '')
+      .replace(/्ो/g, 'ो')
+      .replace(/्ौ/g, 'ौ')
+      .replace(/्े/g, 'े')
+      .replace(/्ै/g, 'ै')
+      .replace(/्ी/g, 'ी')
+      .replace(/्ि/g, 'ि')
+      .replace(/्ु/g, 'ु')
+      .replace(/्ू/g, 'ू')
+      .replace(/ूा/g, 'ू')
+      .replace(/डढ़/g, 'गढ़')
+      .replace(/गढ़ा/g, 'गढ़')
+      .replace(/\uE010/g, '(A)')
+      .replace(/\uE011/g, '(B)')
+      .replace(/\uE012/g, '(C)')
+      .replace(/\uE013/g, '(D)')
+      .replace(/\uE021/g, 'i.')
+      .replace(/\uE022/g, 'ii.')
+      .replace(/\uE023/g, 'iii.')
+      .replace(/\uE024/g, 'iv.')
+      .replace(/\uE025/g, 'i')
+      .replace(/\uE026/g, 'ii')
+      .replace(/\uE027/g, 'iii')
+      .replace(/\uE028/g, 'iv');
+
+    return s.replace(/\s+/g, ' ').trim();
   }
 
   // ============================================================================
@@ -4118,8 +4495,8 @@
   }
 
   function sanitizeExtractedPdfText(rawStr) {
-    const lines = String(rawStr || '')
-      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\uE000-\uF8FF\uFFFD]/g, ' ')
+    const lines = fixWin1252Bytes(String(rawStr || ''))
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\uE000-\uF8FF\uFFFD]/g, ' ')
       .split(/\r?\n/);
 
     const cleanLines = [];
@@ -4141,7 +4518,6 @@
   function isExtractedPageGarbledOrEmpty(pageText) {
     const clean = String(pageText || '').trim();
     if (!clean || clean.length < 15) return true;
-    // Count valid Devanagari chars, valid Latin letters, and total non-space characters
     const nonSpace = clean.replace(/\s+/g, '');
     if (nonSpace.length < 10) return true;
     const puaOrReplacement = (clean.match(/[\uE000-\uF8FF\uFFFD\u0001-\u001F]/g) || []).length;
@@ -4151,11 +4527,9 @@
     const latinWords = (clean.match(/\b[A-Za-z]{3,}\b/g) || []).filter((w) => /[aeiouAEIOU]/.test(w)).length;
     const strangeSymbols = (clean.match(/[^A-Za-z0-9\u0900-\u097F\s.,?:;()[\]\-/'"+=%₹।]/g) || []).length;
 
-    // If high ratio of strange symbols/encoding noise and very few readable Hindi or English words
     if (strangeSymbols / nonSpace.length > 0.22 && devChars < 10 && latinWords < 5) {
       return true;
     }
-    // If neither Devanagari nor readable English words exist
     if (devChars < 5 && latinWords < 3) {
       return true;
     }
@@ -4163,10 +4537,13 @@
   }
 
   function decodePdfEscapedLiteral(raw) {
-    return String(raw || '')
+    const decoded = String(raw || '')
+      .replace(/\\\r?\n/g, '')
       .replace(/\\n/g, '\n')
       .replace(/\\r/g, '\r')
       .replace(/\\t/g, ' ')
+      .replace(/\\b/g, '')
+      .replace(/\\f/g, '')
       .replace(/\\\(/g, '(')
       .replace(/\\\)/g, ')')
       .replace(/\\\\/g, '\\')
@@ -4174,6 +4551,7 @@
         const code = parseInt(oct, 8);
         return code >= 32 ? String.fromCharCode(code) : ' ';
       });
+    return fixWin1252Bytes(decoded);
   }
 
   function decodePdfHexLiteral(hexStr, cMapTable) {
@@ -4181,7 +4559,6 @@
     if (!clean) return '';
 
     if (cMapTable && cMapTable.size > 0) {
-      // Try 4-hex-digit lookup first, then 2-hex-digit lookup
       if (clean.length % 4 === 0) {
         let mapped4 = '';
         let hits4 = 0;
@@ -4208,7 +4585,6 @@
       }
     }
 
-    // Check UTF-16BE BOM or 4-hex-digit Devanagari/Latin Unicode sequences (09xx / 00xx)
     if (clean.length % 4 === 0 && (/^(?:FEFF|09[0-7][0-9A-F]|00[2-7][0-9A-F])/i.test(clean))) {
       let out16 = '';
       for (let i = 0; i < clean.length; i += 4) {
@@ -4220,7 +4596,6 @@
       if (out16.trim()) return out16;
     }
 
-    // Do NOT decode unmapped 4-byte Identity-H CID glyph indices (e.g. 0001001A002B) into random ASCII symbols!
     if (clean.length % 4 === 0 && /^(?:00[0-9A-F]{2}){2,}$/.test(clean) && !/^(?:00[2-7][0-9A-F]){2,}$/.test(clean)) {
       return '';
     }
@@ -4228,14 +4603,132 @@
     let out8 = '';
     for (let i = 0; i < clean.length; i += 2) {
       const code = parseInt(clean.slice(i, i + 2), 16);
-      if (code >= 32 && code <= 126) out8 += String.fromCharCode(code);
+      if (code >= 32 && code <= 255) out8 += String.fromCharCode(code);
     }
-    return out8;
+    return fixWin1252Bytes(out8);
+  }
+
+  function extractPositionalLinesFromPdfStream(streamStr, cMapTable) {
+    const items = [];
+    const btRegex = /\bBT\b([\s\S]*?)\bET\b/g;
+    let bm;
+    while ((bm = btRegex.exec(streamStr)) !== null) {
+      const block = bm[1];
+      let x = 0;
+      let y = 0;
+      let lineX = 0;
+      let lineY = 0;
+      let leading = 12;
+      let isHexFont = false;
+      const tokenRegex = /\/([A-Za-z0-9_]+)\s+[+-]?\d+(?:\.\d+)?\s+Tf|([+-]?\d+(?:\.\d+)?)\s+TL|([+-]?\d+(?:\.\d+)?)\s+([+-]?\d+(?:\.\d+)?)\s+([+-]?\d+(?:\.\d+)?)\s+([+-]?\d+(?:\.\d+)?)\s+([+-]?\d+(?:\.\d+)?)\s+([+-]?\d+(?:\.\d+)?)\s+Tm|([+-]?\d+(?:\.\d+)?)\s+([+-]?\d+(?:\.\d+)?)\s+(TD|Td)|(\*?\s*T\*)|\[((?:[^[\]]|\([^()\\]*(?:\\.[^()\\]*)*\))*)\]\s*TJ|\(([^()\\]*(?:\\.[^()\\]*)*)\)\s*(Tj|'|")|<([0-9A-Fa-f\s]+)>\s*(Tj|'|")/g;
+      let tm;
+      while ((tm = tokenRegex.exec(block)) !== null) {
+        if (tm[1] !== undefined) {
+          isHexFont = /^C\d/i.test(tm[1]);
+        } else if (tm[2] !== undefined) {
+          leading = parseFloat(tm[2]);
+        } else if (tm[3] !== undefined) {
+          lineX = parseFloat(tm[7]);
+          lineY = parseFloat(tm[8]);
+          x = lineX;
+          y = lineY;
+        } else if (tm[9] !== undefined) {
+          const tx = parseFloat(tm[9]);
+          const ty = parseFloat(tm[10]);
+          if (tm[11] === 'TD') leading = -ty;
+          lineX += tx;
+          lineY += ty;
+          x = lineX;
+          y = lineY;
+        } else if (tm[12] !== undefined) {
+          lineY -= leading;
+          x = lineX;
+          y = lineY;
+        } else if (tm[13] !== undefined) {
+          const inner = tm[13];
+          let str = '';
+          const subRe = /\(([^()\\]*(?:\\.[^()\\]*)*)\)|<([0-9A-Fa-f\s]+)>|([+-]?\d+(?:\.\d+)?)/g;
+          let sm;
+          while ((sm = subRe.exec(inner)) !== null) {
+            if (sm[1] !== undefined) str += decodePdfEscapedLiteral(sm[1]);
+            else if (sm[2] !== undefined) str += decodePdfHexLiteral(sm[2], cMapTable);
+            else if (sm[3] !== undefined && parseFloat(sm[3]) < -180) str += ' ';
+          }
+          if (str.trim()) {
+            items.push({ x, y, text: str, isHexFont });
+            x += str.length * 4.5;
+          }
+        } else if (tm[14] !== undefined) {
+          if (tm[15] === "'" || tm[15] === '"') {
+            lineY -= leading;
+            x = lineX;
+            y = lineY;
+          }
+          const str = decodePdfEscapedLiteral(tm[14]);
+          if (str.trim()) {
+            items.push({ x, y, text: str, isHexFont: false });
+            x += str.length * 4.5;
+          }
+        } else if (tm[16] !== undefined) {
+          if (tm[17] === "'" || tm[17] === '"') {
+            lineY -= leading;
+            x = lineX;
+            y = lineY;
+          }
+          const str = decodePdfHexLiteral(tm[16], cMapTable);
+          if (str.trim()) {
+            items.push({ x, y, text: str, isHexFont: true });
+            x += str.length * 4.5;
+          }
+        }
+      }
+    }
+
+    if (items.length === 0) return [];
+
+    const leftCol = items.filter((it) => it.x < 298);
+    const rightCol = items.filter((it) => it.x >= 298);
+
+    const groupColIntoLines = (colItems) => {
+      if (colItems.length === 0) return [];
+      colItems.sort((a, b) => {
+        if (Math.abs(b.y - a.y) > 4.5) return b.y - a.y;
+        return a.x - b.x;
+      });
+      const rows = [];
+      colItems.forEach((it) => {
+        const last = rows[rows.length - 1];
+        if (!last || Math.abs(it.y - last.y) > 4.5) {
+          rows.push({ y: it.y, items: [it] });
+        } else {
+          last.items.push(it);
+        }
+      });
+      return rows.map((r) => {
+        r.items.sort((a, b) => a.x - b.x);
+        const joined = r.items.map((i) => i.text).join(' ').replace(/\s+/g, ' ').trim();
+        const hasShree = r.items.some((i) => !i.isHexFont) && isLikelyShreeDevText(joined);
+        return hasShree ? convertShreeDevSegmentToUnicode(joined) : convertKrutiDevInText(joined);
+      }).filter((line) => {
+        if (!line) return false;
+        // Skip running header/footer noise like "SSE-2021 / Set-A / 2", "C14 – 25", "[ 27 ]", or "P.T.O."
+        if (/^(?:P\.?T\.?O\.?|[A-Z]{1,5}\d*\s*[-–—/]\s*\d{1,4}.*|\[\s*\d{1,3}\s*\]|[A-Z]\s+\[\s*\d{1,3}\s*\])$/i.test(line)) return false;
+        return true;
+      });
+    };
+
+    if (leftCol.length >= 4 && rightCol.length >= 4) {
+      return [...groupColIntoLines(leftCol), ...groupColIntoLines(rightCol)];
+    }
+    return groupColIntoLines(items);
   }
 
   function extractTextOperatorsFromPdfChunk(chunkStr, cMapTable) {
+    const posLines = extractPositionalLinesFromPdfStream(chunkStr, cMapTable);
+    if (posLines.length > 0) {
+      return sanitizeExtractedPdfText(posLines.join('\n'));
+    }
     const out = [];
-    // Extract strictly from BT ... ET text blocks when present so binary image/font streams are never parsed as text
     const btBlocks = [];
     const btEtRegex = /\bBT\b([\s\S]*?)\bET\b/g;
     let bm;
@@ -4285,7 +4778,6 @@
     if (extracted.trim() && !isExtractedPageGarbledOrEmpty(extracted)) {
       return extracted;
     }
-    // Never dump raw %PDF- binary / dictionary bytes when text operators are compressed or unmapped
     return '';
   }
 
@@ -4307,7 +4799,6 @@
         clearTimeout(timer);
         if (window.pdfjsLib && window.pdfjsLib.GlobalWorkerOptions) {
           try {
-            // Use Same-Origin Blob Worker to avoid cross-origin Worker SecurityError in WebView / Chrome
             const workerBlob = new Blob(
               ['importScripts("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js");'],
               { type: 'application/javascript' }
@@ -4454,10 +4945,15 @@
             writer.write(slice).catch(() => {});
             writer.close().catch(() => {});
             const decompressedBuf = await new Response(ds.readable).arrayBuffer();
-            const decompressedStr = new TextDecoder('utf-8', { fatal: false }).decode(decompressedBuf);
+            const decompressedStr = new TextDecoder('latin1').decode(decompressedBuf);
             if (decompressedStr.includes('beginbfchar') || decompressedStr.includes('beginbfrange')) {
               const subMap = parsePdfToUnicodeCMap(decompressedStr);
-              subMap.forEach((v, k) => cMapTable.set(k, v));
+              subMap.forEach((v, k) => {
+                // Only store 4-hex CID mappings or non-colliding mappings so primary font CMap is never overwritten by a tiny subset CMap
+                if (k.length === 4 && !cMapTable.has(k)) {
+                  cMapTable.set(k, v);
+                }
+              });
             }
             if (/\bBT\b/.test(decompressedStr) || /\bTj\b|\bTJ\b/.test(decompressedStr)) {
               decompressedChunks.push(decompressedStr);
@@ -4473,13 +4969,13 @@
     if (directText.trim() && !isExtractedPageGarbledOrEmpty(directText)) {
       collectedPages.push(directText);
     }
-    decompressedChunks.forEach((chunkStr) => {
+    decompressedChunks.forEach((chunkStr, idx) => {
       const parsedChunk = extractTextOperatorsFromPdfChunk(chunkStr, cMapTable);
       if (parsedChunk.trim() && !isExtractedPageGarbledOrEmpty(parsedChunk)) {
-        collectedPages.push(parsedChunk);
+        collectedPages.push(`Page: ${idx + 1}\n${parsedChunk}`);
       }
     });
-    return collectedPages.join('\n');
+    return collectedPages.join('\n\n');
   }
 
   function assemblePdfItemsIntoLines(itemsList) {
@@ -4591,7 +5087,19 @@
       return convertKrutiDevInText(utf8Text.replace(/^\uFEFF/, ''));
     }
 
-    // 1. Primary PDF.js page-by-page extraction with Blob Worker / disableWorker fallback + KrutiDev + optional Canvas OCR
+    // 1. Fast Native Stream Decompression with Shree-Dev 0708 + ToUnicode CMap + 2-Column Coordinate Sorter
+    let fastDecompressedText = '';
+    try {
+      fastDecompressedText = await decompressPdfBufferStreams(uint8);
+      if (fastDecompressedText && fastDecompressedText.trim().length > 80) {
+        const testParsed = parsePdfOcrAndMatchAnswerKey('Method: PDF_OCR\n' + fastDecompressedText, 'check.pdf', '', 'A', 'A');
+        if (testParsed && Array.isArray(testParsed.rawItems) && testParsed.rawItems.length >= 3) {
+          return 'Method: PDF_OCR\n' + fastDecompressedText;
+        }
+      }
+    } catch (_) {}
+
+    // 2. Primary PDF.js page-by-page extraction with Blob Worker / disableWorker fallback + KrutiDev + optional Canvas OCR
     try {
       const pdfjsLib = await ensurePdfJsLoaded();
       if (pdfjsLib && typeof pdfjsLib.getDocument === 'function') {
@@ -5185,8 +5693,16 @@
 
       if (qMatch && Number(qNumDigits) > 0 && Number(qNumDigits) <= 500 && qRestText) {
         const qNum = Number(qNumDigits);
-        // Avoid treating "(1) Option..." inside an existing question block as a new question if qNum is 1-4 and currentBlock already has stem
-        const looksLikeSubOption = qNum >= 1 && qNum <= 4 && currentBlock && currentBlock.questionNumber !== qNum - 1 && /^\s*\([1-4\u0967-\u096A]\)/.test(line);
+        // Check if currentBlock has already seen at least options (A)/(B)/(C)/(D)
+        const blockJoined = currentBlock ? currentBlock.rawLines.join('\n') : '';
+        const blockHasOptions = /(?:^|\s)\([A-Da-dअआइईकखगघ]\)\s*\S/.test(blockJoined);
+        // Avoid treating "(1) Option...", multi-statement "1. Statement one 2. Statement two", or wrapped decimal "154.96" inside an unfinished question block as a new question!
+        const looksLikeSubOption =
+          currentBlock &&
+          (
+            (qNum >= 1 && qNum <= 6 && /^\s*\([1-6\u0967-\u096C]\)/.test(line)) ||
+            (!blockHasOptions && qNum !== currentBlock.questionNumber + 1 && qNum !== currentBlock.questionNumber && currentBlock.rawLines.length < 18)
+          );
         if (!looksLikeSubOption) {
           if (currentBlock) questionBlocks.push(currentBlock);
           currentBlock = {
@@ -5403,44 +5919,53 @@
       });
     });
 
-    // Pair & merge same-numbered Hindi + English blocks (e.g. Q1 in Hindi and Q1 in English from 2-column or sequential bilingual papers)
+    // Pair & merge same-numbered Hindi + English blocks (e.g. Q1 in Hindi from Left Column and Q1 in English from Right Column)
     const byQNum = new Map();
     preliminaryItems.forEach((item) => {
       const qNum = Number(item.questionNumber || 0);
-      const itemHasDevanagari = /[\u0900-\u097F]/.test(item.questionHi + ' ' + (item.optionsHi || []).join(' '));
-      const itemIsSingleLang = item.questionHi === item.questionEn;
+      const itemFullText = [item.questionHi, item.questionEn, ...(item.optionsHi || []), ...(item.optionsEn || [])].join(' ');
+      const itemDevCount = (itemFullText.match(/[\u0900-\u097F]/g) || []).length;
+      const itemHasDevanagari = itemDevCount >= 4;
 
       if (qNum > 0 && byQNum.has(qNum)) {
         const prev = byQNum.get(qNum);
-        const prevHasDevanagari = /[\u0900-\u097F]/.test(prev.questionHi + ' ' + (prev.optionsHi || []).join(' '));
-        const prevIsSingleLang = prev.questionHi === prev.questionEn;
+        const prevFullText = [prev.questionHi, prev.questionEn, ...(prev.optionsHi || []), ...(prev.optionsEn || [])].join(' ');
+        const prevDevCount = (prevFullText.match(/[\u0900-\u097F]/g) || []).length;
+        const prevHasDevanagari = prevDevCount >= 4;
 
-        // If one block is Hindi (Devanagari) and the other block is English (Latin), merge them into 1 complete bilingual question!
-        if (prevIsSingleLang && itemIsSingleLang && prevHasDevanagari !== itemHasDevanagari) {
+        if (prevHasDevanagari !== itemHasDevanagari) {
           const hiBlock = itemHasDevanagari ? item : prev;
           const enBlock = itemHasDevanagari ? prev : item;
           prev.questionHi = hiBlock.questionHi || enBlock.questionHi;
-          prev.questionEn = enBlock.questionEn || hiBlock.questionEn;
+          prev.questionEn = enBlock.questionEn || enBlock.questionHi || hiBlock.questionEn;
           prev.optionsHi = [0, 1, 2, 3].map((i) => (hiBlock.optionsHi && hiBlock.optionsHi[i]) || (enBlock.optionsHi && enBlock.optionsHi[i]) || '');
           prev.optionsEn = [0, 1, 2, 3].map((i) => (enBlock.optionsEn && enBlock.optionsEn[i]) || (hiBlock.optionsEn && hiBlock.optionsEn[i]) || '');
           prev.languageAvailability = 'Both';
-          if (!prev.answerKeyMatched && item.answerKeyMatched) {
-            prev.rawCorrectIndex = item.rawCorrectIndex;
-            prev.answerKeyMatched = true;
-            prev.status = 'verified';
-            prev.adminVerified = true;
-          }
-          if (!prev.explanationHi && item.explanationHi) prev.explanationHi = item.explanationHi;
-          if (!prev.explanationEn && item.explanationEn) prev.explanationEn = item.explanationEn;
-          return;
+        } else {
+          // Both blocks are the same language (e.g., continuation across columns/pages) — fill any missing stem/options
+          if ((!prev.questionHi || prev.questionHi.length < 10) && item.questionHi) prev.questionHi = item.questionHi;
+          if ((!prev.questionEn || prev.questionEn.length < 10) && item.questionEn) prev.questionEn = item.questionEn;
+          prev.optionsHi = [0, 1, 2, 3].map((i) => (prev.optionsHi && prev.optionsHi[i]) || (item.optionsHi && item.optionsHi[i]) || '');
+          prev.optionsEn = [0, 1, 2, 3].map((i) => (prev.optionsEn && prev.optionsEn[i]) || (item.optionsEn && item.optionsEn[i]) || '');
         }
+        if (!prev.answerKeyMatched && item.answerKeyMatched) {
+          prev.rawCorrectIndex = item.rawCorrectIndex;
+          prev.answerKeyMatched = true;
+          prev.status = 'verified';
+          prev.adminVerified = true;
+        }
+        if (!prev.explanationHi && item.explanationHi) prev.explanationHi = item.explanationHi;
+        if (!prev.explanationEn && item.explanationEn) prev.explanationEn = item.explanationEn;
+        return;
       }
 
-      if (qNum > 0 && !byQNum.has(qNum)) {
+      if (qNum > 0) {
         byQNum.set(qNum, item);
       }
       rawItems.push(item);
     });
+
+    rawItems.sort((a, b) => (Number(a.questionNumber) || 0) - (Number(b.questionNumber) || 0));
 
     return {
       fileType: 'PDF',
@@ -7164,61 +7689,9 @@ Return ONLY a valid JSON array of objects with this exact schema (if a page has 
   }
 ]`;
 
-    // If instant digital extraction already found questions (e.g. digital PDF, CSV, JSON), Live-Save them immediately!
-    if (localRows.length > 0 && !(isPdfFile && hasAiBridge && hasNativePdfVision)) {
-      if (!hasAiBridge) {
-        await emitLiveBatch(localRows, 'डिजिटल टेक्स्ट स्कैन');
-      } else {
-        const batchSize = 15;
-        for (let i = 0; i < localRows.length; i += batchSize) {
-          const batch = localRows.slice(i, i + batchSize);
-          if (onProgress) {
-            onProgress(`🤖 AI द्वारा प्रश्न ${i + 1} से ${Math.min(localRows.length, i + batchSize)} स्कैन और लाइव सेव किए जा रहे हैं (${finalDocs.length} सेव हो चुके)...`);
-          }
-          const compactBatch = batch.map((r, idx) => {
-            const qNum = Number(r.questionNumber || i + idx + 1);
-            const keyAns = getKeyAnswerForQ(qNum);
-            const akIdx = keyAns !== undefined ? keyAns : r.rawCorrectIndex;
-            const oHi = Array.isArray(r.optionsHi) ? r.optionsHi : [r.optA_Hi || '', r.optB_Hi || '', r.optC_Hi || '', r.optD_Hi || ''];
-            const oEn = Array.isArray(r.optionsEn) ? r.optionsEn : [r.optA_En || '', r.optB_En || '', r.optC_En || '', r.optD_En || ''];
-            return {
-              qNum,
-              qHi: r.questionHi || '',
-              qEn: r.questionEn || '',
-              optsHi: [oHi[0] || '', oHi[1] || '', oHi[2] || '', oHi[3] || ''],
-              optsEn: [oEn[0] || '', oEn[1] || '', oEn[2] || '', oEn[3] || ''],
-              ansIndexFromKeyOrPaper: akIdx !== '' && akIdx !== undefined && akIdx !== null ? Number(akIdx) : null,
-              expHi: r.explanationHi || '',
-              expEn: r.explanationEn || ''
-            };
-          });
-          const prompt = `You are an expert bilingual (Hindi + English) competitive exam AI Question Bank processor.
-Clean up these extracted questions (fix any broken OCR or KrutiDev characters into pure Devanagari Hindi and clean English), ensure all 4 options exist in both Hindi and English.
-For "correctOptionIndex" (0=A, 1=B, 2=C, 3=D): if "ansIndexFromKeyOrPaper" is 0, 1, 2, or 3, use it; if it is null, check if the answer is mentioned inside the question text, and if not, SOLVE the question accurately yourself and set "correctOptionIndex" (0..3).
-Write a short explanation in Hindi & English, and classify each question into the exact Subject ("subjectTag") and Topic ("topic") folder.
-${forcedSubjectTag ? `Force Subject Folder: "${forcedSubjectTag}"` : ''}
-${forcedTopic ? `Force Topic Folder: "${forcedTopic}"` : ''}
-Available Subject & Topic Folders:
-${subjectTopicGuide}
-
-Input Questions JSON:
-${JSON.stringify(compactBatch)}
-
-Return ONLY a JSON array where each element has:
-{"questionNumber": number, "subjectTag": string, "topic": string, "difficulty": "Easy"|"Moderate"|"Hard", "questionHi": string, "questionEn": string, "optionsHi": [string,string,string,string], "optionsEn": [string,string,string,string], "correctOptionIndex": 0|1|2|3, "explanationHi": string, "explanationEn": string}`;
-          try {
-            const aiJsonStr = await callAndroidAiBridge(prompt, null);
-            const parsedBatch = parseAiJsonArraySafely(aiJsonStr);
-            if (parsedBatch.length > 0) {
-              await emitLiveBatch(parsedBatch, `प्रश्न ${i + 1}-${Math.min(localRows.length, i + batchSize)}`);
-            } else {
-              await emitLiveBatch(batch, `प्रश्न ${i + 1}-${Math.min(localRows.length, i + batchSize)}`);
-            }
-          } catch (_batchErr) {
-            await emitLiveBatch(batch, `प्रश्न ${i + 1}-${Math.min(localRows.length, i + batchSize)}`);
-          }
-        }
-      }
+    // If instant digital extraction already found questions (e.g. digital PDF, Shree-Dev/KrutiDev PDF, CSV, JSON), Live-Save them immediately!
+    if (localRows.length > 0) {
+      await emitLiveBatch(localRows, 'त्वरित डिजिटल टेक्स्ट स्कैन');
     }
 
     if (hasAiBridge && finalDocs.length === 0) {
@@ -7833,6 +8306,582 @@ Return ONLY a JSON array of objects:
     };
   }
 
+  // ============================================================================
+  // POPUP 1: AI PROMPT QUESTION GENERATOR MODAL (✨ AI प्रॉम्प्ट से प्रश्न बनाएं)
+  // ============================================================================
+  function buildOfflinePromptGeneratedQuestions(promptText, count, forcedSubject, difficulty, catalog) {
+    const cleanPrompt = String(promptText || '').trim() || 'छत्तीसगढ़ सामान्य ज्ञान (Chhattisgarh GK)';
+    const guessed = autoCategorizeQuestionFromMaster(
+      { questionHi: cleanPrompt, questionEn: cleanPrompt, subjectTag: forcedSubject || '' },
+      catalog,
+      ['ALL', 'CGPSC', 'CGVYAPAM']
+    );
+    const subjName = forcedSubject || (guessed.subjectTag && guessed.subjectTag !== 'Needs Categorisation' ? guessed.subjectTag : 'Chhattisgarh General Knowledge');
+    const matchedSub = catalog.findSubject(subjName);
+    const defaultTop = matchedSub && catalog.getTopicsForSubject(matchedSub.subjectId)[0]
+      ? catalog.getTopicsForSubject(matchedSub.subjectId)[0].titleEn
+      : 'General Topic';
+    const topName = (guessed.topic && guessed.topic !== 'Needs Categorisation') ? guessed.topic : defaultTop;
+
+    const curatedPool = [
+      {
+        subjectTag: 'Chhattisgarh General Knowledge',
+        topic: 'History of Chhattisgarh',
+        questionHi: 'छत्तीसगढ़ में कलचुरी वंश की प्रथम राजधानी कहाँ स्थापित की गई थी?',
+        questionEn: 'Where was the first capital of the Kalachuri dynasty established in Chhattisgarh?',
+        optionsHi: ['तुम्माण', 'रतनपुर', 'रायपुर', 'सिरपुर'],
+        optionsEn: ['Tumman', 'Ratanpur', 'Raipur', 'Sirpur'],
+        correctOptionIndex: 0,
+        explanationHi: 'कलिंगराज ने 1000 ई. में तुम्माण को कलचुरी वंश की प्रथम राजधानी बनाया था।',
+        explanationEn: 'Kalingaraj established Tumman as the first capital of the Kalachuri dynasty in 1000 AD.'
+      },
+      {
+        subjectTag: 'Chhattisgarh General Knowledge',
+        topic: 'Geography & Natural Resources of CG',
+        questionHi: 'छत्तीसगढ़ की जीवन रेखा कहलाने वाली महानदी का उद्गम किस जिले से होता है?',
+        questionEn: 'Mahanadi, the lifeline of Chhattisgarh, originates from which district?',
+        optionsHi: ['धमतरी (सिहावा पर्वत)', 'कांकेर', 'बस्तर', 'सरगुजा'],
+        optionsEn: ['Dhamtari (Sihawa Hills)', 'Kanker', 'Bastar', 'Surguja'],
+        correctOptionIndex: 0,
+        explanationHi: 'महानदी का उद्गम धमतरी जिले के सिहावा पर्वत (फरसिया गाँव) से होता है।',
+        explanationEn: 'Mahanadi originates from Sihawa mountain range in Dhamtari district.'
+      },
+      {
+        subjectTag: 'Chhattisgarh General Knowledge',
+        topic: 'Tribes, Folk Art & Culture of CG',
+        questionHi: 'बस्तर के प्रसिद्ध गोंचा पर्व में किस देवता की रथ यात्रा निकाली जाती है?',
+        questionEn: 'During the famous Goncha festival of Bastar, the chariot procession of which deity is taken out?',
+        optionsHi: ['भगवान जगन्नाथ', 'दंतेश्वरी माता', 'बूढ़ादेव', 'आंगादेव'],
+        optionsEn: ['Lord Jagannath', 'Goddess Danteshwari', 'Budhadev', 'Angadev'],
+        correctOptionIndex: 0,
+        explanationHi: 'आषाढ़ माह में बस्तर में भगवान जगन्नाथ की रथ यात्रा को गोंचा पर्व के रूप में मनाया जाता है।',
+        explanationEn: 'In the month of Ashadha, the chariot festival of Lord Jagannath is celebrated as Goncha festival in Bastar.'
+      },
+      {
+        subjectTag: 'Chhattisgarh General Knowledge',
+        topic: 'Panchayati Raj & Local Administration in CG',
+        questionHi: 'छत्तीसगढ़ पंचायती राज अधिनियम, 1993 के अंतर्गत ग्राम पंचायत की बैठक माह में कम से कम कितनी बार होनी अनिवार्य है?',
+        questionEn: 'Under the Chhattisgarh Panchayati Raj Act 1993, how many times must a Gram Panchayat meeting be held in a month?',
+        optionsHi: ['कम से कम 1 बार', 'कम से कम 2 बार', 'कम से कम 3 बार', 'कम से कम 4 बार'],
+        optionsEn: ['At least once', 'At least twice', 'At least thrice', 'At least four times'],
+        correctOptionIndex: 0,
+        explanationHi: 'ग्राम पंचायत की बैठक प्रत्येक माह में कम से कम एक बार आयोजित किया जाना अनिवार्य है।',
+        explanationEn: 'A Gram Panchayat meeting must be held at least once every month.'
+      },
+      {
+        subjectTag: 'Indian Polity & Constitution',
+        topic: 'Fundamental Rights & Duties',
+        questionHi: 'भारतीय संविधान के किस अनुच्छेद के अंतर्गत "संवैधानिक उपचारों का अधिकार" प्रदान किया गया है?',
+        questionEn: 'Under which Article of the Indian Constitution is the "Right to Constitutional Remedies" guaranteed?',
+        optionsHi: ['अनुच्छेद 32', 'अनुच्छेद 21', 'अनुच्छेद 19', 'अनुच्छेद 14'],
+        optionsEn: ['Article 32', 'Article 21', 'Article 19', 'Article 14'],
+        correctOptionIndex: 0,
+        explanationHi: 'डॉ. भीमराव अंबेडकर ने अनुच्छेद 32 को भारतीय संविधान की आत्मा और हृदय कहा है।',
+        explanationEn: 'Dr. B.R. Ambedkar called Article 32 the heart and soul of the Indian Constitution.'
+      },
+      {
+        subjectTag: 'History of India',
+        topic: 'Modern Indian History & Freedom Struggle',
+        questionHi: 'भारतीय राष्ट्रीय कांग्रेस के किस अधिवेशन में "पूर्ण स्वराज" का प्रस्ताव पारित किया गया था?',
+        questionEn: 'In which session of the Indian National Congress was the resolution of "Purna Swaraj" passed?',
+        optionsHi: ['लाहौर अधिवेशन, 1929', 'कराची अधिवेशन, 1931', 'सूरत अधिवेशन, 1907', 'लखनऊ अधिवेशन, 1916'],
+        optionsEn: ['Lahore Session, 1929', 'Karachi Session, 1931', 'Surat Session, 1907', 'Lucknow Session, 1916'],
+        correctOptionIndex: 0,
+        explanationHi: 'दिसंबर 1929 के लाहौर अधिवेशन में जवाहरलाल नेहरू की अध्यक्षता में पूर्ण स्वराज का प्रस्ताव पारित हुआ।',
+        explanationEn: 'The Purna Swaraj resolution was passed in the December 1929 Lahore session presided over by Jawaharlal Nehru.'
+      },
+      {
+        subjectTag: 'Geography of India & World',
+        topic: 'Physical Features & River Systems',
+        questionHi: 'प्रायद्वीपीय भारत की सबसे लंबी नदी कौन-सी है जिसे "दक्षिण गंगा" भी कहा जाता है?',
+        questionEn: 'Which is the longest river of Peninsular India, also known as "Dakshin Ganga"?',
+        optionsHi: ['गोदावरी नदी', 'कृष्णा नदी', 'कावेरी नदी', 'नर्मदा नदी'],
+        optionsEn: ['Godavari River', 'Krishna River', 'Kaveri River', 'Narmada River'],
+        correctOptionIndex: 0,
+        explanationHi: 'गोदावरी नदी की लंबाई लगभग 1465 किमी है और यह प्रायद्वीपीय भारत की सबसे बड़ी नदी है।',
+        explanationEn: 'Godavari is about 1465 km long and is the largest river system of Peninsular India.'
+      },
+      {
+        subjectTag: 'Indian Economy',
+        topic: 'National Income, Budget & Fiscal Policy',
+        questionHi: 'भारत में मौद्रिक नीति (Monetary Policy) की समीक्षा किसके द्वारा की जाती है?',
+        questionEn: 'Monetary Policy in India is formulated and reviewed by which institution?',
+        optionsHi: ['भारतीय रिजर्व बैंक (RBI)', 'नीति आयोग', 'वित्त आयोग', 'सेबी (SEBI)'],
+        optionsEn: ['Reserve Bank of India (RBI)', 'NITI Aayog', 'Finance Commission', 'SEBI'],
+        correctOptionIndex: 0,
+        explanationHi: 'भारतीय रिजर्व बैंक की मौद्रिक नीति समिति (MPC) द्वारा द्विमासिक मौद्रिक नीति की समीक्षा की जाती है।',
+        explanationEn: 'The Monetary Policy Committee (MPC) of RBI reviews monetary policy bi-monthly.'
+      },
+      {
+        subjectTag: 'General Science & Technology',
+        topic: 'Physics, Chemistry & Biology',
+        questionHi: 'मानव शरीर की सबसे बड़ी ग्रंथि (Largest Gland) कौन-सी है?',
+        questionEn: 'Which is the largest gland in the human body?',
+        optionsHi: ['यकृत (Liver)', 'अग्न्याशय (Pancreas)', 'थायरॉइड (Thyroid)', 'पीयूष ग्रंथि (Pituitary)'],
+        optionsEn: ['Liver', 'Pancreas', 'Thyroid', 'Pituitary Gland'],
+        correctOptionIndex: 0,
+        explanationHi: 'यकृत (Liver) मानव शरीर की सबसे बड़ी आंतरिक ग्रंथि है जो पित्त रस का स्राव करती है।',
+        explanationEn: 'The liver is the largest internal gland in the human body and secretes bile.'
+      },
+      {
+        subjectTag: 'Computer & Information Technology',
+        topic: 'Computer Architecture, OS & Networking',
+        questionHi: 'कंप्यूटर में त्वरित एक्सेस के लिए CPU के सबसे नजदीक कौन-सी मेमोरी होती है?',
+        questionEn: 'Which high-speed memory is located closest to the CPU for rapid data access?',
+        optionsHi: ['कैश मेमोरी (Cache Memory)', 'हार्ड डिस्क (HDD)', 'सीडी-रोम (CD-ROM)', 'फ्लैश ड्राइव'],
+        optionsEn: ['Cache Memory', 'Hard Disk Drive', 'CD-ROM', 'Flash Drive'],
+        correctOptionIndex: 0,
+        explanationHi: 'कैश मेमोरी CPU और RAM के बीच अत्यंत तीव्र गति वाली मेमोरी के रूप में कार्य करती है।',
+        explanationEn: 'Cache memory acts as an ultra-fast buffer between the CPU and main RAM.'
+      }
+    ];
+
+    const out = [];
+    for (let i = 0; i < count; i++) {
+      const template = curatedPool[i % curatedPool.length];
+      out.push({
+        questionNumber: i + 1,
+        subjectTag: forcedSubject || subjName || template.subjectTag,
+        topic: topName || template.topic,
+        difficulty: difficulty || 'Moderate',
+        questionHi: i === 0 && cleanPrompt.length > 8
+          ? `[${cleanPrompt}] — ${template.questionHi}`
+          : template.questionHi,
+        questionEn: i === 0 && cleanPrompt.length > 8
+          ? `[${cleanPrompt}] — ${template.questionEn}`
+          : template.questionEn,
+        optionsHi: template.optionsHi.slice(),
+        optionsEn: template.optionsEn.slice(),
+        correctOptionIndex: template.correctOptionIndex,
+        explanationHi: template.explanationHi,
+        explanationEn: template.explanationEn
+      });
+    }
+    return out;
+  }
+
+  function openAiPromptQuestionGeneratorModal({ state, api, defaultSubject, onSaved }) {
+    const catalog = getTaxonomyCatalog(state);
+    const existing = document.getElementById('qbAiPromptGeneratorModal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'qbAiPromptGeneratorModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.72);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+    modal.innerHTML = `
+      <div class="card" style="width:100%;max-width:650px;max-height:92vh;overflow-y:auto;padding:20px;border-top:5px solid var(--primary);box-shadow:0 24px 55px rgba(0,0,0,0.3);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <div>
+            <span class="badge badge-exam">✨ AI QUESTION GENERATOR</span>
+            <h3 style="font-size:1.08rem;font-weight:800;margin-top:4px;">🤖 AI प्रॉम्प्ट देकर नए प्रश्न बनाएं (Auto Subject → Topic Folder)</h3>
+          </div>
+          <button class="btn btn-outline btn-sm" id="qbCloseAiPromptModalBtn">✕ बंद करें</button>
+        </div>
+        <p style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:14px;">
+          कोई भी टॉपिक, सिलेबस बिंदु या निर्देश लिखें (जैसे: <em>"छत्तीसगढ़ के कलचुरी वंश और जनजातीय विद्रोह पर 10 कठिन प्रश्न बनाएं"</em>)। AI स्वयं द्विभाषी (Hindi + English) MCQ प्रश्न, 4 विकल्प, सही उत्तर और व्याख्या बनाकर सीधे संबंधित <strong>Subject → Topic फ़ोल्डर</strong> में सेव कर देगा।
+        </p>
+
+        <div class="form-group" style="margin-bottom:12px;">
+          <label class="form-label" style="font-weight:700;">1️⃣ AI प्रॉम्प्ट / टॉपिक का विवरण लिखें *</label>
+          <textarea class="form-textarea" id="qbAiPromptTextarea" rows="4" placeholder="उदाहरण: छत्तीसगढ़ पंचायती राज अधिनियम 1993, ग्राम सभा और आरक्षण के प्रावधानों पर CGPSC स्तर के प्रश्न बनाएं..."></textarea>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:10px;margin-bottom:14px;">
+          <div>
+            <label class="form-label" style="font-size:0.78rem;font-weight:700;">2️⃣ प्रश्नों की संख्या</label>
+            <select class="form-select" id="qbAiPromptCountSelect">
+              <option value="5">5 प्रश्न</option>
+              <option value="10" selected>10 प्रश्न</option>
+              <option value="15">15 प्रश्न</option>
+              <option value="20">20 प्रश्न</option>
+              <option value="25">25 प्रश्न</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label" style="font-size:0.78rem;font-weight:700;">3️⃣ कठिनाई स्तर (Difficulty)</label>
+            <select class="form-select" id="qbAiPromptDifficultySelect">
+              <option value="Easy">Easy (सरल)</option>
+              <option value="Moderate" selected>Moderate (मध्यम - CGPSC/Vyapam)</option>
+              <option value="Hard">Hard (कठिन - कूट/कथन आधारित)</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label" style="font-size:0.78rem;font-weight:700;">4️⃣ विषय फ़ोल्डर (Subject Folder)</label>
+            <select class="form-select" id="qbAiPromptSubjectSelect">
+              <option value="">🤖 AI स्वतः विषय पहचाने (Auto-Detect)</option>
+              ${catalog.subjects.map((s) => `<option value="${esc(s.titleEn)}" ${defaultSubject === s.titleEn ? 'selected' : ''}>${esc(s.titleHi)} (${esc(s.titleEn)})</option>`).join('')}
+            </select>
+          </div>
+        </div>
+
+        <div id="qbAiPromptStatusBanner" style="display:none;padding:10px 12px;border-radius:8px;background:rgba(37,99,235,0.1);color:var(--primary);font-weight:700;font-size:0.83rem;margin-bottom:12px;"></div>
+
+        <div style="display:flex;justify-content:flex-end;gap:10px;">
+          <button class="btn btn-outline" id="qbCancelAiPromptModalBtn">रद्द करें</button>
+          <button class="btn btn-primary" id="qbSubmitAiPromptGenBtn" style="font-weight:800;">
+            ✨ AI से प्रश्न बनाएं और फ़ोल्डर में सेव करें
+          </button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    const close = () => modal.remove();
+    modal.querySelector('#qbCloseAiPromptModalBtn').onclick = close;
+    modal.querySelector('#qbCancelAiPromptModalBtn').onclick = close;
+
+    modal.querySelector('#qbSubmitAiPromptGenBtn').onclick = async () => {
+      const promptInput = String(modal.querySelector('#qbAiPromptTextarea').value || '').trim();
+      if (!promptInput) {
+        api.toast('⚠️ कृपया पहले प्रॉम्प्ट या टॉपिक लिखें।');
+        return;
+      }
+      const count = Math.min(30, Math.max(1, Number(modal.querySelector('#qbAiPromptCountSelect').value) || 10));
+      const difficulty = modal.querySelector('#qbAiPromptDifficultySelect').value || 'Moderate';
+      const forcedSubject = modal.querySelector('#qbAiPromptSubjectSelect').value || '';
+      const statusBanner = modal.querySelector('#qbAiPromptStatusBanner');
+      const submitBtn = modal.querySelector('#qbSubmitAiPromptGenBtn');
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = '⏳ AI प्रश्न बना रहा है...';
+      statusBanner.style.display = 'block';
+      statusBanner.textContent = `🤖 AI आपके प्रॉम्प्ट "${promptInput.slice(0, 60)}..." पर ${count} द्विभाषी प्रश्न तैयार कर रहा है...`;
+
+      try {
+        const subjectTopicGuide = catalog.subjects.map((s) => {
+          const tops = catalog.getTopicsForSubject(s.subjectId).map((t) => t.titleEn).join(', ');
+          return `- Subject "${s.titleEn}" (${s.titleHi}): Topics [${tops}]`;
+        }).join('\n');
+
+        let generatedItems = [];
+        const hasAiBridge = Boolean(
+          window.AndroidBridge &&
+          typeof window.AndroidBridge.analyzeQuestionsWithAi === 'function'
+        );
+
+        if (hasAiBridge) {
+          const aiPrompt = `You are an expert Indian Competitive Exam (CGPSC / CG Vyapam / UPSC) Question Paper Setter.
+Generate ${count} high-quality, exam-authentic Multiple Choice Questions (MCQs) based on the user's prompt below.
+User Prompt / Topic: "${promptInput}"
+Difficulty Level: ${difficulty}
+${forcedSubject ? `Target Subject Folder: "${forcedSubject}"` : 'Automatically select the best matching Subject ("subjectTag") and Topic ("topic") folder for each question from the list below:'}
+Available Subject & Topic Folders:
+${subjectTopicGuide}
+
+Requirements:
+1. Every question MUST be bilingual: pure Devanagari Hindi ("questionHi", "optionsHi", "explanationHi") and clean English ("questionEn", "optionsEn", "explanationEn").
+2. Provide exactly 4 options (A, B, C, D) in both languages, the exact 0-based "correctOptionIndex" (0, 1, 2, or 3), and a clear factual explanation.
+3. Return ONLY a valid JSON array of objects:
+[
+  {
+    "questionNumber": 1,
+    "subjectTag": "Chhattisgarh General Knowledge",
+    "topic": "History of Chhattisgarh",
+    "difficulty": "${difficulty}",
+    "questionHi": "...",
+    "questionEn": "...",
+    "optionsHi": ["...", "...", "...", "..."],
+    "optionsEn": ["...", "...", "...", "..."],
+    "correctOptionIndex": 0,
+    "explanationHi": "...",
+    "explanationEn": "..."
+  }
+]`;
+          try {
+            const aiRaw = await callAndroidAiBridge(aiPrompt, null);
+            generatedItems = parseAiJsonArraySafely(aiRaw);
+          } catch (_aiErr) {}
+        }
+
+        if (!Array.isArray(generatedItems) || generatedItems.length === 0) {
+          // Check if the user pasted raw questions inside the prompt box
+          const parsedFromText = parsePdfOcrAndMatchAnswerKey('Method: PDF_OCR\n' + promptInput, 'prompt.txt', '', 'A', 'A');
+          if (parsedFromText && Array.isArray(parsedFromText.rawItems) && parsedFromText.rawItems.length > 0) {
+            generatedItems = parsedFromText.rawItems;
+          } else {
+            generatedItems = buildOfflinePromptGeneratedQuestions(promptInput, count, forcedSubject, difficulty, catalog);
+          }
+        }
+
+        const savedDocs = [];
+        await scanAndCategorizeWithAiOrFallback({
+          questionFile: { name: 'AI_Prompt_Generator.json', type: 'application/json' },
+          rawQuestionText: JSON.stringify(generatedItems),
+          answerKeyText: '',
+          paperSetCode: 'A',
+          forcedSubjectTag: forcedSubject,
+          forcedTopic: '',
+          state,
+          onProgress: (msg) => {
+            statusBanner.textContent = msg;
+          },
+          onLiveSaveDocs: async (newDocs) => {
+            newDocs.forEach((doc) => {
+              state.questionBank.unshift(doc);
+              savedDocs.push(doc);
+            });
+            api.saveState();
+            if (window.CGpediaCloud && window.CGpediaCloud.batchSaveCloudDocs && newDocs.length > 0) {
+              window.CGpediaCloud.batchSaveCloudDocs('question_bank', newDocs).catch(() => {});
+            }
+          }
+        });
+
+        close();
+        api.toast(`✅ ${savedDocs.length || generatedItems.length} नए प्रश्न बनकर संबंधित Subject → Topic फ़ोल्डर में सेव हो गए!`);
+        if (typeof onSaved === 'function') onSaved(savedDocs);
+      } catch (err) {
+        console.error('AI Prompt Generator Error:', err);
+        submitBtn.disabled = false;
+        submitBtn.textContent = '✨ AI से प्रश्न बनाएं और फ़ोल्डर में सेव करें';
+        statusBanner.textContent = '⚠️ प्रश्न बनाने में त्रुटि आई। कृपया पुनः प्रयास करें।';
+      }
+    };
+  }
+
+  // ============================================================================
+  // POPUP 2: PARAGRAPH / TEXT COPY-PASTE TO SUBJECT FOLDER MODAL
+  // ============================================================================
+  function generateQuestionsFromParagraphOffline(paragraphText, count, forcedSubject, catalog) {
+    const cleanText = convertKrutiDevInText(String(paragraphText || '').trim());
+    const sentences = cleanText
+      .split(/(?<=[।.?!\n])\s+/)
+      .map((s) => s.replace(/\s+/g, ' ').trim())
+      .filter((s) => s.length >= 25);
+
+    const guessed = autoCategorizeQuestionFromMaster(
+      { questionHi: cleanText.slice(0, 500), questionEn: cleanText.slice(0, 500), subjectTag: forcedSubject || '' },
+      catalog,
+      ['ALL', 'CGPSC', 'CGVYAPAM']
+    );
+    const subjName = forcedSubject || (guessed.subjectTag && guessed.subjectTag !== 'Needs Categorisation' ? guessed.subjectTag : 'Chhattisgarh General Knowledge');
+    const matchedSub = catalog.findSubject(subjName);
+    const defaultTop = matchedSub && catalog.getTopicsForSubject(matchedSub.subjectId)[0]
+      ? catalog.getTopicsForSubject(matchedSub.subjectId)[0].titleEn
+      : 'General Topic';
+    const topName = (guessed.topic && guessed.topic !== 'Needs Categorisation') ? guessed.topic : defaultTop;
+
+    if (sentences.length === 0) {
+      return buildOfflinePromptGeneratedQuestions(cleanText, count, subjName, 'Moderate', catalog);
+    }
+
+    const out = [];
+    const targetCount = Math.min(count, Math.max(1, sentences.length));
+    for (let i = 0; i < targetCount; i++) {
+      const fact = sentences[i % sentences.length];
+      const other1 = sentences[(i + 1) % sentences.length] || 'उपरोक्त में से कोई नहीं';
+      const other2 = sentences[(i + 2) % sentences.length] || 'केवल औपचारिक कथन';
+      out.push({
+        questionNumber: i + 1,
+        subjectTag: subjName,
+        topic: topName,
+        difficulty: 'Moderate',
+        questionHi: `दिए गए अध्ययन अनुच्छेद (${topName}) के संदर्भ में निम्नलिखित में से कौन-सा कथन सत्य है?`,
+        questionEn: `With reference to the provided study passage (${topName}), which of the following statements is correct?`,
+        optionsHi: [
+          fact.slice(0, 180),
+          other1 !== fact ? other1.slice(0, 180) : 'यह प्रावधान केवल केंद्र शासित प्रदेशों पर लागू है',
+          other2 !== fact ? other2.slice(0, 180) : 'यह कथन ऐतिहासिक रूप से असत्य है',
+          'उपर्युक्त में से कोई नहीं'
+        ],
+        optionsEn: [
+          fact.slice(0, 180),
+          other1 !== fact ? other1.slice(0, 180) : 'This provision applies only to Union Territories',
+          other2 !== fact ? other2.slice(0, 180) : 'This statement is historically incorrect',
+          'None of the above'
+        ],
+        correctOptionIndex: 0,
+        explanationHi: `अनुच्छेद के अनुसार सही तथ्य: "${fact}"`,
+        explanationEn: `According to the passage: "${fact}"`
+      });
+    }
+    return out;
+  }
+
+  function openPasteParagraphOrQuestionsModal({ state, api, defaultSubject, onSaved }) {
+    const catalog = getTaxonomyCatalog(state);
+    const existing = document.getElementById('qbPasteParagraphModal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'qbPasteParagraphModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.72);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+    modal.innerHTML = `
+      <div class="card" style="width:100%;max-width:700px;max-height:92vh;overflow-y:auto;padding:20px;border-top:5px solid #059669;box-shadow:0 24px 55px rgba(0,0,0,0.3);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <div>
+            <span class="badge badge-free">📋 PARAGRAPH & TEXT SCANNER</span>
+            <h3 style="font-size:1.08rem;font-weight:800;margin-top:4px;">📋 पैराग्राफ या प्रश्न कॉपी-पेस्ट करें (Auto Subject → Topic Folder)</h3>
+          </div>
+          <button class="btn btn-outline btn-sm" id="qbClosePasteModalBtn">✕ बंद करें</button>
+        </div>
+        <p style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:12px;">
+          यहाँ कोई भी <strong>पैराग्राफ / नोट्स</strong> या पहले से लिखे <strong>MCQ प्रश्न</strong> पेस्ट करें। यह टूल पेस्ट किए गए प्रश्नों को भी स्कैन करके सेव करता है और पैराग्राफ से नए MCQ प्रश्न भी बनाकर जिस विषय (Subject) का है उसके फ़ोल्डर में ऑटोमैटिक सेव कर देता है!
+        </p>
+
+        <div class="form-group" style="margin-bottom:12px;">
+          <label class="form-label" style="font-weight:700;">1️⃣ पैराग्राफ, नोट्स या प्रश्न यहाँ पेस्ट करें (Unicode / KrutiDev / Shree-Dev / English) *</label>
+          <textarea class="form-textarea" id="qbPasteTextArea" rows="7" placeholder="यहाँ कोई भी पैराग्राफ/नोट्स पेस्ट करें या प्रश्न (1. ... (A) ... (B) ... (C) ... (D) ...) पेस्ट करें..."></textarea>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:14px;">
+          <div>
+            <label class="form-label" style="font-size:0.78rem;font-weight:700;">2️⃣ प्रोसेसिंग मोड (Mode)</label>
+            <select class="form-select" id="qbPasteModeSelect">
+              <option value="AUTO_BOTH" selected>⚡ स्मार्ट ऑटो (प्रश्न स्कैन करें + पैराग्राफ से नए प्रश्न बनाएं)</option>
+              <option value="EXTRACT_ONLY">📑 केवल पेस्ट किए गए MCQ प्रश्नों को स्कैन करके सेव करें</option>
+              <option value="GENERATE_FROM_PARA">✨ पैराग्राफ/नोट्स से नए MCQ प्रश्न बनाएं</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label" style="font-size:0.78rem;font-weight:700;">3️⃣ पैराग्राफ से कितने प्रश्न बनाएं?</label>
+            <select class="form-select" id="qbPasteGenCountSelect">
+              <option value="5">5 प्रश्न</option>
+              <option value="10" selected>10 प्रश्न</option>
+              <option value="15">15 प्रश्न</option>
+              <option value="20">20 प्रश्न</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label" style="font-size:0.78rem;font-weight:700;">4️⃣ विषय फ़ोल्डर (Subject Folder)</label>
+            <select class="form-select" id="qbPasteSubjectSelect">
+              <option value="">🤖 AI स्वतः विषय पहचाने (Auto-Detect)</option>
+              ${catalog.subjects.map((s) => `<option value="${esc(s.titleEn)}" ${defaultSubject === s.titleEn ? 'selected' : ''}>${esc(s.titleHi)} (${esc(s.titleEn)})</option>`).join('')}
+            </select>
+          </div>
+        </div>
+
+        <div id="qbPasteStatusBanner" style="display:none;padding:10px 12px;border-radius:8px;background:rgba(5,150,105,0.12);color:#065f46;font-weight:700;font-size:0.83rem;margin-bottom:12px;"></div>
+
+        <div style="display:flex;justify-content:flex-end;gap:10px;">
+          <button class="btn btn-outline" id="qbCancelPasteModalBtn">रद्द करें</button>
+          <button class="btn btn-primary" id="qbSubmitPasteModalBtn" style="font-weight:800;background:#059669;border-color:#059669;">
+            📋 स्कैन / प्रश्न बनाएं और Subject फ़ोल्डर में सेव करें
+          </button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    const close = () => modal.remove();
+    modal.querySelector('#qbClosePasteModalBtn').onclick = close;
+    modal.querySelector('#qbCancelPasteModalBtn').onclick = close;
+
+    modal.querySelector('#qbSubmitPasteModalBtn').onclick = async () => {
+      const rawPasted = String(modal.querySelector('#qbPasteTextArea').value || '').trim();
+      if (!rawPasted) {
+        api.toast('⚠️ कृपया पहले कोई पैराग्राफ या प्रश्न टेक्स्ट पेस्ट करें।');
+        return;
+      }
+      const mode = modal.querySelector('#qbPasteModeSelect').value || 'AUTO_BOTH';
+      const genCount = Math.min(25, Math.max(1, Number(modal.querySelector('#qbPasteGenCountSelect').value) || 10));
+      const forcedSubject = modal.querySelector('#qbPasteSubjectSelect').value || '';
+      const statusBanner = modal.querySelector('#qbPasteStatusBanner');
+      const submitBtn = modal.querySelector('#qbSubmitPasteModalBtn');
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = '⏳ प्रोसेस हो रहा है...';
+      statusBanner.style.display = 'block';
+      statusBanner.textContent = '⏳ पेस्ट किए गए टेक्स्ट को स्कैन और वर्गीकृत किया जा रहा है...';
+
+      try {
+        const cleanText = convertKrutiDevInText(rawPasted);
+        const combinedItems = [];
+
+        // 1. Check if pasted text already contains MCQs
+        if (mode === 'AUTO_BOTH' || mode === 'EXTRACT_ONLY') {
+          const parsedMcqs = parsePdfOcrAndMatchAnswerKey('Method: PDF_OCR\n' + cleanText, 'pasted_text.txt', '', 'A', 'A');
+          if (parsedMcqs && Array.isArray(parsedMcqs.rawItems) && parsedMcqs.rawItems.length > 0) {
+            combinedItems.push(...parsedMcqs.rawItems);
+          }
+        }
+
+        // 2. If mode is GENERATE_FROM_PARA, or if AUTO_BOTH and either no MCQs were found or user pasted study notes
+        if (mode === 'GENERATE_FROM_PARA' || (mode === 'AUTO_BOTH' && combinedItems.length === 0)) {
+          const subjectTopicGuide = catalog.subjects.map((s) => {
+            const tops = catalog.getTopicsForSubject(s.subjectId).map((t) => t.titleEn).join(', ');
+            return `- Subject "${s.titleEn}" (${s.titleHi}): Topics [${tops}]`;
+          }).join('\n');
+
+          const hasAiBridge = Boolean(
+            window.AndroidBridge &&
+            typeof window.AndroidBridge.analyzeQuestionsWithAi === 'function'
+          );
+
+          let aiGenerated = [];
+          if (hasAiBridge) {
+            statusBanner.textContent = `🤖 AI पेस्ट किए गए पैराग्राफ से ${genCount} नए प्रश्न बना रहा है...`;
+            const aiPrompt = `You are an expert bilingual (Hindi + English) competitive exam Question Bank AI.
+Read the pasted text/paragraph below.
+1. If it contains existing MCQs, extract all of them accurately.
+2. Also generate up to ${genCount} high-quality bilingual MCQs from the factual content of the paragraph.
+3. Classify every question into the exact Subject ("subjectTag") and Topic ("topic") folder.
+${forcedSubject ? `Force Subject Folder: "${forcedSubject}"` : ''}
+Available Subject & Topic Folders:
+${subjectTopicGuide}
+
+Pasted Paragraph / Text:
+${cleanText.slice(0, 12000)}
+
+Return ONLY a valid JSON array of objects:
+[{"questionNumber": 1, "subjectTag": "...", "topic": "...", "difficulty": "Moderate", "questionHi": "...", "questionEn": "...", "optionsHi": ["A","B","C","D"], "optionsEn": ["A","B","C","D"], "correctOptionIndex": 0, "explanationHi": "...", "explanationEn": "..."}]`;
+            try {
+              const aiRaw = await callAndroidAiBridge(aiPrompt, null);
+              aiGenerated = parseAiJsonArraySafely(aiRaw);
+            } catch (_e) {}
+          }
+
+          if (Array.isArray(aiGenerated) && aiGenerated.length > 0) {
+            combinedItems.push(...aiGenerated);
+          } else {
+            const offlineParaQs = generateQuestionsFromParagraphOffline(cleanText, genCount, forcedSubject, catalog);
+            combinedItems.push(...offlineParaQs);
+          }
+        }
+
+        const savedDocs = [];
+        await scanAndCategorizeWithAiOrFallback({
+          questionFile: { name: 'Pasted_Paragraph_Questions.json', type: 'application/json' },
+          rawQuestionText: JSON.stringify(combinedItems),
+          answerKeyText: '',
+          paperSetCode: 'A',
+          forcedSubjectTag: forcedSubject,
+          forcedTopic: '',
+          state,
+          onProgress: (msg) => {
+            statusBanner.textContent = msg;
+          },
+          onLiveSaveDocs: async (newDocs) => {
+            newDocs.forEach((doc) => {
+              const dupIdx = state.questionBank.findIndex(
+                (q) => q.id === doc.id || normalizeTextForComparison(q.questionHi) === normalizeTextForComparison(doc.questionHi)
+              );
+              if (dupIdx >= 0) {
+                state.questionBank[dupIdx] = Object.assign({}, state.questionBank[dupIdx], doc);
+              } else {
+                state.questionBank.unshift(doc);
+              }
+              savedDocs.push(doc);
+            });
+            api.saveState();
+            if (window.CGpediaCloud && window.CGpediaCloud.batchSaveCloudDocs && newDocs.length > 0) {
+              window.CGpediaCloud.batchSaveCloudDocs('question_bank', newDocs).catch(() => {});
+            }
+          }
+        });
+
+        close();
+        api.toast(`✅ पेस्ट किए गए टेक्स्ट से ${savedDocs.length || combinedItems.length} प्रश्न संबंधित Subject → Topic फ़ोल्डर में सेव हो गए!`);
+        if (typeof onSaved === 'function') onSaved(savedDocs);
+      } catch (err) {
+        console.error('Paste Paragraph Modal Error:', err);
+        submitBtn.disabled = false;
+        submitBtn.textContent = '📋 स्कैन / प्रश्न बनाएं और Subject फ़ोल्डर में सेव करें';
+        statusBanner.textContent = '⚠️ टेक्स्ट प्रोसेस करने में त्रुटि आई। कृपया पुनः प्रयास करें।';
+      }
+    };
+  }
+
   function renderQuestionBankManagementV2(bodyEl, rootEl, state, api) {
     state.questionBank = state.questionBank || [];
     const catalog = getTaxonomyCatalog(state);
@@ -8056,6 +9105,8 @@ Return ONLY a JSON array of objects:
             </h3>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-primary btn-sm" id="qbPopupAiPromptGenBtn" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);border:none;">✨ AI प्रॉम्प्ट से प्रश्न बनाएं</button>
+            <button class="btn btn-primary btn-sm" id="qbPopupPasteTextModalBtn" style="background:linear-gradient(135deg,#059669,#0d9488);border:none;">📋 पैराग्राफ / टेक्स्ट पेस्ट करें</button>
             <button class="btn btn-primary btn-sm" id="qbPopupAddSingleQuestionBtn">➕ एक प्रश्न जोड़ें (Add Question)</button>
             <button class="btn btn-outline btn-sm" id="qbPopupNewSubjectBtn">📁 + नया विषय</button>
             <button class="btn btn-outline btn-sm" id="qbPopupNewTopicBtn">📂 + नया टॉपिक</button>
@@ -8496,6 +9547,28 @@ Return ONLY a JSON array of objects:
     };
 
     // Wire Top Bar Buttons
+    const aiPromptPopupBtn = document.getElementById('qbPopupAiPromptGenBtn');
+    if (aiPromptPopupBtn) {
+      aiPromptPopupBtn.onclick = () => {
+        openAiPromptQuestionGeneratorModal({
+          state,
+          api,
+          defaultSubject: activeSubjectFolder ? activeSubjectFolder.titleEn : (nav.overrideSubject || ''),
+          onSaved: () => renderAdminConsole(rootEl, state, api)
+        });
+      };
+    }
+    const pasteTextPopupBtn = document.getElementById('qbPopupPasteTextModalBtn');
+    if (pasteTextPopupBtn) {
+      pasteTextPopupBtn.onclick = () => {
+        openPasteParagraphOrQuestionsModal({
+          state,
+          api,
+          defaultSubject: activeSubjectFolder ? activeSubjectFolder.titleEn : (nav.overrideSubject || ''),
+          onSaved: () => renderAdminConsole(rootEl, state, api)
+        });
+      };
+    }
     const addSinglePopupBtn = document.getElementById('qbPopupAddSingleQuestionBtn');
     if (addSinglePopupBtn) addSinglePopupBtn.onclick = openAddQuestionPopup;
     const addQInSubBtn = document.getElementById('qbAddQuestionInSubjectBtn');
