@@ -6456,150 +6456,449 @@
     }
   }
 
+  // =========================================================================
+  // Gemini AI Bridge (Firebase AI Logic gemini-3.8-flash) for Question Bank
+  // =========================================================================
+  const aiPendingCallbacks = {};
+  window.__onAiQuestionScanResult = function (callbackId, ok, payload) {
+    const entry = aiPendingCallbacks[callbackId];
+    if (!entry) return;
+    delete aiPendingCallbacks[callbackId];
+    if (entry.timer) clearTimeout(entry.timer);
+    if (ok) entry.resolve(payload);
+    else entry.reject(new Error(payload || 'AI Scan failed'));
+  };
+
+  function callAndroidAiBridge(promptText, base64Image) {
+    return new Promise((resolve, reject) => {
+      if (
+        !window.AndroidBridge ||
+        (typeof window.AndroidBridge.analyzeQuestionsWithAi !== 'function' &&
+          typeof window.AndroidBridge.analyzeQuestionImageWithAi !== 'function')
+      ) {
+        reject(new Error('AndroidBridge AI not available'));
+        return;
+      }
+      const cbId = 'ai_qb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+      const timer = setTimeout(() => {
+        if (aiPendingCallbacks[cbId]) {
+          delete aiPendingCallbacks[cbId];
+          reject(new Error('AI timeout'));
+        }
+      }, 65000);
+      aiPendingCallbacks[cbId] = { resolve, reject, timer };
+      try {
+        if (base64Image && typeof window.AndroidBridge.analyzeQuestionImageWithAi === 'function') {
+          window.AndroidBridge.analyzeQuestionImageWithAi(base64Image, promptText, cbId);
+        } else {
+          window.AndroidBridge.analyzeQuestionsWithAi(promptText, cbId);
+        }
+      } catch (err) {
+        clearTimeout(timer);
+        delete aiPendingCallbacks[cbId];
+        reject(err);
+      }
+    });
+  }
+
+  function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = (e) => reject(e);
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function scanAndCategorizeWithAiOrFallback({
+    questionFile,
+    rawQuestionText,
+    answerKeyText,
+    paperSetCode,
+    forcedSubjectTag,
+    forcedTopic,
+    state,
+    onProgress
+  }) {
+    const catalog = getTaxonomyCatalog(state);
+    const subjectTopicGuide = catalog.subjects.map((s) => {
+      const topics = catalog.getTopicsForSubject(s.subjectId).map((t) => t.titleEn).slice(0, 12);
+      return `- Subject: "${s.titleEn}" (${s.titleHi}) -> Topics: [${topics.join(', ')}]`;
+    }).join('\n');
+
+    // Step 1: Run local multi-stage parser first so we always have a baseline
+    const localParsed = parseRawImportFile(
+      rawQuestionText || '',
+      (questionFile && questionFile.name) || 'questions.pdf',
+      answerKeyText || '',
+      paperSetCode || 'A',
+      paperSetCode || 'A'
+    );
+    const localRows = Array.isArray(localParsed.rows) ? localParsed.rows : [];
+    const parsedKeyMap = parseAnswerKeyMap(answerKeyText || '', paperSetCode || 'A');
+    const compactKeyStr = Object.keys(parsedKeyMap)
+      .slice(0, 200)
+      .map((qn) => `${qn}:${['A', 'B', 'C', 'D'][parsedKeyMap[qn]] || 'A'}`)
+      .join(', ');
+
+    const isImageFile = questionFile && /\.(png|jpe?g|webp)$/i.test(questionFile.name || '');
+    const hasAiBridge = Boolean(
+      window.AndroidBridge &&
+      typeof window.AndroidBridge.analyzeQuestionsWithAi === 'function'
+    );
+
+    const aiExtractedItems = [];
+
+    if (hasAiBridge) {
+      try {
+        if (isImageFile) {
+          if (onProgress) onProgress('🤖 AI द्वारा प्रश्न-पत्र इमेज और उत्तर कुंजी स्कैन की जा रही है...');
+          const dataUrl = await readFileAsDataUrl(questionFile);
+          const prompt = `You are an expert competitive exam Question Bank AI scanner.
+Extract ALL multiple-choice questions from this image, match answers with the provided Answer Key (Paper Set ${paperSetCode || 'A'}), and categorise each question into a Subject and Topic folder.
+Provided Answer Key Map (QuestionNumber:CorrectOption): ${compactKeyStr || 'None provided (determine accurate correct option yourself)'}
+${forcedSubjectTag ? `Force Subject Folder: "${forcedSubjectTag}"` : ''}
+${forcedTopic ? `Force Topic Folder: "${forcedTopic}"` : ''}
+Available Subject & Topic Folders:
+${subjectTopicGuide}
+
+Return ONLY a valid JSON array of objects with this exact schema:
+[
+  {
+    "questionNumber": 1,
+    "subjectTag": "Chhattisgarh General Knowledge",
+    "topic": "History of Chhattisgarh",
+    "difficulty": "Moderate",
+    "questionHi": "हिन्दी में साफ यूनिकोड प्रश्न...",
+    "questionEn": "Clean English question...",
+    "optionsHi": ["विकल्प A", "विकल्प B", "विकल्प C", "विकल्प D"],
+    "optionsEn": ["Option A", "Option B", "Option C", "Option D"],
+    "correctOptionIndex": 0,
+    "explanationHi": "संक्षिप्त हिन्दी व्याख्या...",
+    "explanationEn": "Concise English explanation..."
+  }
+]`;
+          const aiJsonStr = await callAndroidAiBridge(prompt, dataUrl);
+          const parsedArr = JSON.parse(aiJsonStr);
+          if (Array.isArray(parsedArr)) aiExtractedItems.push(...parsedArr);
+        } else if (localRows.length > 0) {
+          // Enhance and categorise local parsed questions in batches of 15 via Gemini AI
+          const batchSize = 15;
+          for (let i = 0; i < localRows.length; i += batchSize) {
+            const batch = localRows.slice(i, i + batchSize);
+            if (onProgress) {
+              onProgress(`🤖 AI द्वारा प्रश्न ${i + 1} से ${Math.min(localRows.length, i + batchSize)} स्कैन और Subject/Topic में वर्गीकृत किए जा रहे हैं...`);
+            }
+            const compactBatch = batch.map((r, idx) => {
+              const qNum = Number(r.questionNumber || i + idx + 1);
+              const akIdx = parsedKeyMap[qNum] !== undefined ? parsedKeyMap[qNum] : r.rawCorrectIndex;
+              return {
+                qNum,
+                qHi: r.questionHi || '',
+                qEn: r.questionEn || '',
+                optsHi: [r.optA_Hi || '', r.optB_Hi || '', r.optC_Hi || '', r.optD_Hi || ''],
+                optsEn: [r.optA_En || '', r.optB_En || '', r.optC_En || '', r.optD_En || ''],
+                ansIndexFromKey: akIdx !== '' && akIdx !== undefined ? Number(akIdx) : null,
+                expHi: r.explanationHi || '',
+                expEn: r.explanationEn || ''
+              };
+            });
+            const prompt = `You are an expert bilingual (Hindi + English) competitive exam AI Question Bank processor.
+Clean up these extracted questions (fix any broken OCR or KrutiDev characters into pure Devanagari Hindi and clean English), ensure all 4 options exist in both Hindi and English, use "ansIndexFromKey" (0=A, 1=B, 2=C, 3=D) when present or determine the accurate answer (0..3), write a short explanation in Hindi & English, and classify each question into the exact Subject ("subjectTag") and Topic ("topic") folder.
+${forcedSubjectTag ? `Force Subject Folder: "${forcedSubjectTag}"` : ''}
+${forcedTopic ? `Force Topic Folder: "${forcedTopic}"` : ''}
+Available Subject & Topic Folders:
+${subjectTopicGuide}
+
+Input Questions JSON:
+${JSON.stringify(compactBatch)}
+
+Return ONLY a JSON array where each element has:
+{"questionNumber": number, "subjectTag": string, "topic": string, "difficulty": "Easy"|"Moderate"|"Hard", "questionHi": string, "questionEn": string, "optionsHi": [string,string,string,string], "optionsEn": [string,string,string,string], "correctOptionIndex": 0|1|2|3, "explanationHi": string, "explanationEn": string}`;
+            try {
+              const aiJsonStr = await callAndroidAiBridge(prompt, null);
+              const parsedBatch = JSON.parse(aiJsonStr);
+              if (Array.isArray(parsedBatch) && parsedBatch.length > 0) {
+                aiExtractedItems.push(...parsedBatch);
+              } else {
+                aiExtractedItems.push(...batch);
+              }
+            } catch (_batchErr) {
+              aiExtractedItems.push(...batch);
+            }
+          }
+        } else if (rawQuestionText && rawQuestionText.trim().length > 20) {
+          // Raw text didn't match strict regex — let Gemini AI extract directly from raw text chunks!
+          const cleanRaw = convertKrutiDevInText(extractReadableTextFromPdfStream(rawQuestionText));
+          const chunkLen = 9000;
+          for (let offset = 0; offset < Math.min(cleanRaw.length, 45000); offset += chunkLen) {
+            const textSlice = cleanRaw.slice(offset, offset + chunkLen);
+            if (onProgress) {
+              onProgress(`🤖 AI द्वारा कच्चे टेक्स्ट से प्रश्न और उत्तर निकाले जा रहे हैं (${Math.min(100, Math.round(((offset + chunkLen) / cleanRaw.length) * 100))}%)...`);
+            }
+            const prompt = `You are an expert competitive exam Question Bank AI scanner.
+Extract all multiple-choice questions from the following Question Paper text, match correct answers using the provided Answer Key Map (Set ${paperSetCode || 'A'}), fix any garbled/KrutiDev Hindi into Unicode Devanagari, and categorise each question into a Subject and Topic folder.
+Provided Answer Key Map (QuestionNumber:CorrectOption): ${compactKeyStr || 'None provided (determine accurate correct option 0..3)'}
+${forcedSubjectTag ? `Force Subject Folder: "${forcedSubjectTag}"` : ''}
+${forcedTopic ? `Force Topic Folder: "${forcedTopic}"` : ''}
+Available Subject & Topic Folders:
+${subjectTopicGuide}
+
+Question Paper Text Chunk:
+${textSlice}
+
+Return ONLY a JSON array of objects:
+[{"questionNumber": 1, "subjectTag": "...", "topic": "...", "difficulty": "Moderate", "questionHi": "...", "questionEn": "...", "optionsHi": ["A","B","C","D"], "optionsEn": ["A","B","C","D"], "correctOptionIndex": 0, "explanationHi": "...", "explanationEn": "..."}]`;
+            try {
+              const aiJsonStr = await callAndroidAiBridge(prompt, null);
+              const parsedSlice = JSON.parse(aiJsonStr);
+              if (Array.isArray(parsedSlice)) aiExtractedItems.push(...parsedSlice);
+            } catch (_sliceErr) {
+              // ignore slice error
+            }
+          }
+        }
+      } catch (aiErr) {
+        console.warn('AI scan fallback to local:', aiErr);
+      }
+    }
+
+    const sourceList = aiExtractedItems.length > 0 ? aiExtractedItems : localRows;
+    const allExamCodes = ['ALL', ...catalog.examCategories.map((e) => e.code)];
+    const nowIso = new Date().toISOString();
+    const finalDocs = [];
+
+    sourceList.forEach((rawItem, idx) => {
+      const qNum = Number(rawItem.questionNumber || idx + 1);
+      const rawHi = convertKrutiDevInText(String(rawItem.questionHi || '').trim());
+      const rawEn = convertKrutiDevInText(String(rawItem.questionEn || '').trim());
+      const qHi = rawHi || rawEn;
+      const qEn = rawEn || rawHi;
+      if (!qHi && !qEn) return;
+
+      const rawOptsHi = Array.isArray(rawItem.optionsHi)
+        ? rawItem.optionsHi
+        : [rawItem.optA_Hi || '', rawItem.optB_Hi || '', rawItem.optC_Hi || '', rawItem.optD_Hi || ''];
+      const rawOptsEn = Array.isArray(rawItem.optionsEn)
+        ? rawItem.optionsEn
+        : [rawItem.optA_En || '', rawItem.optB_En || '', rawItem.optC_En || '', rawItem.optD_En || ''];
+
+      const optsHi = [0, 1, 2, 3].map((i) => convertKrutiDevInText(String(rawOptsHi[i] || rawOptsEn[i] || `विकल्प ${['A', 'B', 'C', 'D'][i]}`).trim()));
+      const optsEn = [0, 1, 2, 3].map((i) => convertKrutiDevInText(String(rawOptsEn[i] || rawOptsHi[i] || `Option ${['A', 'B', 'C', 'D'][i]}`).trim()));
+
+      // Match Answer Key priority: explicit Answer Key map for qNum -> AI/local correctOptionIndex -> 0
+      let corrIdx = 0;
+      if (parsedKeyMap[qNum] !== undefined && parsedKeyMap[qNum] >= 0 && parsedKeyMap[qNum] <= 3) {
+        corrIdx = Number(parsedKeyMap[qNum]);
+      } else if (rawItem.correctOptionIndex !== undefined && rawItem.correctOptionIndex !== null && rawItem.correctOptionIndex !== '') {
+        const parsedCorr = parseCorrectIndexValue(rawItem.correctOptionIndex, optsHi, optsEn, false);
+        corrIdx = parsedCorr !== null ? parsedCorr : 0;
+      } else if (rawItem.rawCorrectIndex !== undefined && rawItem.rawCorrectIndex !== null && rawItem.rawCorrectIndex !== '') {
+        const parsedCorr = parseCorrectIndexValue(rawItem.rawCorrectIndex, optsHi, optsEn, false);
+        corrIdx = parsedCorr !== null ? parsedCorr : 0;
+      }
+
+      // Subject & Topic Categorisation (Subject-Wise -> Topic-Wise only)
+      const autoCat = autoCategorizeQuestionFromMaster(
+        {
+          questionHi: qHi,
+          questionEn: qEn,
+          optionsHi: optsHi,
+          optionsEn: optsEn,
+          explanationHi: rawItem.explanationHi || '',
+          explanationEn: rawItem.explanationEn || '',
+          subjectTag: forcedSubjectTag || rawItem.subjectTag || '',
+          topic: forcedTopic || rawItem.topic || ''
+        },
+        catalog,
+        allExamCodes
+      );
+
+      const finalSubjName = forcedSubjectTag ||
+        (rawItem.subjectTag && rawItem.subjectTag !== 'Needs Categorisation' ? String(rawItem.subjectTag).trim() : '') ||
+        (autoCat.subjectTag && autoCat.subjectTag !== 'Needs Categorisation' ? autoCat.subjectTag : 'Chhattisgarh General Knowledge');
+
+      const matchedSubObj = catalog.findSubject(finalSubjName);
+      const defaultTopicForSub = matchedSubObj && catalog.getTopicsForSubject(matchedSubObj.subjectId)[0]
+        ? catalog.getTopicsForSubject(matchedSubObj.subjectId)[0].titleEn
+        : 'General Topic';
+
+      const finalTopicName = forcedTopic ||
+        (rawItem.topic && rawItem.topic !== 'Needs Categorisation' ? String(rawItem.topic).trim() : '') ||
+        (autoCat.topic && autoCat.topic !== 'Needs Categorisation' ? autoCat.topic : defaultTopicForSub);
+
+      addCustomTaxonomyEntry(state, null, {
+        examCode: 'CGPSC',
+        subjectName: finalSubjName,
+        topicName: finalTopicName,
+        subtopicName: ''
+      });
+      const updatedCat = getTaxonomyCatalog(state);
+      const resolved = resolveCanonicalQuestionHierarchy(
+        {
+          examCode: 'ALL',
+          examIds: allExamCodes,
+          subjectTag: finalSubjName,
+          topic: finalTopicName,
+          subtopic: ''
+        },
+        updatedCat
+      );
+
+      const corrLetter = ['A', 'B', 'C', 'D'][corrIdx] || 'A';
+      const expHi = convertKrutiDevInText(String(rawItem.explanationHi || rawItem.explanationEn || '').trim()) ||
+        `सही उत्तर विकल्प (${corrLetter}) ${optsHi[corrIdx] || ''} है।`;
+      const expEn = convertKrutiDevInText(String(rawItem.explanationEn || rawItem.explanationHi || '').trim()) ||
+        `Correct answer is Option (${corrLetter}) ${optsEn[corrIdx] || ''}.`;
+      const diffVal = normalizeDifficultyValue(rawItem.difficulty || rawItem.difficultyLevel) || 'Moderate';
+
+      const qDoc = {
+        id: '',
+        questionId: '',
+        examCode: 'ALL',
+        examIds: allExamCodes,
+        subjectId: resolved.subjectId || makeSlugId('sub', finalSubjName),
+        subjectTag: resolved.subjectTag || finalSubjName,
+        topicId: resolved.topicId || makeSlugId('top', finalTopicName),
+        topic: resolved.topic || finalTopicName,
+        subtopicId: '',
+        subtopic: '',
+        difficulty: diffVal,
+        difficultyLevel: diffVal,
+        questionType: 'MCQ',
+        sourceDocument: (questionFile && questionFile.name) || 'AI_Scan',
+        paperSetCode: paperSetCode || 'A',
+        categorisationConfidence: 98,
+        needsCategorisation: false,
+        verificationStatus: 'verified',
+        status: 'verified',
+        verified: true,
+        adminVerified: true,
+        isDeleted: false,
+        languageAvailability: detectLanguageAvailability(rawHi, rawEn),
+        questionHi: qHi,
+        questionEn: qEn,
+        optA_Hi: optsHi[0],
+        optB_Hi: optsHi[1],
+        optC_Hi: optsHi[2],
+        optD_Hi: optsHi[3],
+        optA_En: optsEn[0],
+        optB_En: optsEn[1],
+        optC_En: optsEn[2],
+        optD_En: optsEn[3],
+        optionsHi: optsHi,
+        optionsEn: optsEn,
+        correctIndex: corrIdx,
+        correctOptionIndex: corrIdx,
+        explanationHi: expHi,
+        explanationEn: expEn,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+        createdAtIso: nowIso,
+        updatedAtIso: nowIso
+      };
+      qDoc.id = computeDeterministicQuestionId(qDoc);
+      qDoc.questionId = qDoc.id;
+      finalDocs.push(qDoc);
+    });
+
+    return finalDocs;
+  }
+
   function openQuestionFormModal({ title, question, stateRef, onSave }) {
     const modalRoot = document.getElementById('genericModalContainer');
     if (!modalRoot || !question) return;
     const catalog = getTaxonomyCatalog(stateRef);
     const optsHi = Array.isArray(question.optionsHi) ? question.optionsHi : [question.optA_Hi || '', question.optB_Hi || '', question.optC_Hi || '', question.optD_Hi || ''];
     const optsEn = Array.isArray(question.optionsEn) ? question.optionsEn : [question.optA_En || '', question.optB_En || '', question.optC_En || '', question.optD_En || ''];
-    const tagsStr = Array.isArray(question.tags) ? question.tags.join(', ') : (question.tags || '');
-    const currentExamIds = Array.isArray(question.examIds) && question.examIds.length > 0
-      ? question.examIds
-      : [question.examCode || 'CGPSC'];
     const currentDiff = normalizeDifficultyValue(question.difficultyLevel || question.difficulty) || 'Moderate';
-    const currentVerStatus = question.verificationStatus || question.status || 'verified';
+    const allExamCodes = ['ALL', ...catalog.examCategories.map((e) => e.code)];
 
     modalRoot.innerHTML = `
       <div class="modal-backdrop">
-        <div class="modal-card" style="max-width:820px;max-height:92vh;overflow-y:auto;">
+        <div class="modal-card" style="max-width:740px;max-height:92vh;overflow-y:auto;">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-            <h2 style="font-size:1.08rem;font-weight:800;">${esc(title || '✏️ Edit Question & Hierarchical Categorisation')}</h2>
-            <button class="btn btn-outline btn-sm" id="closeEditQModalBtn">✕ Cancel</button>
+            <h2 style="font-size:1.06rem;font-weight:800;">${esc(title || '➕ प्रश्न जोड़ें / संपादित करें (Add / Edit Question)')}</h2>
+            <button class="btn btn-outline btn-sm" id="closeEditQModalBtn">✕ बंद करें</button>
           </div>
 
           <div id="editQValidationErrorBanner" style="display:none;padding:10px 12px;border-radius:8px;background:var(--danger-soft);color:var(--danger);font-size:0.8rem;font-weight:700;margin-bottom:10px;"></div>
 
-          <div style="padding:10px;border-radius:8px;background:var(--surface-alt);border:1px solid var(--border);margin-bottom:10px;">
-            <div style="font-size:0.76rem;font-weight:800;color:var(--text-secondary);margin-bottom:6px;">
-              🗂️ Multi-Exam Association (Assign 1 canonical question to multiple exams without duplication)
+          <div style="padding:12px;border-radius:10px;background:var(--surface-alt);border:1px solid var(--border);margin-bottom:12px;">
+            <div style="font-size:0.78rem;font-weight:800;color:var(--primary);margin-bottom:8px;">
+              📁 विषय और टॉपिक फ़ोल्डर चुनें (Subject → Topic Folder)
             </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;" id="eqExamMultiCheckboxes">
-              ${catalog.examCategories.map((ex) => {
-                const exCode = ex.examId || ex.code;
-                const isChecked = currentExamIds.some((id) => String(id).toUpperCase() === String(exCode).toUpperCase());
-                return `
-                  <label style="display:inline-flex;align-items:center;gap:4px;font-size:0.75rem;padding:3px 8px;border-radius:6px;background:var(--surface);border:1px solid var(--border);cursor:pointer;">
-                    <input type="checkbox" data-eq-exam-chk="${esc(exCode)}" ${isChecked ? 'checked' : ''} />
-                    <span><strong>${esc(exCode)}</strong> (${esc(ex.nameEn)})</span>
-                  </label>
-                `;
-              }).join('')}
-            </div>
-            <div class="grid-4" style="gap:8px;">
+            <div class="grid-3" style="gap:10px;">
               <div>
-                <label class="form-label">Primary Exam</label>
-                <select class="form-select" id="eqExamCode">
-                  ${catalog.examCategories.map((ex) => `<option value="${esc(ex.code)}" ${(question.examCode || currentExamIds[0] || 'CGPSC') === ex.code ? 'selected' : ''}>${esc(ex.code)} — ${esc(ex.nameEn)}</option>`).join('')}
-                </select>
-              </div>
-              <div>
-                <label class="form-label">Subject *</label>
-                <input class="form-input" id="eqSubjectTag" list="eqSubjectList" value="${esc(question.subjectTag || 'Chhattisgarh General Knowledge')}" placeholder="Subject..." />
+                <label class="form-label">1. विषय फ़ोल्डर (Subject) *</label>
+                <input class="form-input" id="eqSubjectTag" list="eqSubjectList" value="${esc(question.subjectTag || 'Chhattisgarh General Knowledge')}" placeholder="विषय चुनें या लिखें..." />
                 <datalist id="eqSubjectList">
                   ${catalog.subjects.map((s) => `<option value="${esc(s.titleEn)}">${esc(s.titleHi)}</option>`).join('')}
                 </datalist>
               </div>
               <div>
-                <label class="form-label">Topic *</label>
-                <input class="form-input" id="eqTopic" list="eqTopicList" value="${esc(question.topic || 'History of Chhattisgarh')}" placeholder="Topic..." />
+                <label class="form-label">2. टॉपिक फ़ोल्डर (Topic) *</label>
+                <input class="form-input" id="eqTopic" list="eqTopicList" value="${esc(question.topic || 'History of Chhattisgarh')}" placeholder="टॉपिक चुनें या लिखें..." />
                 <datalist id="eqTopicList">
                   ${catalog.allTopics.map((t) => `<option value="${esc(t)}"></option>`).join('')}
                 </datalist>
               </div>
               <div>
-                <label class="form-label">Subtopic</label>
-                <input class="form-input" id="eqSubtopic" list="eqSubtopicList" value="${esc(question.subtopic || '')}" placeholder="Subtopic..." />
-                <datalist id="eqSubtopicList">
-                  ${(catalog.allSubtopics || []).map((st) => `<option value="${esc(st)}"></option>`).join('')}
-                </datalist>
+                <label class="form-label">3. कठिनाई स्तर (Difficulty)</label>
+                <select class="form-select" id="eqDifficulty">
+                  <option value="Easy" ${currentDiff === 'Easy' ? 'selected' : ''}>Easy (सरल)</option>
+                  <option value="Moderate" ${currentDiff === 'Moderate' ? 'selected' : ''}>Moderate (मध्यम)</option>
+                  <option value="Hard" ${currentDiff === 'Hard' ? 'selected' : ''}>Hard (कठिन)</option>
+                </select>
               </div>
-            </div>
-          </div>
-
-          <div class="grid-4" style="gap:8px;margin-bottom:10px;">
-            <div>
-              <label class="form-label">Difficulty Level</label>
-              <select class="form-select" id="eqDifficulty">
-                <option value="Easy" ${currentDiff === 'Easy' ? 'selected' : ''}>Easy</option>
-                <option value="Moderate" ${currentDiff === 'Moderate' ? 'selected' : ''}>Moderate</option>
-                <option value="Hard" ${currentDiff === 'Hard' ? 'selected' : ''}>Hard</option>
-              </select>
-            </div>
-            <div>
-              <label class="form-label">Verification Status</label>
-              <select class="form-select" id="eqStatus">
-                <option value="verified" ${(currentVerStatus === 'verified' || currentVerStatus === 'active') ? 'selected' : ''}>Verified (Eligible)</option>
-                <option value="needs_categorisation" ${currentVerStatus === 'needs_categorisation' ? 'selected' : ''}>Needs Categorisation</option>
-                <option value="unverified" ${currentVerStatus === 'unverified' ? 'selected' : ''}>Unverified</option>
-                <option value="draft" ${currentVerStatus === 'draft' ? 'selected' : ''}>Draft</option>
-                <option value="flagged" ${currentVerStatus === 'flagged' ? 'selected' : ''}>Flagged</option>
-              </select>
-            </div>
-            <div>
-              <label class="form-label">Source Exam / Year / Set</label>
-              <input class="form-input" id="eqSourceMeta" value="${esc([question.sourceExam, question.sourceYear, question.paperSetCode].filter(Boolean).join(' | '))}" placeholder="e.g. CGPSC Pre | 2024 | Set A" />
-            </div>
-            <div>
-              <label class="form-label">Tags (comma-separated)</label>
-              <input class="form-input" id="eqTags" value="${esc(tagsStr)}" placeholder="PYQ, Prelim, Imp" />
             </div>
           </div>
 
           <div class="grid-2" style="gap:8px;margin-bottom:8px;">
             <div>
-              <label class="form-label">Question Text (Hindi / हिन्दी प्रश्न) *</label>
-              <textarea class="form-textarea" id="eqStemHi" rows="2">${esc(question.questionHi || '')}</textarea>
+              <label class="form-label">प्रश्न (हिन्दी में) *</label>
+              <textarea class="form-textarea" id="eqStemHi" rows="2" placeholder="यहाँ हिन्दी में प्रश्न लिखें...">${esc(question.questionHi || '')}</textarea>
             </div>
             <div>
-              <label class="form-label">Question Text (English) *</label>
-              <textarea class="form-textarea" id="eqStemEn" rows="2">${esc(question.questionEn || '')}</textarea>
+              <label class="form-label">Question (in English)</label>
+              <textarea class="form-textarea" id="eqStemEn" rows="2" placeholder="Type English question (optional if Hindi provided)...">${esc(question.questionEn || '')}</textarea>
             </div>
           </div>
 
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;">
             <input class="form-input" id="eqOpt0Hi" value="${esc(optsHi[0] || '')}" placeholder="विकल्प A (Hindi) *" />
-            <input class="form-input" id="eqOpt0En" value="${esc(optsEn[0] || '')}" placeholder="Option A (English) *" />
+            <input class="form-input" id="eqOpt0En" value="${esc(optsEn[0] || '')}" placeholder="Option A (English)" />
             <input class="form-input" id="eqOpt1Hi" value="${esc(optsHi[1] || '')}" placeholder="विकल्प B (Hindi) *" />
-            <input class="form-input" id="eqOpt1En" value="${esc(optsEn[1] || '')}" placeholder="Option B (English) *" />
+            <input class="form-input" id="eqOpt1En" value="${esc(optsEn[1] || '')}" placeholder="Option B (English)" />
             <input class="form-input" id="eqOpt2Hi" value="${esc(optsHi[2] || '')}" placeholder="विकल्प C (Hindi) *" />
-            <input class="form-input" id="eqOpt2En" value="${esc(optsEn[2] || '')}" placeholder="Option C (English) *" />
+            <input class="form-input" id="eqOpt2En" value="${esc(optsEn[2] || '')}" placeholder="Option C (English)" />
             <input class="form-input" id="eqOpt3Hi" value="${esc(optsHi[3] || '')}" placeholder="विकल्प D (Hindi) *" />
-            <input class="form-input" id="eqOpt3En" value="${esc(optsEn[3] || '')}" placeholder="Option D (English) *" />
+            <input class="form-input" id="eqOpt3En" value="${esc(optsEn[3] || '')}" placeholder="Option D (English)" />
           </div>
 
-          <div class="grid-3" style="gap:8px;margin-bottom:12px;">
+          <div class="grid-3" style="gap:8px;margin-bottom:14px;">
             <div>
-              <label class="form-label">Correct Answer (0–3) *</label>
+              <label class="form-label">सही उत्तर (Correct Option) *</label>
               <select class="form-select" id="eqCorrectIdx">
-                <option value="0" ${Number(question.correctOptionIndex ?? question.correctIndex ?? 0) === 0 ? 'selected' : ''}>Option A (0)</option>
-                <option value="1" ${Number(question.correctOptionIndex ?? question.correctIndex ?? 0) === 1 ? 'selected' : ''}>Option B (1)</option>
-                <option value="2" ${Number(question.correctOptionIndex ?? question.correctIndex ?? 0) === 2 ? 'selected' : ''}>Option C (2)</option>
-                <option value="3" ${Number(question.correctOptionIndex ?? question.correctIndex ?? 0) === 3 ? 'selected' : ''}>Option D (3)</option>
+                <option value="0" ${Number(question.correctOptionIndex ?? question.correctIndex ?? 0) === 0 ? 'selected' : ''}>✓ विकल्प A (Option A)</option>
+                <option value="1" ${Number(question.correctOptionIndex ?? question.correctIndex ?? 0) === 1 ? 'selected' : ''}>✓ विकल्प B (Option B)</option>
+                <option value="2" ${Number(question.correctOptionIndex ?? question.correctIndex ?? 0) === 2 ? 'selected' : ''}>✓ विकल्प C (Option C)</option>
+                <option value="3" ${Number(question.correctOptionIndex ?? question.correctIndex ?? 0) === 3 ? 'selected' : ''}>✓ विकल्प D (Option D)</option>
               </select>
             </div>
             <div>
-              <label class="form-label">Hindi Explanation (व्याख्या) *</label>
-              <input class="form-input" id="eqExpHi" value="${esc(question.explanationHi || '')}" placeholder="हिन्दी व्याख्या..." />
+              <label class="form-label">व्याख्या (Hindi Explanation)</label>
+              <input class="form-input" id="eqExpHi" value="${esc(question.explanationHi || '')}" placeholder="संक्षिप्त हिन्दी व्याख्या..." />
             </div>
             <div>
-              <label class="form-label">English Explanation *</label>
-              <input class="form-input" id="eqExpEn" value="${esc(question.explanationEn || '')}" placeholder="English explanation..." />
+              <label class="form-label">Explanation (English)</label>
+              <input class="form-input" id="eqExpEn" value="${esc(question.explanationEn || '')}" placeholder="Short explanation..." />
             </div>
           </div>
 
           <div style="display:flex;justify-content:flex-end;gap:8px;">
-            <button class="btn btn-outline" id="cancelEditQModalBtn">Cancel</button>
-            <button class="btn btn-primary" id="saveEditQModalBtn">💾 Validate &amp; Save Changes</button>
+            <button class="btn btn-outline" id="cancelEditQModalBtn">रद्द करें (Cancel)</button>
+            <button class="btn btn-primary" id="saveEditQModalBtn">💾 फ़ोल्डर में सेव करें (Save Question)</button>
           </div>
         </div>
       </div>
@@ -6632,18 +6931,17 @@
       const corrLetter = ['A', 'B', 'C', 'D'][corrIdx] || 'A';
       const rawExpHi = document.getElementById('eqExpHi').value.trim();
       const rawExpEn = document.getElementById('eqExpEn').value.trim();
-      const expHi = rawExpHi || rawExpEn || `सही उत्तर विकल्प ${corrLetter} है।`;
-      const expEn = rawExpEn || rawExpHi || `Correct answer is Option ${corrLetter}.`;
+      const expHi = rawExpHi || rawExpEn || `सही उत्तर विकल्प (${corrLetter}) है।`;
+      const expEn = rawExpEn || rawExpHi || `Correct answer is Option (${corrLetter}).`;
 
       const subjectTag = document.getElementById('eqSubjectTag').value.trim();
       const topic = document.getElementById('eqTopic').value.trim();
-      const subtopic = document.getElementById('eqSubtopic').value.trim();
       const errBanner = document.getElementById('editQValidationErrorBanner');
 
       const errs = [];
-      if (!qHi && !qEn) errs.push('Question text (Hindi or English) is required.');
-      if (newOptsHi.some((o) => !o)) errs.push('All 4 options (A–D) are required (in Hindi or English).');
-      if (!subjectTag || !topic) errs.push('Subject and Topic are required.');
+      if (!qHi && !qEn) errs.push('कृपया प्रश्न लिखें (Question text is required).');
+      if (newOptsHi.some((o) => !o)) errs.push('कृपया चारों विकल्प (A, B, C, D) भरें।');
+      if (!subjectTag || !topic) errs.push('कृपया विषय (Subject) और टॉपिक (Topic) चुनें।');
 
       if (errs.length > 0) {
         errBanner.style.display = 'block';
@@ -6651,44 +6949,30 @@
         return;
       }
 
-      const primaryExam = document.getElementById('eqExamCode').value || 'CGPSC';
-      const checkedExams = [];
-      modalRoot.querySelectorAll('[data-eq-exam-chk]').forEach((chk) => {
-        if (chk.checked) checkedExams.push(chk.getAttribute('data-eq-exam-chk'));
-      });
-      const finalExamIds = Array.from(new Set([primaryExam, ...checkedExams])).filter(Boolean);
-
       const resolved = resolveCanonicalQuestionHierarchy(
-        { examCode: primaryExam, examIds: finalExamIds, subjectTag, topic, subtopic },
+        { examCode: 'ALL', examIds: allExamCodes, subjectTag, topic, subtopic: '' },
         catalog
       );
-
-      const sourceParts = document.getElementById('eqSourceMeta').value.split('|').map((s) => s.trim());
-      const tagsArr = document.getElementById('eqTags').value.split(',').map((t) => t.trim()).filter(Boolean);
       const diffVal = normalizeDifficultyValue(document.getElementById('eqDifficulty').value) || 'Moderate';
-      const statusVal = document.getElementById('eqStatus').value || 'verified';
       const nowIso = new Date().toISOString();
 
       const updated = {
-        examCode: resolved.examCode,
-        examIds: resolved.examIds,
-        subjectId: resolved.subjectId,
+        examCode: 'ALL',
+        examIds: allExamCodes,
+        subjectId: resolved.subjectId || makeSlugId('sub', subjectTag),
         subjectTag: resolved.subjectTag || subjectTag,
-        topicId: resolved.topicId,
+        topicId: resolved.topicId || makeSlugId('top', topic),
         topic: resolved.topic || topic,
-        subtopicId: resolved.subtopicId,
-        subtopic: resolved.subtopic || subtopic,
+        subtopicId: '',
+        subtopic: '',
         difficulty: diffVal,
         difficultyLevel: diffVal,
-        status: statusVal,
-        verificationStatus: statusVal,
-        needsCategorisation: statusVal === 'needs_categorisation',
+        status: 'verified',
+        verificationStatus: 'verified',
+        needsCategorisation: false,
+        verified: true,
+        adminVerified: true,
         languageAvailability: detectLanguageAvailability(rawQHi, rawQEn),
-        sourceExam: sourceParts[0] || question.sourceExam || '',
-        sourceYear: sourceParts[1] || question.sourceYear || '',
-        paperSetCode: sourceParts[2] || question.paperSetCode || '',
-        tags: tagsArr,
-        pyqTag: tagsArr[0] || question.pyqTag || '',
         questionHi: qHi,
         questionEn: qEn,
         optA_Hi: newOptsHi[0],
@@ -6743,95 +7027,44 @@
 
     modalRoot.innerHTML = `
       <div class="modal-backdrop">
-        <div class="modal-card" style="max-width:620px;max-height:90vh;overflow-y:auto;">
+        <div class="modal-card" style="max-width:520px;max-height:90vh;overflow-y:auto;">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-            <h2 style="font-size:1.05rem;font-weight:800;">✏️ Bulk Categorise &amp; Edit ${selectedCount} Selected Question(s)</h2>
+            <h2 style="font-size:1.04rem;font-weight:800;">📂 ${selectedCount} प्रश्नों का Subject / Topic फ़ोल्डर बदलें</h2>
             <button class="btn btn-outline btn-sm" id="closeBulkEditModalBtn">✕</button>
           </div>
           <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:12px;">
-            Leave any field set to <em>"-- Keep Existing --"</em> (or blank) to preserve each question's current value. You can also append multiple Exam associations without duplicating questions.
+            चयनित प्रश्नों को जिस <strong>विषय (Subject)</strong> और <strong>टॉपिक (Topic)</strong> फ़ोल्डर में भेजना चाहते हैं, उसे नीचे चुनें:
           </p>
 
-          <div style="padding:10px;border-radius:8px;background:var(--surface-alt);border:1px solid var(--border);margin-bottom:12px;">
-            <div style="font-size:0.75rem;font-weight:800;color:var(--text-secondary);margin-bottom:6px;">
-              🎯 Multi-Exam Assignment (Check exams to associate with all selected questions)
-            </div>
-            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
-              ${catalog.examCategories.map((ex) => {
-                const exCode = ex.examId || ex.code;
-                return `
-                  <label style="display:inline-flex;align-items:center;gap:4px;font-size:0.74rem;padding:3px 7px;border-radius:6px;background:var(--surface);border:1px solid var(--border);cursor:pointer;">
-                    <input type="checkbox" data-bulk-exam-chk="${esc(exCode)}" />
-                    <span>${esc(exCode)}</span>
-                  </label>
-                `;
-              }).join('')}
-            </div>
-            <label style="display:inline-flex;align-items:center;gap:6px;font-size:0.74rem;cursor:pointer;">
-              <input type="checkbox" id="bulkReplaceExamIdsChk" />
-              <span>Replace existing Exam tags instead of appending to them</span>
-            </label>
-          </div>
-
-          <div class="grid-2" style="gap:10px;margin-bottom:12px;">
-            <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label">Primary Exam Category</label>
-              <select class="form-select" id="bulkEditExamCode">
-                <option value="">-- Keep Existing --</option>
-                ${catalog.examCategories.map((ex) => `<option value="${esc(ex.code)}">${esc(ex.code)} (${esc(ex.nameEn)})</option>`).join('')}
-              </select>
-            </div>
-            <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label">Difficulty Level</label>
-              <select class="form-select" id="bulkEditDifficulty">
-                <option value="">-- Keep Existing --</option>
-                <option value="Easy">Easy</option>
-                <option value="Moderate">Moderate</option>
-                <option value="Hard">Hard</option>
-              </select>
-            </div>
-            <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label">Subject (Subject Master)</label>
-              <input class="form-input" id="bulkEditSubject" list="bulkSubjectDatalist" placeholder="Leave blank to keep existing..." />
-              <datalist id="bulkSubjectDatalist">
-                ${catalog.subjects.map((s) => `<option value="${esc(s.titleEn)}">${esc(s.titleHi)}</option>`).join('')}
-              </datalist>
-            </div>
-            <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label">Topic (Topic Master)</label>
-              <input class="form-input" id="bulkEditTopic" list="bulkTopicDatalist" placeholder="Leave blank to keep existing..." />
-              <datalist id="bulkTopicDatalist">
-                ${catalog.allTopics.map((t) => `<option value="${esc(t)}"></option>`).join('')}
-              </datalist>
-            </div>
-            <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label">Subtopic (Subtopic Master)</label>
-              <input class="form-input" id="bulkEditSubtopic" list="bulkSubtopicDatalist" placeholder="Leave blank to keep existing..." />
-              <datalist id="bulkSubtopicDatalist">
-                ${(catalog.allSubtopics || []).map((st) => `<option value="${esc(st)}"></option>`).join('')}
-              </datalist>
-            </div>
-            <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label">Verification Status</label>
-              <select class="form-select" id="bulkEditStatus">
-                <option value="">-- Keep Existing --</option>
-                <option value="verified">Verified (Eligible for Auto-Test)</option>
-                <option value="needs_categorisation">Needs Categorisation</option>
-                <option value="unverified">Unverified</option>
-                <option value="draft">Draft</option>
-                <option value="flagged">Flagged</option>
-              </select>
-            </div>
+          <div class="form-group">
+            <label class="form-label">1. विषय फ़ोल्डर (Subject Folder)</label>
+            <input class="form-input" id="bulkEditSubject" list="bulkSubjectDatalist" placeholder="विषय चुनें या नया नाम लिखें..." />
+            <datalist id="bulkSubjectDatalist">
+              ${catalog.subjects.map((s) => `<option value="${esc(s.titleEn)}">${esc(s.titleHi)}</option>`).join('')}
+            </datalist>
           </div>
 
           <div class="form-group">
-            <label class="form-label">Add / Update Tags (comma-separated)</label>
-            <input class="form-input" id="bulkEditTags" placeholder="e.g., CGPSC 2026, High Yield" />
+            <label class="form-label">2. टॉपिक फ़ोल्डर (Topic Folder)</label>
+            <input class="form-input" id="bulkEditTopic" list="bulkTopicDatalist" placeholder="टॉपिक चुनें या नया नाम लिखें..." />
+            <datalist id="bulkTopicDatalist">
+              ${catalog.allTopics.map((t) => `<option value="${esc(t)}"></option>`).join('')}
+            </datalist>
           </div>
 
-          <div style="display:flex;justify-content:flex-end;gap:10px;">
-            <button class="btn btn-outline" id="cancelBulkEditModalBtn">Cancel</button>
-            <button class="btn btn-primary" id="applyBulkEditModalBtn">💾 Apply Bulk Categorisation (${selectedCount})</button>
+          <div class="form-group">
+            <label class="form-label">3. कठिनाई स्तर (Difficulty — वैकल्पिक)</label>
+            <select class="form-select" id="bulkEditDifficulty">
+              <option value="">-- पहले जैसा रखें (Keep Existing) --</option>
+              <option value="Easy">Easy (सरल)</option>
+              <option value="Moderate">Moderate (मध्यम)</option>
+              <option value="Hard">Hard (कठिन)</option>
+            </select>
+          </div>
+
+          <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:14px;">
+            <button class="btn btn-outline" id="cancelBulkEditModalBtn">रद्द करें</button>
+            <button class="btn btn-primary" id="applyBulkEditModalBtn">💾 फ़ोल्डर में मूव करें (${selectedCount})</button>
           </div>
         </div>
       </div>
@@ -6840,20 +7073,17 @@
     document.getElementById('closeBulkEditModalBtn').onclick = () => { modalRoot.innerHTML = ''; };
     document.getElementById('cancelBulkEditModalBtn').onclick = () => { modalRoot.innerHTML = ''; };
     document.getElementById('applyBulkEditModalBtn').onclick = () => {
-      const checkedExams = [];
-      modalRoot.querySelectorAll('[data-bulk-exam-chk]').forEach((chk) => {
-        if (chk.checked) checkedExams.push(chk.getAttribute('data-bulk-exam-chk'));
-      });
+      const allExamCodes = ['ALL', ...catalog.examCategories.map((e) => e.code)];
       const changes = {
-        examCode: document.getElementById('bulkEditExamCode').value.trim(),
-        examIds: checkedExams,
-        replaceExamIds: Boolean(document.getElementById('bulkReplaceExamIdsChk').checked),
+        examCode: 'ALL',
+        examIds: allExamCodes,
+        replaceExamIds: true,
         difficulty: document.getElementById('bulkEditDifficulty').value.trim(),
         subjectTag: document.getElementById('bulkEditSubject').value.trim(),
         topic: document.getElementById('bulkEditTopic').value.trim(),
-        subtopic: document.getElementById('bulkEditSubtopic').value.trim(),
-        status: document.getElementById('bulkEditStatus').value.trim(),
-        tagsText: document.getElementById('bulkEditTags').value.trim()
+        subtopic: '',
+        status: 'verified',
+        tagsText: ''
       };
       modalRoot.innerHTML = '';
       if (onApplyBulkChanges) onApplyBulkChanges(changes);
@@ -6928,7 +7158,1368 @@
     }
   }
 
+  function openQuickFolderCreateModal({ mode, defaultSubjectId, state, api, onCreated }) {
+    const modalRoot = document.getElementById('genericModalContainer');
+    if (!modalRoot) return;
+    const catalog = getTaxonomyCatalog(state);
+    const isTopic = mode === 'topic';
+
+    modalRoot.innerHTML = `
+      <div class="modal-backdrop">
+        <div class="modal-card" style="max-width:480px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <h2 style="font-size:1.05rem;font-weight:800;">
+              ${isTopic ? '📂 नया टॉपिक फ़ोल्डर बनाएं (New Topic Folder)' : '📁 नया विषय फ़ोल्डर बनाएं (New Subject Folder)'}
+            </h2>
+            <button class="btn btn-outline btn-sm" id="closeQuickFolderModalBtn">✕</button>
+          </div>
+
+          ${isTopic ? `
+            <div class="form-group">
+              <label class="form-label">विषय चुनें (Parent Subject Folder) *</label>
+              <select class="form-select" id="qfParentSubjectSelect">
+                ${catalog.subjects.map((s) => `
+                  <option value="${esc(s.subjectId)}" ${(defaultSubjectId && (s.subjectId === defaultSubjectId || s.titleEn === defaultSubjectId)) ? 'selected' : ''}>
+                    ${esc(s.titleHi || s.titleEn)} (${esc(s.titleEn)})
+                  </option>
+                `).join('')}
+              </select>
+            </div>
+          ` : ''}
+
+          <div class="form-group">
+            <label class="form-label">${isTopic ? 'टॉपिक का नाम (Hindi / हिन्दी में)' : 'विषय का नाम (Hindi / हिन्दी में)'} *</label>
+            <input class="form-input" id="qfTitleHiInput" placeholder="${isTopic ? 'उदा: छत्तीसगढ़ के राष्ट्रीय उद्यान' : 'उदा: पर्यावरण एवं पारिस्थितिकी'}" />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">${isTopic ? 'Topic Name (in English)' : 'Subject Name (in English)'} *</label>
+            <input class="form-input" id="qfTitleEnInput" placeholder="${isTopic ? 'e.g., National Parks of Chhattisgarh' : 'e.g., Environment & Ecology'}" />
+          </div>
+
+          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
+            <button class="btn btn-outline" id="cancelQuickFolderModalBtn">रद्द करें</button>
+            <button class="btn btn-primary" id="saveQuickFolderModalBtn">💾 फ़ोल्डर बनाएं</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('closeQuickFolderModalBtn').onclick = () => { modalRoot.innerHTML = ''; };
+    document.getElementById('cancelQuickFolderModalBtn').onclick = () => { modalRoot.innerHTML = ''; };
+    document.getElementById('saveQuickFolderModalBtn').onclick = () => {
+      const rawHi = document.getElementById('qfTitleHiInput').value.trim();
+      const rawEn = document.getElementById('qfTitleEnInput').value.trim();
+      const titleHi = rawHi || rawEn;
+      const titleEn = rawEn || rawHi;
+      if (!titleEn) {
+        api.toast('⚠️ कृपया फ़ोल्डर का नाम लिखें।');
+        return;
+      }
+      if (isTopic) {
+        const subId = document.getElementById('qfParentSubjectSelect').value;
+        const created = upsertCategoryMasterItem(state, api, 'topic', {
+          subjectId: subId,
+          titleEn,
+          titleHi
+        });
+        modalRoot.innerHTML = '';
+        api.toast(`📂 नया टॉपिक फ़ोल्डर "${titleHi}" बन गया!`);
+        if (onCreated) onCreated(created);
+      } else {
+        const created = upsertCategoryMasterItem(state, api, 'subject', {
+          titleEn,
+          titleHi,
+          examIds: catalog.examCategories.map((e) => e.examId || e.code)
+        });
+        modalRoot.innerHTML = '';
+        api.toast(`📁 नया विषय फ़ोल्डर "${titleHi}" बन गया!`);
+        if (onCreated) onCreated(created);
+      }
+    };
+  }
+
+  function renderQuestionBankManagementV2(bodyEl, rootEl, state, api) {
+    state.questionBank = state.questionBank || [];
+    const catalog = getTaxonomyCatalog(state);
+    const allExamCodes = ['ALL', ...catalog.examCategories.map((e) => e.code)];
+
+    // Ensure every question in state.questionBank is cleanly categorised by Subject & Topic and eligible for Test Builder
+    let autoCleanedCount = 0;
+    state.questionBank.forEach((q) => {
+      if (!q || q.isDeleted || q.deleted) return;
+      if (!q.id && !q.questionId) {
+        q.id = computeDeterministicQuestionId(q);
+        q.questionId = q.id;
+      } else if (!q.questionId) {
+        q.questionId = q.id;
+      }
+      const needsSubj = !q.subjectTag || q.subjectTag === 'Needs Categorisation' || q.subjectTag === 'General Studies';
+      const needsTop = !q.topic || q.topic === 'Needs Categorisation' || q.topic === 'General Knowledge';
+      if (needsSubj || needsTop || q.needsCategorisation || q.status !== 'verified') {
+        const guessed = autoCategorizeQuestionFromMaster(q, catalog, allExamCodes);
+        if (needsSubj) {
+          q.subjectTag = (guessed.subjectTag && guessed.subjectTag !== 'Needs Categorisation')
+            ? guessed.subjectTag
+            : 'Chhattisgarh General Knowledge';
+          q.subjectId = guessed.subjectId || 'sub_cg_gk';
+        }
+        if (needsTop) {
+          q.topic = (guessed.topic && guessed.topic !== 'Needs Categorisation')
+            ? guessed.topic
+            : 'History of Chhattisgarh';
+          q.topicId = guessed.topicId || 'top_cg_history';
+        }
+        q.needsCategorisation = false;
+        q.status = 'verified';
+        q.verificationStatus = 'verified';
+        q.verified = true;
+        q.adminVerified = true;
+        autoCleanedCount += 1;
+      }
+      if (!Array.isArray(q.examIds) || !q.examIds.includes('ALL')) {
+        q.examIds = Array.from(new Set(['ALL', ...(Array.isArray(q.examIds) ? q.examIds : []), ...allExamCodes]));
+        q.examCode = q.examCode || 'ALL';
+      }
+    });
+    if (autoCleanedCount > 0) {
+      api.saveState();
+    }
+
+    // Initialize folder navigation state
+    if (!qbState.folderNav) {
+      qbState.folderNav = {
+        level: 'subjects', // 'subjects' | 'topics' | 'questions'
+        subjectId: '',
+        subjectNameEn: '',
+        subjectNameHi: '',
+        topicId: '',
+        topicNameEn: '',
+        topicNameHi: '',
+        search: '',
+        difficulty: 'ALL',
+        isScanning: false,
+        scanStatusText: '',
+        lastScanSummary: null,
+        selectedQuestionFile: null,
+        selectedAnswerKeyFile: null,
+        paperSetCode: 'A',
+        overrideSubject: '',
+        overrideTopic: ''
+      };
+    }
+    const nav = qbState.folderNav;
+
+    const activeQuestions = (state.questionBank || []).filter(
+      (q) => !q.isDeleted && !q.deleted && String(q.status || '').toLowerCase() !== 'deleted'
+    );
+
+    // Subject Icons helper
+    const subjectIcons = {
+      sub_cg_gk: '🏛️',
+      sub_history: '📜',
+      sub_geography: '🌍',
+      sub_polity: '⚖️',
+      sub_economy: '📈',
+      sub_science: '🔬',
+      sub_aptitude: '🧮',
+      sub_hindi: '🇮🇳',
+      sub_english: '🔤',
+      sub_computer: '💻',
+      sub_current_affairs: '📰',
+      sub_pedagogy: '🎓'
+    };
+
+    // Build Subject Folders map (from Subject Master + any custom subjects on questions)
+    const subjectFoldersMap = new Map();
+    catalog.subjects.forEach((s) => {
+      subjectFoldersMap.set(s.subjectId, {
+        subjectId: s.subjectId,
+        titleEn: s.titleEn,
+        titleHi: s.titleHi || s.titleEn,
+        icon: subjectIcons[s.subjectId] || '📁',
+        topicsMap: new Map(),
+        questions: []
+      });
+    });
+
+    // Pre-populate topics from Topic Master into their parent Subject Folder
+    catalog.topics.forEach((t) => {
+      const parentSub = subjectFoldersMap.get(t.subjectId);
+      if (parentSub) {
+        parentSub.topicsMap.set(t.topicId, {
+          topicId: t.topicId,
+          subjectId: t.subjectId,
+          titleEn: t.titleEn,
+          titleHi: t.titleHi || t.titleEn,
+          questions: []
+        });
+      }
+    });
+
+    // Distribute activeQuestions into Subject -> Topic folders
+    activeQuestions.forEach((q) => {
+      const matchedSub = catalog.findSubject(q.subjectId || q.subjectTag || 'Chhattisgarh General Knowledge');
+      const subId = matchedSub ? matchedSub.subjectId : makeSlugId('sub', q.subjectTag || 'General Studies');
+      const subEn = matchedSub ? matchedSub.titleEn : (q.subjectTag || 'General Studies');
+      const subHi = matchedSub ? (matchedSub.titleHi || matchedSub.titleEn) : (q.subjectTag || 'सामान्य अध्ययन');
+
+      if (!subjectFoldersMap.has(subId)) {
+        subjectFoldersMap.set(subId, {
+          subjectId: subId,
+          titleEn: subEn,
+          titleHi: subHi,
+          icon: subjectIcons[subId] || '📁',
+          topicsMap: new Map(),
+          questions: []
+        });
+      }
+      const subFolder = subjectFoldersMap.get(subId);
+      subFolder.questions.push(q);
+
+      const matchedTop = catalog.findTopic(subId, q.topicId || q.topic || 'General Topic');
+      const topId = matchedTop ? matchedTop.topicId : makeSlugId('top', `${subId}_${q.topic || 'General Topic'}`);
+      const topEn = matchedTop ? matchedTop.titleEn : (q.topic || 'General Topic');
+      const topHi = matchedTop ? (matchedTop.titleHi || matchedTop.titleEn) : (q.topic || 'सामान्य टॉपिक');
+
+      if (!subFolder.topicsMap.has(topId)) {
+        subFolder.topicsMap.set(topId, {
+          topicId: topId,
+          subjectId: subId,
+          titleEn: topEn,
+          titleHi: topHi,
+          questions: []
+        });
+      }
+      subFolder.topicsMap.get(topId).questions.push(q);
+    });
+
+    const subjectFolders = Array.from(subjectFoldersMap.values());
+    const totalTopicFoldersCount = subjectFolders.reduce((acc, s) => acc + s.topicsMap.size, 0);
+
+    const activeSubjectFolder = nav.subjectId ? subjectFoldersMap.get(nav.subjectId) : null;
+    const activeTopicFolder = (activeSubjectFolder && nav.topicId && nav.topicId !== 'ALL_IN_SUBJECT')
+      ? activeSubjectFolder.topicsMap.get(nav.topicId)
+      : null;
+
+    // Determine questions to display when in 'questions' view or when searching
+    const searchLow = String(nav.search || '').trim().toLowerCase();
+    let baseQuestionList = [];
+    if (nav.level === 'questions' || searchLow) {
+      if (activeTopicFolder) {
+        baseQuestionList = activeTopicFolder.questions;
+      } else if (activeSubjectFolder) {
+        baseQuestionList = activeSubjectFolder.questions;
+      } else {
+        baseQuestionList = activeQuestions;
+      }
+    }
+
+    const filteredQuestions = baseQuestionList.filter((q) => {
+      if (nav.difficulty !== 'ALL') {
+        const qDiff = normalizeDifficultyValue(q.difficultyLevel || q.difficulty) || 'Moderate';
+        if (qDiff !== nav.difficulty) return false;
+      }
+      if (searchLow) {
+        const hay = [
+          q.questionHi, q.questionEn, q.subjectTag, q.topic,
+          ...(q.optionsHi || []), ...(q.optionsEn || []),
+          q.explanationHi, q.explanationEn
+        ].join(' ').toLowerCase();
+        if (!hay.includes(searchLow)) return false;
+      }
+      return true;
+    });
+
+    // Pagination for questions view
+    const totalFiltered = filteredQuestions.length;
+    const totalPages = Math.max(1, Math.ceil(totalFiltered / qbState.pageSize));
+    if (qbState.page > totalPages) qbState.page = totalPages;
+    if (qbState.page < 1) qbState.page = 1;
+    const startIdx = (qbState.page - 1) * qbState.pageSize;
+    const pageItems = filteredQuestions.slice(startIdx, startIdx + qbState.pageSize);
+
+    const validSelectedIds = new Set(
+      Array.from(qbState.selectedIds).filter((id) => activeQuestions.some((q) => q.id === id))
+    );
+    qbState.selectedIds = validSelectedIds;
+    const selectedCount = validSelectedIds.size;
+    const letters = ['A', 'B', 'C', 'D'];
+
+    bodyEl.innerHTML = `
+      <!-- Top Summary & Compact Action Bar -->
+      <div class="card" style="border-left:5px solid var(--primary);margin-bottom:14px;padding:14px 16px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+          <div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+              <span class="badge badge-exam">🤖 AI स्मार्ट प्रश्न बैंक (SUBJECT → TOPIC FOLDER SYSTEM)</span>
+              <span class="badge badge-review">📁 ${subjectFolders.length} विषय फ़ोल्डर</span>
+              <span class="badge badge-draft">📂 ${totalTopicFoldersCount} टॉपिक फ़ोल्डर</span>
+              <span class="badge badge-free">📝 ${activeQuestions.length} कुल प्रश्न (Test Builder के लिए तैयार)</span>
+            </div>
+            <h3 style="font-size:1.06rem;font-weight:800;margin-top:6px;">
+              विषय-वार और टॉपिक-वार प्रश्न बैंक (Question Paper + Answer Key AI Scanner)
+            </h3>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-primary btn-sm" id="qbPopupAddSingleQuestionBtn">➕ एक प्रश्न जोड़ें (Add Question)</button>
+            <button class="btn btn-outline btn-sm" id="qbPopupNewSubjectBtn">📁 + नया विषय</button>
+            <button class="btn btn-outline btn-sm" id="qbPopupNewTopicBtn">📂 + नया टॉपिक</button>
+            <button class="btn btn-outline btn-sm" id="qbQuickExportJsonBtn" title="प्रश्न बैंक बैकअप डाउनलोड करें">⬇️ Backup JSON</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card 1: AI Dual-File Scanner (Question Paper + Answer Key -> Auto Subject/Topic Folder Save) -->
+      <div class="card" style="border:1.5px solid var(--secondary);background:linear-gradient(180deg, var(--surface) 0%, var(--surface-alt) 100%);margin-bottom:16px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+          <div>
+            <h3 style="font-size:1.02rem;font-weight:800;color:var(--primary);display:flex;align-items:center;gap:6px;">
+              <span>🤖 AI से प्रश्न-पत्र और मॉडल उत्तर कुंजी स्कैन करें</span>
+              <span class="badge badge-free" style="font-size:0.7rem;">सीधे Subject → Topic फ़ोल्डर में सेव</span>
+            </h3>
+            <p style="font-size:0.8rem;color:var(--text-secondary);margin-top:2px;">
+              बस <strong>1. प्रश्न-पत्र (Question Paper)</strong> और <strong>2. उत्तर कुंजी (Answer Key)</strong> फ़ाइल चुनें — AI सभी प्रश्नों और सही उत्तरों को मिलाकर अपने-आप सही <strong>विषय (Subject) → टॉपिक (Topic)</strong> फ़ोल्डर में सेव कर देगा।
+            </p>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <button class="btn btn-outline btn-sm" id="qbDownloadSampleCsvBtn">⬇️ Sample CSV</button>
+            <button class="btn btn-outline btn-sm" id="qbDownloadSampleJsonBtn">⬇️ Sample JSON</button>
+          </div>
+        </div>
+
+        <div class="grid-3" style="gap:10px;margin-bottom:10px;">
+          <!-- Box 1: Question Paper File -->
+          <div style="padding:10px 12px;border-radius:10px;background:var(--surface);border:1.5px dashed var(--primary);">
+            <label class="form-label" style="color:var(--primary);font-weight:800;font-size:0.8rem;">
+              1️⃣ प्रश्न-पत्र फ़ाइल (Question Paper PDF / Image / CSV / JSON) *
+            </label>
+            <input type="file" accept=".pdf,.csv,.json,.png,.jpg,.jpeg,.webp,application/pdf,text/csv,application/json,image/*" class="form-input" id="qbAiQuestionFileInput" style="padding:6px;font-size:0.78rem;" />
+            <div id="qbSelectedQPFileLabel" style="font-size:0.74rem;margin-top:4px;color:${nav.selectedQuestionFile ? 'var(--success)' : 'var(--text-muted)'};font-weight:700;">
+              ${nav.selectedQuestionFile ? `📄 चुना गया: ${esc(nav.selectedQuestionFile.name)}` : 'कोई भी PDF, Photo, CSV या JSON प्रश्न-पत्र चुनें'}
+            </div>
+          </div>
+
+          <!-- Box 2: Answer Key File + Set Selector -->
+          <div style="padding:10px 12px;border-radius:10px;background:var(--surface);border:1.5px dashed var(--secondary);">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:4px;">
+              <label class="form-label" style="color:var(--secondary);font-weight:800;font-size:0.8rem;margin-bottom:0;">
+                2️⃣ उत्तर कुंजी फ़ाइल (Answer Key PDF / TXT / CSV)
+              </label>
+              <select class="form-select" id="qbAiPaperSetSelect" style="width:auto;padding:2px 8px;font-size:0.74rem;height:26px;">
+                <option value="A" ${nav.paperSetCode === 'A' ? 'selected' : ''}>Set A</option>
+                <option value="B" ${nav.paperSetCode === 'B' ? 'selected' : ''}>Set B</option>
+                <option value="C" ${nav.paperSetCode === 'C' ? 'selected' : ''}>Set C</option>
+                <option value="D" ${nav.paperSetCode === 'D' ? 'selected' : ''}>Set D</option>
+              </select>
+            </div>
+            <input type="file" accept=".pdf,.txt,.csv,application/pdf,text/plain,text/csv" class="form-input" id="qbAiAnswerKeyFileInput" style="padding:6px;font-size:0.78rem;margin-bottom:5px;" />
+            <input class="form-input" id="qbAiAnswerKeyTextInput" value="${esc(qbState.pendingAnswerKeyText || '')}" placeholder="या उत्तर लिखें: 1-A, 2-C, 3-B (वैकल्पिक)" style="padding:5px 8px;font-size:0.76rem;" />
+          </div>
+
+          <!-- Box 3: Folder Destination & Scan Button -->
+          <div style="padding:10px 12px;border-radius:10px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;justify-content:space-between;">
+            <div>
+              <label class="form-label" style="font-weight:800;font-size:0.78rem;margin-bottom:4px;">
+                3️⃣ फ़ोल्डर चयन (AI Auto या निश्चित विषय)
+              </label>
+              <select class="form-select" id="qbAiOverrideSubjectSelect" style="padding:6px 8px;font-size:0.78rem;margin-bottom:6px;">
+                <option value="">🤖 AI अपने-आप सही विषय (Subject) पहचाने</option>
+                ${catalog.subjects.map((s) => `
+                  <option value="${esc(s.titleEn)}" ${nav.overrideSubject === s.titleEn ? 'selected' : ''}>
+                    📁 ${esc(s.titleHi)} (${esc(s.titleEn)})
+                  </option>
+                `).join('')}
+              </select>
+            </div>
+            <button class="btn btn-success" id="qbStartAiScanAndSaveBtn" style="width:100%;font-weight:800;padding:10px 12px;font-size:0.85rem;" ${nav.isScanning ? 'disabled' : ''}>
+              ${nav.isScanning ? '⏳ AI स्कैन और सेव हो रहा है...' : '🚀 AI से स्कैन करें और फ़ोल्डर में सेव करें'}
+            </button>
+          </div>
+        </div>
+
+        ${nav.isScanning || nav.scanStatusText ? `
+          <div id="qbAiScanStatusBox" style="padding:10px 14px;border-radius:8px;background:var(--primary-soft);border:1px solid var(--primary);color:var(--primary);font-size:0.82rem;font-weight:800;margin-top:6px;">
+            ${esc(nav.scanStatusText || '⏳ कृपया प्रतीक्षा करें, AI फ़ाइल को स्कैन कर रहा है...')}
+          </div>
+        ` : ''}
+
+        ${nav.lastScanSummary ? `
+          <div style="padding:12px 14px;border-radius:10px;background:var(--success-soft);border:1.5px solid var(--success);margin-top:8px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+              <div style="font-weight:800;font-size:0.88rem;color:var(--success);">
+                ✅ ${esc(nav.lastScanSummary.message)}
+              </div>
+              <button class="btn btn-outline btn-sm" id="qbDismissScanSummaryBtn" style="padding:2px 8px;font-size:0.72rem;">✕ बंद करें</button>
+            </div>
+            ${Array.isArray(nav.lastScanSummary.folderBreakdown) && nav.lastScanSummary.folderBreakdown.length > 0 ? `
+              <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+                <span style="font-size:0.76rem;font-weight:700;color:var(--text-secondary);">सेव किए गए फ़ोल्डर खोलें:</span>
+                ${nav.lastScanSummary.folderBreakdown.map((fb) => `
+                  <button class="btn btn-outline btn-sm" data-open-scanned-folder="${esc(fb.subjectId)}:::${esc(fb.topicId)}" style="background:var(--surface);font-size:0.75rem;padding:4px 10px;">
+                    📁 ${esc(fb.subjectName)} › 📂 ${esc(fb.topicName)} (<strong>${fb.count} प्रश्न</strong>)
+                  </button>
+                `).join('')}
+              </div>
+            ` : ''}
+          </div>
+        ` : ''}
+      </div>
+
+      <!-- Card 2: Subject -> Topic -> Questions Folder Explorer -->
+      <div class="card">
+        <!-- Breadcrumb & Search Header -->
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding-bottom:12px;margin-bottom:14px;border-bottom:1px solid var(--border);">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <button class="btn ${nav.level === 'subjects' && !searchLow ? 'btn-primary' : 'btn-outline'} btn-sm" id="qbBreadcrumbHomeBtn">
+              🏠 सभी विषय फ़ोल्डर (${subjectFolders.length})
+            </button>
+            ${activeSubjectFolder ? `
+              <span style="font-weight:800;color:var(--text-muted);">›</span>
+              <button class="btn ${nav.level === 'topics' && !searchLow ? 'btn-primary' : 'btn-outline'} btn-sm" id="qbBreadcrumbSubjectBtn">
+                ${esc(activeSubjectFolder.icon)} ${esc(activeSubjectFolder.titleHi)} (${activeSubjectFolder.questions.length})
+              </button>
+            ` : ''}
+            ${activeTopicFolder ? `
+              <span style="font-weight:800;color:var(--text-muted);">›</span>
+              <span class="badge badge-exam" style="padding:6px 10px;font-size:0.8rem;">
+                📂 ${esc(activeTopicFolder.titleHi)} (${activeTopicFolder.questions.length} प्रश्न)
+              </span>
+            ` : (nav.level === 'questions' && activeSubjectFolder && nav.topicId === 'ALL_IN_SUBJECT' ? `
+              <span style="font-weight:800;color:var(--text-muted);">›</span>
+              <span class="badge badge-exam" style="padding:6px 10px;font-size:0.8rem;">
+                📋 सभी प्रश्न (${activeSubjectFolder.questions.length})
+              </span>
+            ` : '')}
+          </div>
+
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:1;max-width:420px;justify-content:flex-end;">
+            <input class="form-input" id="qbExplorerSearchInput" value="${esc(nav.search)}" placeholder="🔍 किसी भी प्रश्न या उत्तर को खोजें..." style="padding:7px 12px;font-size:0.82rem;flex:1;min-width:190px;" />
+            ${nav.search ? `<button class="btn btn-outline btn-sm" id="qbClearSearchBtn">✕</button>` : ''}
+          </div>
+        </div>
+
+        <!-- LEVEL 1: ALL SUBJECT FOLDERS GRID -->
+        ${nav.level === 'subjects' && !searchLow ? `
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+            <div>
+              <h4 style="font-size:0.96rem;font-weight:800;">📁 विषय फ़ोल्डर चुनें (Click a Subject to View Topic Folders)</h4>
+              <p style="font-size:0.78rem;color:var(--text-secondary);">
+                प्रत्येक विषय के अंदर उसके अलग-अलग टॉपिक फ़ोल्डर हैं जिनमें AI द्वारा स्कैन किए गए प्रश्न-उत्तर सुरक्षित हैं।
+              </p>
+            </div>
+            <button class="btn btn-outline btn-sm" id="qbViewAllQuestionsFlatBtn">📋 सारे विषयों के सभी प्रश्न देखें (${activeQuestions.length})</button>
+          </div>
+
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(255px,1fr));gap:12px;">
+            ${subjectFolders.map((sf) => `
+              <div class="card" data-open-subject-folder="${esc(sf.subjectId)}" style="margin-bottom:0;cursor:pointer;border:1.5px solid ${sf.questions.length > 0 ? 'var(--primary)' : 'var(--border)'};background:${sf.questions.length > 0 ? 'var(--surface)' : 'var(--surface-alt)'};transition:transform 0.15s,box-shadow 0.15s;">
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+                  <div style="font-size:1.75rem;line-height:1;">${sf.icon}</div>
+                  <span class="badge ${sf.questions.length > 0 ? 'badge-free' : 'badge-draft'}" style="font-size:0.76rem;">
+                    📝 ${sf.questions.length} प्रश्न
+                  </span>
+                </div>
+                <div style="font-weight:800;font-size:0.95rem;margin-top:10px;color:var(--text);">
+                  ${esc(sf.titleHi)}
+                </div>
+                <div style="font-size:0.78rem;color:var(--text-secondary);font-weight:600;margin-top:2px;">
+                  ${esc(sf.titleEn)}
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding-top:8px;border-top:1px dashed var(--border);font-size:0.76rem;color:var(--primary);font-weight:800;">
+                  <span>📂 ${sf.topicsMap.size} टॉपिक फ़ोल्डर</span>
+                  <span>खोलें (Open) ▶</span>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+
+        <!-- LEVEL 2: TOPIC FOLDERS INSIDE SELECTED SUBJECT -->
+        ${nav.level === 'topics' && activeSubjectFolder && !searchLow ? `
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+              <button class="btn btn-outline btn-sm" id="qbBackToSubjectsBtn">⬅️ वापस सभी विषयों पर</button>
+              <div>
+                <h4 style="font-size:1rem;font-weight:800;">
+                  ${esc(activeSubjectFolder.icon)} ${esc(activeSubjectFolder.titleHi)} (${esc(activeSubjectFolder.titleEn)}) — टॉपिक फ़ोल्डर
+                </h4>
+                <div style="font-size:0.77rem;color:var(--text-secondary);">
+                  किसी भी टॉपिक फ़ोल्डर पर क्लिक करके उसके अंदर के प्रश्न और उत्तर देखें।
+                </div>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button class="btn btn-outline btn-sm" id="qbAddTopicInSubjectBtn">📂 + नया टॉपिक जोड़ें</button>
+              <button class="btn btn-primary btn-sm" id="qbAddQuestionInSubjectBtn">➕ इस विषय में प्रश्न जोड़ें</button>
+              <button class="btn btn-navy btn-sm" id="qbViewAllSubjectQuestionsBtn">📋 इस विषय के सभी प्रश्न (${activeSubjectFolder.questions.length})</button>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(245px,1fr));gap:12px;">
+            ${Array.from(activeSubjectFolder.topicsMap.values()).map((tf) => `
+              <div class="card" data-open-topic-folder="${esc(tf.topicId)}" style="margin-bottom:0;cursor:pointer;border:1.5px solid ${tf.questions.length > 0 ? 'var(--secondary)' : 'var(--border)'};background:${tf.questions.length > 0 ? 'var(--surface)' : 'var(--surface-alt)'};">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                  <span style="font-size:1.45rem;">📂</span>
+                  <span class="badge ${tf.questions.length > 0 ? 'badge-exam' : 'badge-draft'}" style="font-size:0.75rem;">
+                    📝 ${tf.questions.length} प्रश्न
+                  </span>
+                </div>
+                <div style="font-weight:800;font-size:0.92rem;margin-top:8px;color:var(--text);">
+                  ${esc(tf.titleHi)}
+                </div>
+                <div style="font-size:0.76rem;color:var(--text-secondary);margin-top:2px;">
+                  ${esc(tf.titleEn)}
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;padding-top:8px;border-top:1px dashed var(--border);font-size:0.75rem;color:var(--secondary);font-weight:800;">
+                  <span>प्रश्न-उत्तर देखें</span>
+                  <span>खोलें ▶</span>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+
+        <!-- LEVEL 3 (or Active Search): SCANNED QUESTIONS & ANSWERS INSIDE TOPIC / SUBJECT -->
+        ${(nav.level === 'questions' || searchLow) ? `
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+              <button class="btn btn-outline btn-sm" id="qbBackFromQuestionsBtn">
+                ⬅️ ${activeSubjectFolder ? 'वापस टॉपिक फ़ोल्डर्स पर' : 'वापस विषय फ़ोल्डर्स पर'}
+              </button>
+              <div>
+                <h4 style="font-size:0.98rem;font-weight:800;">
+                  ${searchLow
+                    ? `🔍 खोज परिणाम: "${esc(nav.search)}" (${totalFiltered} प्रश्न)`
+                    : (activeTopicFolder
+                      ? `📂 ${esc(activeTopicFolder.titleHi)} (${esc(activeTopicFolder.titleEn)}) — ${totalFiltered} प्रश्न`
+                      : (activeSubjectFolder
+                        ? `📁 ${esc(activeSubjectFolder.titleHi)} — सभी ${totalFiltered} प्रश्न`
+                        : `📋 सभी विषयों के प्रश्न (${totalFiltered})`))}
+                </h4>
+              </div>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <select class="form-select" id="qbQuestionsDiffFilter" style="width:auto;padding:5px 10px;font-size:0.78rem;">
+                <option value="ALL" ${nav.difficulty === 'ALL' ? 'selected' : ''}>कठिनाई: सभी (All)</option>
+                <option value="Easy" ${nav.difficulty === 'Easy' ? 'selected' : ''}>Easy (सरल)</option>
+                <option value="Moderate" ${nav.difficulty === 'Moderate' ? 'selected' : ''}>Moderate (मध्यम)</option>
+                <option value="Hard" ${nav.difficulty === 'Hard' ? 'selected' : ''}>Hard (कठिन)</option>
+              </select>
+              <button class="btn btn-primary btn-sm" id="qbAddQuestionInCurrentFolderBtn">➕ यहाँ नया प्रश्न जोड़ें</button>
+              <button class="btn btn-navy btn-sm" id="qbSendFolderToTestBuilderBtn" ${totalFiltered === 0 ? 'disabled' : ''}>
+                🧪 टेस्ट में जोड़ें (${selectedCount > 0 ? selectedCount : totalFiltered})
+              </button>
+              <button class="btn btn-outline btn-sm" id="qbExportCurrentFolderCsvBtn" ${totalFiltered === 0 ? 'disabled' : ''}>⬇️ CSV</button>
+            </div>
+          </div>
+
+          <!-- Bulk Action Strip -->
+          ${totalFiltered > 0 ? `
+            <div class="qb-bulk-toolbar" style="margin-bottom:12px;">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                <label style="display:inline-flex;align-items:center;gap:6px;font-size:0.8rem;font-weight:800;cursor:pointer;">
+                  <input type="checkbox" id="qbSelectAllPageChk" ${pageItems.length > 0 && pageItems.every((q) => validSelectedIds.has(q.id)) ? 'checked' : ''} />
+                  <span>इस पेज के सभी चुनें (${pageItems.length})</span>
+                </label>
+                <button class="btn btn-outline btn-sm" id="qbSelectAllFilteredBtn">☑️ फ़ोल्डर के सभी चुनें (${totalFiltered})</button>
+                ${selectedCount > 0 ? `<button class="btn btn-outline btn-sm" id="qbClearSelectionBtn">✕ चयन हटाएं (${selectedCount})</button>` : ''}
+              </div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                <button class="btn btn-outline btn-sm" id="qbBulkMoveFolderBtn" ${selectedCount === 0 ? 'disabled' : ''}>📂 Subject/Topic फ़ोल्डर बदलें (${selectedCount})</button>
+                <button class="btn btn-danger btn-sm" id="qbBulkDeleteBtn" ${selectedCount === 0 ? 'disabled' : ''}>🗑️ हटाएं (${selectedCount})</button>
+              </div>
+            </div>
+          ` : ''}
+
+          <!-- Scanned Question & Answer Cards List -->
+          ${totalFiltered === 0 ? `
+            <div style="padding:32px 16px;text-align:center;background:var(--surface-alt);border-radius:12px;border:1px dashed var(--border);">
+              <div style="font-size:2rem;margin-bottom:6px;">📂</div>
+              <div style="font-weight:800;font-size:0.95rem;color:var(--text);">इस फ़ोल्डर में अभी कोई प्रश्न नहीं है</div>
+              <p style="font-size:0.8rem;color:var(--text-secondary);margin-top:4px;margin-bottom:12px;">
+                ऊपर <strong>AI स्कैनर</strong> से Question Paper + Answer Key अपलोड करें या नीचे बटन से नया प्रश्न जोड़ें।
+              </p>
+              <button class="btn btn-primary btn-sm" id="qbEmptyFolderAddQBtn">➕ इस फ़ोल्डर में पहला प्रश्न जोड़ें</button>
+            </div>
+          ` : `
+            <div style="display:flex;flex-direction:column;gap:12px;">
+              ${pageItems.map((q, idx) => {
+                const qNum = startIdx + idx + 1;
+                const isChecked = validSelectedIds.has(q.id);
+                const corrIdx = Number(q.correctOptionIndex ?? q.correctIndex ?? 0);
+                const optsHi = Array.isArray(q.optionsHi) ? q.optionsHi : [q.optA_Hi || '', q.optB_Hi || '', q.optC_Hi || '', q.optD_Hi || ''];
+                const optsEn = Array.isArray(q.optionsEn) ? q.optionsEn : [q.optA_En || '', q.optB_En || '', q.optC_En || '', q.optD_En || ''];
+                const diff = normalizeDifficultyValue(q.difficultyLevel || q.difficulty) || 'Moderate';
+                const diffClass = diff === 'Easy' ? 'badge-diff-easy' : (diff === 'Hard' ? 'badge-diff-difficult' : 'badge-diff-moderate');
+
+                return `
+                  <div class="qb-preview-card status-valid" style="border-left:4px solid var(--primary);margin-bottom:0;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+                      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                        <input type="checkbox" data-qb-row-select="${esc(q.id)}" ${isChecked ? 'checked' : ''} style="width:16px;height:16px;cursor:pointer;" />
+                        <span class="badge badge-exam" style="font-size:0.78rem;">प्रश्न #${qNum}</span>
+                        <span class="badge badge-review">📁 ${esc(q.subjectTag || 'General Studies')}</span>
+                        <span class="badge badge-draft">📂 ${esc(q.topic || 'General Topic')}</span>
+                        <span class="badge ${diffClass}">${esc(diff)}</span>
+                      </div>
+                      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                        <div style="display:inline-flex;align-items:center;gap:3px;padding:2px 6px;border-radius:6px;background:var(--surface-alt);border:1px solid var(--border);font-size:0.72rem;">
+                          <span style="font-weight:700;color:var(--text-secondary);">सही उत्तर:</span>
+                          ${[0, 1, 2, 3].map((oi) => `
+                            <button type="button" class="btn ${corrIdx === oi ? 'btn-success' : 'btn-outline'} btn-sm" style="padding:1px 6px;min-height:22px;font-size:0.7rem;" data-quick-ans-qbank="${esc(q.id)}:${oi}" title="विकल्प ${letters[oi]} को सही उत्तर बनाएं">${letters[oi]}</button>
+                          `).join('')}
+                        </div>
+                        <button class="btn btn-outline btn-sm" data-edit-qbank="${esc(q.id)}" title="प्रश्न संपादित करें">✏️ Edit</button>
+                        <button class="btn btn-danger btn-sm" data-del-qbank="${esc(q.id)}" title="प्रश्न हटाएं">🗑️</button>
+                      </div>
+                    </div>
+
+                    <div style="font-weight:800;font-size:0.92rem;color:var(--text);line-height:1.45;">
+                      🇮🇳 ${esc(q.questionHi || q.questionEn)}
+                    </div>
+                    ${q.questionEn && q.questionEn !== q.questionHi ? `
+                      <div style="font-weight:600;font-size:0.83rem;color:var(--text-secondary);margin-top:3px;line-height:1.4;">
+                        🇬🇧 ${esc(q.questionEn)}
+                      </div>
+                    ` : ''}
+
+                    <div class="qb-options-grid" style="margin-top:8px;">
+                      ${[0, 1, 2, 3].map((oi) => {
+                        const isCorr = corrIdx === oi;
+                        const hiTxt = optsHi[oi] || '';
+                        const enTxt = optsEn[oi] || '';
+                        return `
+                          <div class="qb-option-pill ${isCorr ? 'is-correct' : ''}" style="cursor:pointer;" data-quick-ans-qbank="${esc(q.id)}:${oi}" title="क्लिक करके विकल्प ${letters[oi]} को सही उत्तर सेट करें">
+                            <div>
+                              <div style="font-weight:${isCorr ? '800' : '600'};">
+                                <strong>(${letters[oi]})</strong> ${esc(hiTxt || enTxt)}
+                              </div>
+                              ${enTxt && enTxt !== hiTxt ? `
+                                <div style="font-size:0.74rem;color:var(--text-secondary);">${esc(enTxt)}</div>
+                              ` : ''}
+                            </div>
+                            ${isCorr ? '<span class="badge badge-free">✓ सही उत्तर</span>' : ''}
+                          </div>
+                        `;
+                      }).join('')}
+                    </div>
+
+                    <div class="qb-explanation-box" style="margin-top:8px;">
+                      <div><strong>💡 व्याख्या:</strong> ${esc(q.explanationHi || q.explanationEn || 'सही उत्तर विकल्प ' + letters[corrIdx] + ' है।')}</div>
+                      ${q.explanationEn && q.explanationEn !== q.explanationHi ? `
+                        <div style="margin-top:2px;color:var(--text-secondary);"><strong>Explanation:</strong> ${esc(q.explanationEn)}</div>
+                      ` : ''}
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+
+            <!-- Pagination Bar -->
+            <div class="qb-pagination-bar" style="margin-top:14px;">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                <span>Showing <strong>${startIdx + 1}–${Math.min(totalFiltered, startIdx + pageItems.length)}</strong> of <strong>${totalFiltered}</strong> प्रश्न</span>
+                <select class="form-select" id="qbPageSizeSelect" style="width:auto;padding:4px 8px;font-size:0.76rem;">
+                  <option value="15" ${qbState.pageSize === 15 ? 'selected' : ''}>15 / पेज</option>
+                  <option value="25" ${qbState.pageSize === 25 ? 'selected' : ''}>25 / पेज</option>
+                  <option value="50" ${qbState.pageSize === 50 ? 'selected' : ''}>50 / पेज</option>
+                  <option value="100" ${qbState.pageSize === 100 ? 'selected' : ''}>100 / पेज</option>
+                </select>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;">
+                <button class="btn btn-outline btn-sm" id="qbPrevPageBtn" ${qbState.page <= 1 ? 'disabled' : ''}>◀ पिछला</button>
+                <span style="font-weight:700;padding:0 6px;">पेज ${qbState.page} / ${totalPages}</span>
+                <button class="btn btn-outline btn-sm" id="qbNextPageBtn" ${qbState.page >= totalPages ? 'disabled' : ''}>अगला ▶</button>
+              </div>
+            </div>
+          `}
+        ` : ''}
+      </div>
+    `;
+
+    // Helper to open Add Single Question popup pre-filled with current Subject & Topic folder
+    const openAddQuestionPopup = () => {
+      const defaultSub = activeSubjectFolder ? activeSubjectFolder.titleEn : 'Chhattisgarh General Knowledge';
+      const defaultTop = activeTopicFolder
+        ? activeTopicFolder.titleEn
+        : (activeSubjectFolder && Array.from(activeSubjectFolder.topicsMap.values())[0]
+          ? Array.from(activeSubjectFolder.topicsMap.values())[0].titleEn
+          : 'History of Chhattisgarh');
+
+      openQuestionFormModal({
+        title: '➕ नया प्रश्न जोड़ें (Add Question to Subject → Topic Folder)',
+        question: {
+          subjectTag: defaultSub,
+          topic: defaultTop,
+          difficulty: 'Moderate',
+          questionHi: '',
+          questionEn: '',
+          optionsHi: ['', '', '', ''],
+          optionsEn: ['', '', '', ''],
+          correctOptionIndex: 0,
+          explanationHi: '',
+          explanationEn: ''
+        },
+        stateRef: state,
+        onSave: (newFields) => {
+          addCustomTaxonomyEntry(state, api, {
+            examCode: 'CGPSC',
+            subjectName: newFields.subjectTag,
+            topicName: newFields.topic,
+            subtopicName: ''
+          });
+          const nowIso = new Date().toISOString();
+          const qDoc = Object.assign({}, newFields, {
+            id: '',
+            questionId: '',
+            isDeleted: false,
+            verified: true,
+            adminVerified: true,
+            status: 'verified',
+            verificationStatus: 'verified',
+            needsCategorisation: false,
+            createdAt: nowIso,
+            updatedAt: nowIso,
+            createdAtIso: nowIso,
+            updatedAtIso: nowIso
+          });
+          qDoc.id = computeDeterministicQuestionId(qDoc);
+          qDoc.questionId = qDoc.id;
+          state.questionBank.unshift(qDoc);
+          api.saveState();
+          if (window.CGpediaCloud) {
+            window.CGpediaCloud.saveCloudDoc('question_bank', qDoc.id, qDoc);
+          }
+          api.toast(`✅ प्रश्न "${qDoc.subjectTag} › ${qDoc.topic}" फ़ोल्डर में सेव हो गया!`);
+          renderAdminConsole(rootEl, state, api);
+        }
+      });
+    };
+
+    // Wire Top Bar Buttons
+    const addSinglePopupBtn = document.getElementById('qbPopupAddSingleQuestionBtn');
+    if (addSinglePopupBtn) addSinglePopupBtn.onclick = openAddQuestionPopup;
+    const addQInSubBtn = document.getElementById('qbAddQuestionInSubjectBtn');
+    if (addQInSubBtn) addQInSubBtn.onclick = openAddQuestionPopup;
+    const addQInFolderBtn = document.getElementById('qbAddQuestionInCurrentFolderBtn');
+    if (addQInFolderBtn) addQInFolderBtn.onclick = openAddQuestionPopup;
+    const emptyAddQBtn = document.getElementById('qbEmptyFolderAddQBtn');
+    if (emptyAddQBtn) emptyAddQBtn.onclick = openAddQuestionPopup;
+
+    const newSubBtn = document.getElementById('qbPopupNewSubjectBtn');
+    if (newSubBtn) {
+      newSubBtn.onclick = () => {
+        openQuickFolderCreateModal({
+          mode: 'subject',
+          state,
+          api,
+          onCreated: () => renderAdminConsole(rootEl, state, api)
+        });
+      };
+    }
+
+    const openNewTopicPopup = () => {
+      openQuickFolderCreateModal({
+        mode: 'topic',
+        defaultSubjectId: activeSubjectFolder ? activeSubjectFolder.subjectId : '',
+        state,
+        api,
+        onCreated: () => renderAdminConsole(rootEl, state, api)
+      });
+    };
+    const newTopBtn = document.getElementById('qbPopupNewTopicBtn');
+    if (newTopBtn) newTopBtn.onclick = openNewTopicPopup;
+    const addTopInSubBtn = document.getElementById('qbAddTopicInSubjectBtn');
+    if (addTopInSubBtn) addTopInSubBtn.onclick = openNewTopicPopup;
+
+    const quickExportJsonBtn = document.getElementById('qbQuickExportJsonBtn');
+    if (quickExportJsonBtn) {
+      quickExportJsonBtn.onclick = () => {
+        if (activeQuestions.length === 0) {
+          api.toast('⚠️ एक्सपोर्ट करने के लिए कोई प्रश्न नहीं है।');
+          return;
+        }
+        exportQuestionsToJson(activeQuestions);
+        api.toast(`⬇️ ${activeQuestions.length} प्रश्नों का JSON बैकअप डाउनलोड हो गया!`);
+      };
+    }
+
+    // Wire Sample CSV/JSON buttons
+    const sampleCsvBtn = document.getElementById('qbDownloadSampleCsvBtn');
+    if (sampleCsvBtn) {
+      sampleCsvBtn.onclick = () => {
+        const sampleRows = [{
+          subjectTag: 'Chhattisgarh General Knowledge',
+          topic: 'History of Chhattisgarh',
+          difficulty: 'Easy',
+          questionHi: 'छत्तीसगढ़ राज्य का गठन कब हुआ था?',
+          questionEn: 'When was the state of Chhattisgarh formed?',
+          optionsHi: ['1 नवंबर 2000', '15 नवंबर 2000', '9 नवंबर 2000', '1 जनवरी 2001'],
+          optionsEn: ['1 November 2000', '15 November 2000', '9 November 2000', '1 January 2001'],
+          correctOptionIndex: 0,
+          explanationHi: 'छत्तीसगढ़ राज्य का गठन 1 नवंबर 2000 को भारत के 26वें राज्य के रूप में हुआ था।',
+          explanationEn: 'Chhattisgarh was formed on 1 November 2000 as the 26th state of India.'
+        }];
+        exportQuestionsToCsv(sampleRows, 'cgpedia-sample-questions.csv');
+      };
+    }
+    const sampleJsonBtn = document.getElementById('qbDownloadSampleJsonBtn');
+    if (sampleJsonBtn) {
+      sampleJsonBtn.onclick = () => {
+        const sampleRows = [{
+          subjectTag: 'Chhattisgarh General Knowledge',
+          topic: 'Geography, Rivers & Climate of CG',
+          difficulty: 'Easy',
+          questionHi: 'महानदी का उद्गम किस जिले से होता है?',
+          questionEn: 'In which district is the origin of the Mahanadi river located?',
+          optionsHi: ['धमतरी (सिहावा पर्वत)', 'कांकेर', 'बस्तर', 'सरगुजा'],
+          optionsEn: ['Dhamtari (Sihawa Hills)', 'Kanker', 'Bastar', 'Surguja'],
+          correctOptionIndex: 0,
+          explanationHi: 'महानदी का उद्गम धमतरी जिले के सिहावा पर्वत से होता है।',
+          explanationEn: 'The Mahanadi river originates from the Sihawa hills in Dhamtari district.'
+        }];
+        exportQuestionsToJson(sampleRows, 'cgpedia-sample-questions.json');
+      };
+    }
+
+    // Wire AI Dual-File Inputs & One-Click Scan + Direct Folder Save
+    const qpFileInp = document.getElementById('qbAiQuestionFileInput');
+    if (qpFileInp) {
+      qpFileInp.onchange = () => {
+        if (qpFileInp.files && qpFileInp.files[0]) {
+          nav.selectedQuestionFile = qpFileInp.files[0];
+          const lbl = document.getElementById('qbSelectedQPFileLabel');
+          if (lbl) {
+            lbl.style.color = 'var(--success)';
+            lbl.textContent = `📄 चुना गया: ${nav.selectedQuestionFile.name}`;
+          }
+        }
+      };
+    }
+
+    const akFileInp = document.getElementById('qbAiAnswerKeyFileInput');
+    if (akFileInp) {
+      akFileInp.onchange = async () => {
+        if (akFileInp.files && akFileInp.files[0]) {
+          nav.selectedAnswerKeyFile = akFileInp.files[0];
+          try {
+            const extractedAk = await extractTextFromUploadedFile(nav.selectedAnswerKeyFile);
+            const cleanAk = extractReadableTextFromPdfStream(extractedAk);
+            qbState.pendingAnswerKeyText = cleanAk;
+            const akTxtInp = document.getElementById('qbAiAnswerKeyTextInput');
+            if (akTxtInp) akTxtInp.value = cleanAk;
+            api.toast(`🔑 उत्तर कुंजी फ़ाइल (${nav.selectedAnswerKeyFile.name}) लोड हो गई!`);
+          } catch (e) {
+            console.warn('Answer key read error:', e);
+          }
+        }
+      };
+    }
+
+    const akTextInp = document.getElementById('qbAiAnswerKeyTextInput');
+    if (akTextInp) {
+      akTextInp.oninput = () => {
+        qbState.pendingAnswerKeyText = akTextInp.value;
+      };
+    }
+
+    const setSel = document.getElementById('qbAiPaperSetSelect');
+    if (setSel) {
+      setSel.onchange = () => {
+        nav.paperSetCode = setSel.value || 'A';
+      };
+    }
+
+    const overrideSubSel = document.getElementById('qbAiOverrideSubjectSelect');
+    if (overrideSubSel) {
+      overrideSubSel.onchange = () => {
+        nav.overrideSubject = overrideSubSel.value || '';
+      };
+    }
+
+    const startAiScanBtn = document.getElementById('qbStartAiScanAndSaveBtn');
+    if (startAiScanBtn) {
+      startAiScanBtn.onclick = async () => {
+        const qFile = (qpFileInp && qpFileInp.files && qpFileInp.files[0]) || nav.selectedQuestionFile;
+        if (!qFile) {
+          api.toast('⚠️ कृपया पहले 1️⃣ प्रश्न-पत्र फ़ाइल (Question Paper File) चुनें।');
+          return;
+        }
+        nav.isScanning = true;
+        nav.lastScanSummary = null;
+        nav.scanStatusText = `⏳ Step 1/3: "${qFile.name}" से प्रश्न पढ़े जा रहे हैं...`;
+        renderAdminConsole(rootEl, state, api);
+
+        try {
+          const isImg = /\.(png|jpe?g|webp)$/i.test(qFile.name || '');
+          const rawQuestionText = isImg
+            ? ''
+            : await extractTextFromUploadedFile(qFile, (msg) => {
+                nav.scanStatusText = msg;
+                const box = document.getElementById('qbAiScanStatusBox');
+                if (box) box.textContent = msg;
+              });
+
+          const answerKeyText = qbState.pendingAnswerKeyText || '';
+          const scannedDocs = await scanAndCategorizeWithAiOrFallback({
+            questionFile: qFile,
+            rawQuestionText,
+            answerKeyText,
+            paperSetCode: nav.paperSetCode || 'A',
+            forcedSubjectTag: nav.overrideSubject || '',
+            forcedTopic: '',
+            state,
+            onProgress: (msg) => {
+              nav.scanStatusText = msg;
+              const box = document.getElementById('qbAiScanStatusBox');
+              if (box) box.textContent = msg;
+            }
+          });
+
+          if (!scannedDocs || scannedDocs.length === 0) {
+            nav.isScanning = false;
+            nav.scanStatusText = '';
+            api.toast('⚠️ फ़ाइल में कोई प्रश्न नहीं मिला। कृपया स्पष्ट PDF, Image, CSV या JSON फ़ाइल अपलोड करें।');
+            renderAdminConsole(rootEl, state, api);
+            return;
+          }
+
+          nav.scanStatusText = `💾 Step 3/3: ${scannedDocs.length} प्रश्नों को Subject → Topic फ़ोल्डर में सेव किया जा रहा है...`;
+          const box = document.getElementById('qbAiScanStatusBox');
+          if (box) box.textContent = nav.scanStatusText;
+
+          const folderCounts = new Map();
+          const docsToSync = [];
+
+          scannedDocs.forEach((doc) => {
+            const existingIdx = state.questionBank.findIndex(
+              (q) => q.id === doc.id || normalizeTextForComparison(q.questionHi) === normalizeTextForComparison(doc.questionHi)
+            );
+            if (existingIdx >= 0) {
+              state.questionBank[existingIdx] = Object.assign({}, state.questionBank[existingIdx], doc);
+              docsToSync.push(state.questionBank[existingIdx]);
+            } else {
+              state.questionBank.unshift(doc);
+              docsToSync.push(doc);
+            }
+            const fKey = `${doc.subjectId}:::${doc.topicId}`;
+            const cur = folderCounts.get(fKey) || {
+              subjectId: doc.subjectId,
+              subjectName: doc.subjectTag,
+              topicId: doc.topicId,
+              topicName: doc.topic,
+              count: 0
+            };
+            cur.count += 1;
+            folderCounts.set(fKey, cur);
+          });
+
+          api.saveState();
+          if (window.CGpediaCloud && window.CGpediaCloud.batchSaveCloudDocs && docsToSync.length > 0) {
+            await window.CGpediaCloud.batchSaveCloudDocs('question_bank', docsToSync);
+          }
+
+          const breakdown = Array.from(folderCounts.values());
+          nav.isScanning = false;
+          nav.scanStatusText = '';
+          nav.selectedQuestionFile = null;
+          nav.lastScanSummary = {
+            message: `${scannedDocs.length} प्रश्न सफलतापूर्वक स्कैन होकर ${breakdown.length} Topic फ़ोल्डर में सेव हो गए! (Test Builder के लिए तैयार)`,
+            folderBreakdown: breakdown
+          };
+          api.toast(`✅ ${scannedDocs.length} प्रश्न सीधे Subject → Topic फ़ोल्डर में सेव हो गए!`);
+          renderAdminConsole(rootEl, state, api);
+        } catch (scanErr) {
+          console.error('AI Scan error:', scanErr);
+          nav.isScanning = false;
+          nav.scanStatusText = '';
+          api.toast('⚠️ फ़ाइल स्कैन करने में त्रुटि आई। कृपया पुनः प्रयास करें।');
+          renderAdminConsole(rootEl, state, api);
+        }
+      };
+    }
+
+    const dismissScanSummaryBtn = document.getElementById('qbDismissScanSummaryBtn');
+    if (dismissScanSummaryBtn) {
+      dismissScanSummaryBtn.onclick = () => {
+        nav.lastScanSummary = null;
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+
+    bodyEl.querySelectorAll('[data-open-scanned-folder]').forEach((btn) => {
+      btn.onclick = () => {
+        const parts = String(btn.getAttribute('data-open-scanned-folder') || '').split(':::');
+        nav.subjectId = parts[0] || '';
+        nav.topicId = parts[1] || '';
+        nav.level = 'questions';
+        qbState.page = 1;
+        renderAdminConsole(rootEl, state, api);
+      };
+    });
+
+    // Wire Folder Explorer Navigation (Subjects -> Topics -> Questions)
+    const homeBtn = document.getElementById('qbBreadcrumbHomeBtn');
+    if (homeBtn) {
+      homeBtn.onclick = () => {
+        nav.level = 'subjects';
+        nav.subjectId = '';
+        nav.topicId = '';
+        nav.search = '';
+        qbState.page = 1;
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+
+    const subBreadBtn = document.getElementById('qbBreadcrumbSubjectBtn');
+    if (subBreadBtn) {
+      subBreadBtn.onclick = () => {
+        nav.level = 'topics';
+        nav.topicId = '';
+        nav.search = '';
+        qbState.page = 1;
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+
+    const backToSubjectsBtn = document.getElementById('qbBackToSubjectsBtn');
+    if (backToSubjectsBtn) {
+      backToSubjectsBtn.onclick = () => {
+        nav.level = 'subjects';
+        nav.subjectId = '';
+        nav.topicId = '';
+        qbState.page = 1;
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+
+    const backFromQuestionsBtn = document.getElementById('qbBackFromQuestionsBtn');
+    if (backFromQuestionsBtn) {
+      backFromQuestionsBtn.onclick = () => {
+        if (nav.search) {
+          nav.search = '';
+        }
+        if (activeSubjectFolder) {
+          nav.level = 'topics';
+          nav.topicId = '';
+        } else {
+          nav.level = 'subjects';
+          nav.subjectId = '';
+          nav.topicId = '';
+        }
+        qbState.page = 1;
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+
+    bodyEl.querySelectorAll('[data-open-subject-folder]').forEach((card) => {
+      card.onclick = () => {
+        nav.subjectId = card.getAttribute('data-open-subject-folder') || '';
+        nav.topicId = '';
+        nav.level = 'topics';
+        qbState.page = 1;
+        renderAdminConsole(rootEl, state, api);
+      };
+    });
+
+    bodyEl.querySelectorAll('[data-open-topic-folder]').forEach((card) => {
+      card.onclick = () => {
+        nav.topicId = card.getAttribute('data-open-topic-folder') || '';
+        nav.level = 'questions';
+        qbState.page = 1;
+        renderAdminConsole(rootEl, state, api);
+      };
+    });
+
+    const viewAllFlatBtn = document.getElementById('qbViewAllQuestionsFlatBtn');
+    if (viewAllFlatBtn) {
+      viewAllFlatBtn.onclick = () => {
+        nav.subjectId = '';
+        nav.topicId = '';
+        nav.level = 'questions';
+        qbState.page = 1;
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+
+    const viewAllSubQBtn = document.getElementById('qbViewAllSubjectQuestionsBtn');
+    if (viewAllSubQBtn) {
+      viewAllSubQBtn.onclick = () => {
+        nav.topicId = 'ALL_IN_SUBJECT';
+        nav.level = 'questions';
+        qbState.page = 1;
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+
+    // Wire Search & Difficulty filter
+    const searchInp = document.getElementById('qbExplorerSearchInput');
+    if (searchInp) {
+      searchInp.oninput = () => {
+        const pos = searchInp.selectionStart;
+        nav.search = searchInp.value;
+        qbState.page = 1;
+        renderAdminConsole(rootEl, state, api);
+        const nextInp = document.getElementById('qbExplorerSearchInput');
+        if (nextInp) {
+          nextInp.focus();
+          try { nextInp.setSelectionRange(pos, pos); } catch (_) {}
+        }
+      };
+    }
+    const clearSearchBtn = document.getElementById('qbClearSearchBtn');
+    if (clearSearchBtn) {
+      clearSearchBtn.onclick = () => {
+        nav.search = '';
+        qbState.page = 1;
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+
+    const diffFilterSel = document.getElementById('qbQuestionsDiffFilter');
+    if (diffFilterSel) {
+      diffFilterSel.onchange = () => {
+        nav.difficulty = diffFilterSel.value || 'ALL';
+        qbState.page = 1;
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+
+    // Wire Selection, Bulk Move, Assign to Test, Export, 1-Click Answer Switch, Edit & Delete
+    const selectAllPageChk = document.getElementById('qbSelectAllPageChk');
+    if (selectAllPageChk) {
+      selectAllPageChk.onchange = () => {
+        pageItems.forEach((q) => {
+          if (selectAllPageChk.checked) qbState.selectedIds.add(q.id);
+          else qbState.selectedIds.delete(q.id);
+        });
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+    const selectAllFilteredBtn = document.getElementById('qbSelectAllFilteredBtn');
+    if (selectAllFilteredBtn) {
+      selectAllFilteredBtn.onclick = () => {
+        filteredQuestions.forEach((q) => qbState.selectedIds.add(q.id));
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+    const clearSelBtn = document.getElementById('qbClearSelectionBtn');
+    if (clearSelBtn) {
+      clearSelBtn.onclick = () => {
+        qbState.selectedIds.clear();
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+    bodyEl.querySelectorAll('[data-qb-row-select]').forEach((chk) => {
+      chk.onchange = () => {
+        const qid = chk.getAttribute('data-qb-row-select');
+        if (chk.checked) qbState.selectedIds.add(qid);
+        else qbState.selectedIds.delete(qid);
+        renderAdminConsole(rootEl, state, api);
+      };
+    });
+
+    const bulkMoveBtn = document.getElementById('qbBulkMoveFolderBtn');
+    if (bulkMoveBtn) {
+      bulkMoveBtn.onclick = () => {
+        if (qbState.selectedIds.size === 0) return;
+        openBulkEditModal(qbState.selectedIds.size, state, api, async (changes) => {
+          if (changes.subjectTag || changes.topic) {
+            addCustomTaxonomyEntry(state, api, {
+              examCode: 'CGPSC',
+              subjectName: changes.subjectTag,
+              topicName: changes.topic,
+              subtopicName: ''
+            });
+          }
+          const updatedCat = getTaxonomyCatalog(state);
+          const updatedDocs = [];
+          const nowIso = new Date().toISOString();
+          state.questionBank.forEach((q) => {
+            if (!qbState.selectedIds.has(q.id)) return;
+            if (changes.subjectTag) q.subjectTag = changes.subjectTag;
+            if (changes.topic) q.topic = changes.topic;
+            if (changes.difficulty) {
+              q.difficulty = changes.difficulty;
+              q.difficultyLevel = changes.difficulty;
+            }
+            const resolved = resolveCanonicalQuestionHierarchy(q, updatedCat);
+            q.subjectId = resolved.subjectId || makeSlugId('sub', q.subjectTag);
+            q.subjectTag = resolved.subjectTag || q.subjectTag;
+            q.topicId = resolved.topicId || makeSlugId('top', q.topic);
+            q.topic = resolved.topic || q.topic;
+            q.updatedAt = nowIso;
+            q.updatedAtIso = nowIso;
+            updatedDocs.push(q);
+          });
+          api.saveState();
+          if (window.CGpediaCloud && window.CGpediaCloud.batchSaveCloudDocs && updatedDocs.length > 0) {
+            await window.CGpediaCloud.batchSaveCloudDocs('question_bank', updatedDocs);
+          }
+          qbState.selectedIds.clear();
+          api.toast(`✅ ${updatedDocs.length} प्रश्न नए फ़ोल्डर में मूव कर दिए गए!`);
+          renderAdminConsole(rootEl, state, api);
+        });
+      };
+    }
+
+    const sendToTestBtn = document.getElementById('qbSendFolderToTestBuilderBtn');
+    if (sendToTestBtn) {
+      sendToTestBtn.onclick = () => {
+        const targetQs = qbState.selectedIds.size > 0
+          ? activeQuestions.filter((q) => qbState.selectedIds.has(q.id))
+          : filteredQuestions;
+        if (targetQs.length === 0) return;
+        openAssignToTestModal(targetQs, state, api, () => {
+          renderAdminConsole(rootEl, state, api);
+        });
+      };
+    }
+
+    const exportCsvBtn = document.getElementById('qbExportCurrentFolderCsvBtn');
+    if (exportCsvBtn) {
+      exportCsvBtn.onclick = () => {
+        const targetQs = qbState.selectedIds.size > 0
+          ? activeQuestions.filter((q) => qbState.selectedIds.has(q.id))
+          : filteredQuestions;
+        if (targetQs.length === 0) return;
+        exportQuestionsToCsv(targetQs);
+        api.toast(`⬇️ ${targetQs.length} प्रश्न CSV में एक्सपोर्ट किए गए!`);
+      };
+    }
+
+    const bulkDelBtn = document.getElementById('qbBulkDeleteBtn');
+    if (bulkDelBtn) {
+      bulkDelBtn.onclick = () => {
+        const idsToDelete = Array.from(qbState.selectedIds);
+        if (idsToDelete.length === 0) return;
+        openConfirmationDialog({
+          title: 'चयनित प्रश्न हटाएं (Confirm Bulk Delete)',
+          message: `क्या आप वाकई ${idsToDelete.length} चयनित प्रश्नों को प्रश्न बैंक से हटाना चाहते हैं?`,
+          confirmLabel: `हाँ, ${idsToDelete.length} प्रश्न हटाएं`,
+          isDanger: true,
+          onConfirm: async () => {
+            const delSet = new Set(idsToDelete);
+            state.questionBank = (state.questionBank || []).filter((q) => !delSet.has(q.id));
+            qbState.selectedIds.clear();
+            api.saveState();
+            if (window.CGpediaCloud && window.CGpediaCloud.batchDeleteCloudDocs) {
+              await window.CGpediaCloud.batchDeleteCloudDocs('question_bank', idsToDelete);
+            }
+            api.toast(`🗑️ ${idsToDelete.length} प्रश्न हटा दिए गए।`);
+            renderAdminConsole(rootEl, state, api);
+          }
+        });
+      };
+    }
+
+    // 1-Click Correct Option Switcher on Question Cards
+    bodyEl.querySelectorAll('[data-quick-ans-qbank]').forEach((el) => {
+      el.onclick = () => {
+        const pair = String(el.getAttribute('data-quick-ans-qbank') || '').split(':');
+        const qid = pair[0];
+        const newIdx = Number(pair[1]);
+        const qObj = (state.questionBank || []).find((q) => q.id === qid);
+        if (!qObj || Number.isNaN(newIdx) || newIdx < 0 || newIdx > 3) return;
+        qObj.correctIndex = newIdx;
+        qObj.correctOptionIndex = newIdx;
+        qObj.updatedAt = new Date().toISOString();
+        qObj.updatedAtIso = qObj.updatedAt;
+        api.saveState();
+        if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('question_bank', qObj.id, qObj);
+        api.toast(`✅ सही उत्तर विकल्प ${letters[newIdx]} सेट किया गया!`);
+        renderAdminConsole(rootEl, state, api);
+      };
+    });
+
+    // Edit & Delete single question
+    bodyEl.querySelectorAll('[data-edit-qbank]').forEach((btn) => {
+      btn.onclick = () => {
+        const qid = btn.getAttribute('data-edit-qbank');
+        const qObj = (state.questionBank || []).find((q) => q.id === qid);
+        if (!qObj) return;
+        openQuestionFormModal({
+          title: '✏️ प्रश्न संपादित करें (Edit Question & Folder)',
+          question: qObj,
+          stateRef: state,
+          onSave: (updatedFields) => {
+            addCustomTaxonomyEntry(state, api, {
+              examCode: 'CGPSC',
+              subjectName: updatedFields.subjectTag,
+              topicName: updatedFields.topic,
+              subtopicName: ''
+            });
+            Object.assign(qObj, updatedFields, {
+              verified: true,
+              adminVerified: true,
+              status: 'verified',
+              verificationStatus: 'verified',
+              needsCategorisation: false
+            });
+            api.saveState();
+            if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('question_bank', qObj.id, qObj);
+            api.toast('✅ प्रश्न सफलतापूर्वक अपडेट हो गया!');
+            renderAdminConsole(rootEl, state, api);
+          }
+        });
+      };
+    });
+
+    bodyEl.querySelectorAll('[data-del-qbank]').forEach((btn) => {
+      btn.onclick = () => {
+        const qid = btn.getAttribute('data-del-qbank');
+        const qObj = (state.questionBank || []).find((q) => q.id === qid);
+        if (!qObj) return;
+        openConfirmationDialog({
+          title: 'प्रश्न हटाएं (Delete Question)',
+          message: `क्या आप इस प्रश्न को हटाना चाहते हैं: "${(qObj.questionHi || qObj.questionEn || '').slice(0, 80)}..."?`,
+          confirmLabel: 'हाँ, हटाएं',
+          isDanger: true,
+          onConfirm: () => {
+            state.questionBank = (state.questionBank || []).filter((q) => q.id !== qid);
+            qbState.selectedIds.delete(qid);
+            api.saveState();
+            if (window.CGpediaCloud) window.CGpediaCloud.deleteCloudDoc('question_bank', qid);
+            api.toast('🗑️ प्रश्न हटा दिया गया।');
+            renderAdminConsole(rootEl, state, api);
+          }
+        });
+      };
+    });
+
+    // Pagination controls
+    const pageSizeSelect = document.getElementById('qbPageSizeSelect');
+    if (pageSizeSelect) {
+      pageSizeSelect.onchange = () => {
+        qbState.pageSize = Number(pageSizeSelect.value || 15);
+        qbState.page = 1;
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+    const prevPageBtn = document.getElementById('qbPrevPageBtn');
+    if (prevPageBtn) {
+      prevPageBtn.onclick = () => {
+        if (qbState.page > 1) {
+          qbState.page -= 1;
+          renderAdminConsole(rootEl, state, api);
+        }
+      };
+    }
+    const nextPageBtn = document.getElementById('qbNextPageBtn');
+    if (nextPageBtn) {
+      nextPageBtn.onclick = () => {
+        if (qbState.page < totalPages) {
+          qbState.page += 1;
+          renderAdminConsole(rootEl, state, api);
+        }
+      };
+    }
+  }
+
   function renderQuestionBankManagement(bodyEl, rootEl, state, api) {
+    return renderQuestionBankManagementV2(bodyEl, rootEl, state, api);
     state.questionBank = state.questionBank || [];
     // Automatically run safe backward-compatible migration if legacy records exist
     if (state.questionBank.some((q) => !q.questionId || !Array.isArray(q.examIds))) {

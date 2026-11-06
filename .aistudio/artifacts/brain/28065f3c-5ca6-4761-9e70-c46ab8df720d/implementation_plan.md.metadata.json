@@ -1,6 +1,6 @@
 {
-  "summary": "Implementation plan to resolve PDF binary/font code extraction, KrutiDev/DevLys legacy Hindi encoding, scanned/coded PDF OCR fallback, and multi-question boundary detection in the Question Bank module.",
-  "updatedAt": "2026-11-06T08:04:03.464020450Z",
+  "summary": "Implementation plan for upgrading ONLY the Question Bank section with an AI-powered Dual-File Scanner (Question Paper + Answer Key) and a clean Subject-Wise -> Topic-Wise Question & Answer Folder Explorer compatible with the Test Builder.",
+  "updatedAt": "2026-11-06T08:54:55.922568551Z",
   "requestFeedback": true,
   "userFacing": true
 }

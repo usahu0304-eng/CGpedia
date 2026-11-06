@@ -1,87 +1,85 @@
-# Question Bank — Fix Garbled Code & Multi-Question Detection in Bilingual PDFs
+# Implementation Plan: AI-Powered Question Bank & Subject → Topic Folder Explorer
 
-This plan resolves the root causes where uploading a Hindi + English (Bilingual) PDF either fails to detect questions or detects only 1 question filled with garbled symbols/code (`KrutiDev` legacy font encoding, unmapped `CID/Identity-H` font glyph codes, or raw PDF binary stream operators) in both Hindi and English fields. All changes remain strictly confined to the **Question Bank** module.
+## 1. Goal & Strict Scope
+Redesign **ONLY the Question Bank (`प्रश्न बैंक`) section** to make it clean, fast, and effortless to use, while keeping **100% of the rest of the app (Student Portal, CBT Exam Engine, Test Builder, Payments, Leaderboard, etc.) completely untouched**.
 
-## User Review & Critical Decisions
-
-> [!IMPORTANT]
-> **Confirmed Scope & Root-Cause Decisions**
-> - **Confirmed Decision 1 (File Format)**: The affected uploads are **Hindi + English PDF Question Papers** (both typed DTP PDFs and scanned/coded PDFs).
-> - **Confirmed Decision 2 (Symptom Diagnosis)**: The 1 detected question displays strange English/symbol codes (`KrutiDev` legacy Hindi encoding, unmapped CID glyph codes, or raw PDF stream code) duplicated across both Hindi and English boxes, while remaining questions fail to split.
-> - **Confirmed Decision 3 (Strict Boundary)**: Only the Question Bank file extraction, font decoding, OCR fallback, and question splitter will be updated. No other app modules, UI layouts, or saved Firebase data will be modified.
+Importantly, the folders inside the Question Bank are **NOT raw file storage folders**—they are **structured Question & Answer folders** populated by AI from your uploaded Question Paper and Answer Key so that the **Test Builder (`Test Series & Builder`)** can directly pick questions by Subject and Topic.
 
 ---
 
-## 1. Overview & Core Concept
+## 2. What Will Be Built in the Question Bank Section
 
-- **What Causes the Problem Today**:
-  1. **PDF.js Cross-Origin Worker Failure in WebView**: Loading `pdf.worker.min.js` directly from a remote CDN URL triggers a browser/WebView cross-origin `Worker` restriction, causing `PDF.js` to silently fail and fall back to raw PDF stream extraction. In English-only PDFs, raw stream literals `(1. Question...) Tj` are plain ASCII, so they still work; in Hindi + English PDFs, Devanagari fonts use 2-byte `CID / Identity-H` glyph indices (`<001A002F...> Tj`), which the raw stream fallback decodes into random ASCII symbols and code.
-  2. **Legacy Hindi Font Encoding (`KrutiDev` / `DevLys`)**: Many CGPSC, Vyapam, and State PSC bilingual PDFs store Hindi text in non-Unicode **KrutiDev-010 / DevLys** font (where Hindi looks like `NÙhlx<+ jkT; dk xBu...` and options look like `¼v½ ¼c½ ¼l½ ¼n½`). Because it contains no Unicode Devanagari characters (`\u0900-\u097F`), the parser treats it as Latin code and copies the same garbled string into both Hindi and English fields.
-  3. **Broken `ToUnicode` CMap or Scanned PDF Pages**: Some PDFs have corrupted font CMap tables (producing Private Use Area `\uE000-\uF8FF` or symbol gibberish) or scanned page images with no text layer.
-  4. **Standalone / Offset Question Numbers (`1.`, `Q.1`)**: When question numbers sit on a separate baseline or standalone line from the Hindi stem, the line regex misses question boundaries and merges the entire paper into Question 1.
-- **What This Fix Delivers**:
-  - Reliable **PDF.js execution** (Blob Worker + main-thread `disableWorker` fallback) so `PDF.js` never crashes into raw binary code.
-  - Automatic **KrutiDev / DevLys to Unicode Devanagari conversion** for legacy Hindi text and options (`¼v½` → `(अ)`, `¼c½` → `(ब)`, `¼l½` → `(स)`, `¼n½` → `(द)`).
-  - Automatic **Garbled-Code / Scanned Page Detection + Canvas OCR (`Tesseract.js` `hin+eng`)** when a PDF page has missing/corrupted font mappings or scanned images.
-  - **Multi-Question Boundary Detection** supporting standalone question numbers, table-cell numbers, inline numbers after Option D, and option-group segmentation so all questions in the paper are detected individually.
-
----
-
-## 2. User Experience & Workflow
-
-- **Key User Flow**:
-  1. Admin selects a Hindi + English PDF in **Question Bank → Bulk Question Upload**.
-  2. The extractor loads `PDF.js` safely (using a Same-Origin Blob Worker with automatic main-thread fallback).
-  3. For each page:
-     - If legacy **KrutiDev / DevLys** Hindi encoding is detected, it automatically converts the Hindi segments and option markers (`¼v½..¼n½`) into clean Unicode Devanagari while preserving English segments.
-     - If the extracted page text is empty (Scanned PDF) or contains garbled font/glyph code (corrupted `ToUnicode` CMap), the page is automatically rendered to an offscreen `<canvas>` and processed via bilingual **Hindi + English OCR (`hin+eng`)** with live toast progress updates.
-  4. The question splitter separates every question (`1` to `N`) even when question numbers are on standalone lines, offset baselines, or two-column layouts, and populates clean Hindi in `🇮🇳 हिन्दी` and clean English in `🇬🇧 English`.
+### A. 🤖 AI Dual-File Question & Answer Scanner (Top Panel)
+A clean, streamlined 2-box upload bar at the top of the Question Bank:
+1. **Box 1 — Question Paper File (`प्रश्न-पत्र फ़ाइल`):**
+   - Upload any **PDF (Typed or Scanned), Image, CSV, or JSON** question paper.
+2. **Box 2 — Answer Key File (`मॉडल उत्तर कुंजी फ़ाइल`):**
+   - Upload the **Answer Key PDF / TXT / CSV** (or choose Paper Set `Set A / B / C / D` or paste quick answers like `1-A, 2-C`).
+3. **One-Click Action — `🤖 AI से स्कैन करें और Subject/Topic फ़ोल्डर में सेव करें`:**
+   - Uses **Firebase AI Logic (`gemini-3.8-flash`)** combined with our multi-stage PDF/KrutiDev/OCR engine to:
+     - Extract every question cleanly in **Hindi & English** (automatically fixing any KrutiDev/legacy font encoding).
+     - Extract all 4 options (`A, B, C, D`).
+     - Match the exact correct answer from the uploaded **Answer Key file** (handling Set A/B/C/D and deleted/`*` questions).
+     - Generate a concise **Solution / Explanation (`व्याख्या`)** if missing.
+     - **Automatically classify each question into the right Subject (`विषय`) and Topic (`टॉपिक`)** and save it directly as `Verified` into that Subject → Topic folder so it is immediately ready for the **Test Builder**.
+   - **Duplicate Detection & Batch Summary:** Automatically skips or updates exact duplicate questions and shows a clear summary badge (e.g., *"100 प्रश्न स्कैन हुए • 6 Subject फ़ोल्डर में सेव किए गए"*).
 
 ---
 
-## 3. Key Product Decisions & Trade-Offs
+### B. 📁 Subject-Wise → 📂 Topic-Wise → 📝 Question-Answer Folder Hierarchy (No Exam-Wise Clutter)
+All Exam-wise categorisation filters/forms are removed from the Question Bank. Instead, the Question Bank uses a clean 3-level breadcrumb folder explorer:
 
-- **Decision 1: Same-Origin Blob Worker + Main-Thread Fallback for `PDF.js`**
-  - *Chosen Approach*: Wrap `importScripts('.../pdf.worker.min.js')` in a local `Blob` URL and automatically retry with `disableWorker: true` if worker initialization fails.
-  - *Why*: Eliminates cross-origin worker failures in Android WebView and Chrome so `PDF.js` always decodes PDF font tables properly instead of falling back to raw PDF stream code.
-- **Decision 2: Selective KrutiDev-to-Unicode Conversion**
-  - *Chosen Approach*: Detect KrutiDev signature tokens (`¼v½`, `¼c½`, `¼l½`, `¼n½`, `NÙhlx<+`, `fuEufyf[kr`, `iz'u`, `gS`, `esa`, `dk`, etc.) at the line/clause level and convert only KrutiDev segments to Unicode Devanagari while leaving genuine English text untouched.
-  - *Why*: Bilingual DTP papers mix KrutiDev Hindi and Arial/Times English in the same document; selective conversion restores readable Devanagari without corrupting the English question text.
-- **Decision 3: Automatic Canvas OCR Fallback for Coded / Scanned Pages**
-  - *Chosen Approach*: If extracted text fails the readability check (empty text, PUA glyphs, control characters, or symbol-code gibberish), render the PDF page to `<canvas>` and run `Tesseract.js` (`hin+eng`).
-  - *Why*: Visually rendering the page bypasses broken internal PDF font maps completely because the glyphs are drawn onto the canvas exactly as a human sees them.
+1. **Level 1 — Subject Folders Grid (`सभी विषय फ़ोल्डर`):**
+   - Displays clean, clickable Subject Folder cards:
+     - `📁 छत्तीसगढ़ सामान्य ज्ञान (CG GK)`
+     - `📁 इतिहास (History)`
+     - `📁 भूगोल (Geography)`
+     - `📁 भारतीय राजव्यवस्था एवं संविधान (Polity)`
+     - `📁 अर्थव्यवस्था एवं बजट (Economy)`
+     - `📁 सामान्य विज्ञान एवं पर्यावरण (Science)`
+     - `📁 गणित एवं तार्किक योग्यता (Maths & Reasoning)`
+     - `📁 सामान्य हिन्दी (Hindi)`
+     - `📁 General English`
+     - `📁 कंप्यूटर ज्ञान (Computer)`
+     - `📁 समसामयिकी (Current Affairs)`
+     - `📁 शिक्षाशास्त्र एवं बाल विकास (Pedagogy)`
+     - Plus a **`➕ नया विषय (Add Subject)`** button for custom subjects.
+   - Each Subject card clearly displays the **number of Topics (`टॉपिक`)** and **total Verified Questions (`प्रश्न`)** inside it.
+
+2. **Level 2 — Topic Folders Inside Selected Subject (`विषय के अंतर्गत टॉपिक फ़ोल्डर`):**
+   - Clicking any Subject button opens that Subject's view with a top breadcrumb (`🏠 सभी विषय  ›  📁 छत्तीसगढ़ सामान्य ज्ञान`).
+   - Shows clickable **Topic Folder cards** for that Subject (e.g., `📂 छत्तीसगढ़ का इतिहास`, `📂 जनजातियाँ, लोक कला एवं संस्कृति`, `📂 नदियाँ एवं अपवाह तंत्र`, `📂 पंचायती राज एवं नगरीय निकाय`, `📂 खनिज, ऊर्जा एवं उद्योग`, plus any new topics created by AI or Admin via **`➕ नया टॉपिक`**).
+   - Also includes a **`📋 इस विषय के सभी प्रश्न देखें (View All Questions in Subject)`** button.
+
+3. **Level 3 — Scanned Questions & Answers List Inside Selected Topic (`टॉपिक के प्रश्न और उत्तर`):**
+   - Clicking a Topic folder opens the structured **Question & Answer cards** stored inside that Topic:
+     - Clean bilingual question display (**Hindi + English**) with question number and difficulty badge.
+     - All **4 Options (`A, B, C, D`)** with the **Correct Answer highlighted in green (`✓ सही उत्तर`)**.
+     - **1-Click Answer Key Switcher (`A | B | C | D`)** on the card in case the Admin ever wants to change the correct option in one tap.
+     - Collapsible/visible **Explanation (`व्याख्या`)**.
+     - Quick actions on each question card:
+       - `✏️ Edit` (opens a clean popup modal to edit text, options, answer, or explanation)
+       - `📂 Move Topic/Subject` (change Subject/Topic folder)
+       - `🗑️ Delete`
+   - Includes a top **Search Bar**, **Select All / Bulk Move / Bulk Delete**, and a **`🧪 इन प्रश्नों से टेस्ट बनाएं (Open in Test Builder)`** shortcut.
 
 ---
 
-## 4. Technical Architecture & Data Strategy
+### C. ➕ Compact Popup Modals & Smart Admin Utilities
+To keep the main Question Bank screen uncluttered and professional:
+- **`➕ Add Single Question` Popup Button:** Opens a clean modal dialog to manually type or paste a single question, pick its Subject & Topic, mark the correct option `A/B/C/D`, and save.
+- **`📥 Backup / Export (JSON & CSV)` Button:** Export questions from any Subject/Topic folder or the entire Question Bank.
+- **100% Test Builder Compatibility:** Every question saved in these Subject → Topic folders is automatically stored in `state.questionBank` (and synced to Firebase Firestore `question_bank`) with `status: "verified"`, `subjectId`, `subjectTag`, `topicId`, and `topic`, so the **Test Series & Builder** tab can filter and pick questions from any Subject and Topic immediately.
 
-```
-┌───────────────────────────────────────────────────────────────────────────┐
-│                 Uploaded PDF File (Typed, KrutiDev, or Scanned)           │
-└─────────────────────────────────────┬─────────────────────────────────────┘
-                                      ▼
-┌───────────────────────────────────────────────────────────────────────────┐
-│ 1. Safe PDF.js Loader (Blob Worker + disableWorker Main-Thread Fallback)  │
-│    • Detects %PDF- magic bytes even if Android file name lacks .pdf       │
-│    • Extracts items with 2-Column (Left Hindi / Right English) awareness  │
-└─────────────────────────────────────┬─────────────────────────────────────┘
-                                      ▼
-┌───────────────────────────────────────────────────────────────────────────┐
-│ 2. Font & Readability Inspector (Per Page)                                │
-│    ├─ Has KrutiDev / DevLys patterns (`¼v½`, `NÙhlx<+`, `fuEufyf[kr`)?    │
-│    │   └──► Convert KrutiDev Hindi segments & options to Unicode (देवनागरी)│
-│    └─ Is page text empty OR garbled CID/PUA/symbol code?                  │
-│        └──► Render PDF Page to Canvas (2.0x) → Run Tesseract OCR (hin+eng)│
-└─────────────────────────────────────┬─────────────────────────────────────┘
-                                      ▼
-┌───────────────────────────────────────────────────────────────────────────┐
-│ 3. Multi-Pattern Question Splitter & Bilingual Option Extractor           │
-│    • Handles standalone line numbers (`1.` on line N, stem on line N+1)   │
-│    • Splits inline question numbers glued after Option D                  │
-│    • Pairs Hindi + English stems & options into clean Bilingual records   │
-└───────────────────────────────────────────────────────────────────────────┘
-```
+---
 
-- **Interactive State & Error Recovery**:
-  - Never dumps raw `%PDF-` binary streams, `obj`/`endobj` dictionaries, or unmapped hex glyph codes into `questionHi` / `questionEn`.
-  - Displays clear progress toasts during multi-page PDF decoding and OCR fallback, then opens the interactive **Import Preview Workbench** with all detected questions properly separated into Hindi and English.
+## 3. Technical Changes
+1. **`/app/src/main/java/com/example/MainActivity.kt`:**
+   - Initialize Firebase App Check (`configureAppCheck`) and expose `@JavascriptInterface fun analyzeQuestionsWithAi(payloadJson: String, callbackId: String)` on `CgpediaAndroidBridge` using **Firebase AI Logic (`Firebase.ai.generativeModel("gemini-3.8-flash")`)** with structured JSON output (`responseMimeType = "application/json"`) and a 60-second timeout.
+2. **`/admin-console.js`:**
+   - Replace ONLY the Question Bank UI (`renderQuestionBankView` and its Question Bank handlers) with:
+     - The **AI Dual-File Scanner** (Question Paper + Answer Key) that calls the Gemini AI bridge alongside our local PDF/KrutiDev/OCR parser and saves structured questions directly into Subject → Topic folders.
+     - The **3-Level Subject → Topic → Question-Answer Folder Explorer**.
+     - The **Popup Modal** for adding/editing a single question or adding a custom Subject/Topic.
+3. **Asset Sync & Verification:**
+   - Run `node build-web.js` to sync assets into `/app/src/main/assets/public/` and verify the Android build with `compile_applet`.
