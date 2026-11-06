@@ -1,6 +1,6 @@
 {
-  "summary": "Implementation plan for upgrading ONLY the Question Bank section with an AI-powered Dual-File Scanner (Question Paper + Answer Key) and a clean Subject-Wise -> Topic-Wise Question & Answer Folder Explorer compatible with the Test Builder.",
-  "updatedAt": "2026-11-06T08:54:55.922568551Z",
+  "summary": "Implementation plan to fix AI PDF reading in Question Bank using Native PDF Page-to-Image Gemini Vision scanning and making the Answer Key file completely optional (detecting inline/end-of-paper answers or solving automatically).",
+  "updatedAt": "2026-11-06T10:03:34.221130940Z",
   "requestFeedback": true,
   "userFacing": true
 }

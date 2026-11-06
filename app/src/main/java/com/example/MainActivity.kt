@@ -3,9 +3,14 @@ package com.example
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.Bundle
+import android.os.ParcelFileDescriptor
 import android.util.Base64
 import android.view.WindowManager
 import android.webkit.JavascriptInterface
@@ -38,6 +43,10 @@ import com.google.firebase.Firebase
 import com.google.firebase.ai.ai
 import com.google.firebase.ai.type.content
 import com.google.firebase.ai.type.generationConfig
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -102,6 +111,8 @@ class MainActivity : ComponentActivity() {
 
 class CgpediaAndroidBridge(private val activity: Activity) {
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val pdfUploadBuffers = ConcurrentHashMap<String, ByteArrayOutputStream>()
+    private val pdfUploadFiles = ConcurrentHashMap<String, File>()
     var webViewRef: WebView? = null
 
     @JavascriptInterface
@@ -119,6 +130,126 @@ class CgpediaAndroidBridge(private val activity: Activity) {
     }
 
     @JavascriptInterface
+    fun initPdfUpload(): String {
+        val uploadId = "pdf_" + UUID.randomUUID().toString().replace("-", "")
+        pdfUploadBuffers[uploadId] = ByteArrayOutputStream()
+        return uploadId
+    }
+
+    @JavascriptInterface
+    fun appendPdfChunk(uploadId: String, base64Chunk: String): Boolean {
+        return try {
+            val buffer = pdfUploadBuffers[uploadId] ?: return false
+            val clean = base64Chunk.substringAfter("base64,", base64Chunk).trim()
+            if (clean.isNotEmpty()) {
+                val bytes = Base64.decode(clean, Base64.DEFAULT)
+                synchronized(buffer) {
+                    buffer.write(bytes)
+                }
+            }
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    @JavascriptInterface
+    fun finalizePdfUpload(uploadId: String): Int {
+        return try {
+            val buffer = pdfUploadBuffers.remove(uploadId) ?: return 0
+            val bytes = synchronized(buffer) { buffer.toByteArray() }
+            if (bytes.isEmpty()) return 0
+            val outFile = File(activity.cacheDir, "$uploadId.pdf")
+            outFile.writeBytes(bytes)
+            pdfUploadFiles[uploadId] = outFile
+            ParcelFileDescriptor.open(outFile, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
+                PdfRenderer(pfd).use { renderer ->
+                    renderer.pageCount
+                }
+            }
+        } catch (_: Exception) {
+            0
+        }
+    }
+
+    @JavascriptInterface
+    fun cleanupPdfUpload(uploadId: String) {
+        pdfUploadBuffers.remove(uploadId)
+        pdfUploadFiles.remove(uploadId)?.let { file ->
+            runCatching { file.delete() }
+        }
+    }
+
+    @JavascriptInterface
+    fun analyzePdfPagesWithAi(
+        uploadId: String,
+        startPageOneBased: Int,
+        endPageOneBased: Int,
+        promptText: String,
+        callbackId: String
+    ) {
+        ioScope.launch {
+            val bitmaps = mutableListOf<Bitmap>()
+            try {
+                val pdfFile = pdfUploadFiles[uploadId]
+                    ?: File(activity.cacheDir, "$uploadId.pdf").takeIf { it.exists() }
+                    ?: throw IllegalArgumentException("Uploaded PDF file not found")
+
+                ParcelFileDescriptor.open(pdfFile, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
+                    PdfRenderer(pfd).use { renderer ->
+                        val total = renderer.pageCount
+                        if (total <= 0) throw IllegalArgumentException("PDF has 0 pages")
+                        val firstIdx = (startPageOneBased - 1).coerceIn(0, total - 1)
+                        val lastIdx = (endPageOneBased - 1).coerceIn(firstIdx, total - 1)
+                        for (pageIdx in firstIdx..lastIdx) {
+                            renderer.openPage(pageIdx).use { page ->
+                                val maxSide = maxOf(page.width, page.height, 1)
+                                val scale = (1550f / maxSide.toFloat()).coerceIn(1.25f, 2.6f)
+                                val bmpW = (page.width * scale).toInt().coerceAtLeast(1)
+                                val bmpH = (page.height * scale).toInt().coerceAtLeast(1)
+                                val bitmap = Bitmap.createBitmap(bmpW, bmpH, Bitmap.Config.ARGB_8888)
+                                Canvas(bitmap).drawColor(Color.WHITE)
+                                page.render(
+                                    bitmap,
+                                    null,
+                                    null,
+                                    PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY
+                                )
+                                bitmaps.add(bitmap)
+                            }
+                        }
+                    }
+                }
+
+                val model = Firebase.ai.generativeModel(
+                    modelName = "gemini-3.8-flash",
+                    generationConfig = generationConfig {
+                        responseMimeType = "application/json"
+                        temperature = 0.1f
+                    }
+                )
+                val inputContent = content {
+                    bitmaps.forEach { bmp -> image(bmp) }
+                    text(promptText)
+                }
+                val response = withTimeout(90_000L) {
+                    model.generateContent(inputContent)
+                }
+                val jsonOut = response.text.orEmpty()
+                deliverResultToWeb(callbackId, true, jsonOut)
+            } catch (e: Exception) {
+                deliverResultToWeb(callbackId, false, e.message ?: "PDF Vision AI error")
+            } finally {
+                bitmaps.forEach { bmp ->
+                    runCatching {
+                        if (!bmp.isRecycled) bmp.recycle()
+                    }
+                }
+            }
+        }
+    }
+
+    @JavascriptInterface
     fun analyzeQuestionsWithAi(promptText: String, callbackId: String) {
         ioScope.launch {
             try {
@@ -126,10 +257,10 @@ class CgpediaAndroidBridge(private val activity: Activity) {
                     modelName = "gemini-3.8-flash",
                     generationConfig = generationConfig {
                         responseMimeType = "application/json"
-                        temperature = 0.15f
+                        temperature = 0.1f
                     }
                 )
-                val response = withTimeout(60_000L) {
+                val response = withTimeout(75_000L) {
                     model.generateContent(promptText)
                 }
                 val jsonOut = response.text.orEmpty()
@@ -152,14 +283,14 @@ class CgpediaAndroidBridge(private val activity: Activity) {
                     modelName = "gemini-3.8-flash",
                     generationConfig = generationConfig {
                         responseMimeType = "application/json"
-                        temperature = 0.15f
+                        temperature = 0.1f
                     }
                 )
                 val inputContent = content {
                     image(bitmap)
                     text(promptText)
                 }
-                val response = withTimeout(60_000L) {
+                val response = withTimeout(75_000L) {
                     model.generateContent(inputContent)
                 }
                 val jsonOut = response.text.orEmpty()

@@ -5137,10 +5137,16 @@
       const diffMatch = fullBlockText.match(/\[\s*(?:Difficulty|कठिनाई|स्तर)\s*:\s*([^\]]+)\]/i);
       if (diffMatch) difficulty = diffMatch[1].trim();
 
-      const inlineAnsMatch = fullBlockText.match(/(?:^|\n)\s*(?:Ans(?:wer)?|Correct\s*Answer|उत्तर|सही\s*उत्तर|सही\s*विकल्प)\s*[:\-=]\s*\(?([A-Da-d0-3अआइईबसदकखगघ])\)?/i);
+      const inlineAnsMatch = fullBlockText.match(/(?:^|\n|\s|\[|\()\s*(?:Ans(?:wer)?|Correct\s*(?:Answer|Option)|उत्तर|सही\s*(?:उत्तर|विकल्प)|अभीष्ट\s*उत्तर)\s*(?:विकल्प|Option)?\s*[:\-=]\s*\(?([A-Da-d1-4अआइईबसदकखगघ])\)?/i);
       if (inlineAnsMatch) {
         const inlineMap = parseAnswerKeyMap(`1-${inlineAnsMatch[1]}`);
         if (inlineMap.has(1)) inlineAnswer = inlineMap.get(1);
+      } else {
+        const tickedOptMatch = fullBlockText.match(/(?:✓|✔|☑|\[\s*✓\s*\])\s*\(?([A-Da-dअआइईबसदकखगघ])\s*[).:\-]/i);
+        if (tickedOptMatch) {
+          const tickedMap = parseAnswerKeyMap(`1-${tickedOptMatch[1]}`);
+          if (tickedMap.has(1)) inlineAnswer = tickedMap.get(1);
+        }
       }
 
       const expMatch = fullBlockText.match(/(?:^|\n)\s*(?:Explanation|Sol(?:ution)?|व्याख्या|उत्तर\s*व्याख्या|हल)\s*[:\-]\s*([\s\S]+)$/i);
@@ -5153,7 +5159,7 @@
       }
 
       textWithoutExp = textWithoutExp
-        .replace(/(?:^|\n)\s*(?:Ans(?:wer)?|Correct\s*Answer|उत्तर|सही\s*उत्तर|सही\s*विकल्प)\s*[:\-=]\s*\(?[A-Da-d0-3अआइईबसदकखगघ]\b[^\n]*/gi, '')
+        .replace(/(?:^|\n)\s*(?:Ans(?:wer)?|Correct\s*(?:Answer|Option)|उत्तर|सही\s*(?:उत्तर|विकल्प)|अभीष्ट\s*उत्तर)\s*(?:विकल्प|Option)?\s*[:\-=]\s*\(?[A-Da-d1-4अआइईबसदकखगघ]\b[^\n]*/gi, '')
         .replace(/\[\s*(?:Exam|Category|Subject|Topic|Subtopic|Difficulty|परीक्षा|विषय|टॉपिक|अध्याय|उपटॉपिक|कठिनाई|स्तर)\s*:[^\]]+\]/gi, '')
         .trim();
 
@@ -6469,6 +6475,32 @@
     else entry.reject(new Error(payload || 'AI Scan failed'));
   };
 
+  function parseAiJsonArraySafely(rawStr) {
+    if (!rawStr) return [];
+    let text = String(rawStr).trim();
+    text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+    try {
+      const direct = JSON.parse(text);
+      if (Array.isArray(direct)) return direct;
+      if (direct && typeof direct === 'object') {
+        if (Array.isArray(direct.questions)) return direct.questions;
+        if (Array.isArray(direct.items)) return direct.items;
+        if (Array.isArray(direct.data)) return direct.data;
+        if (direct.questionHi || direct.questionEn) return [direct];
+      }
+    } catch (_) {
+      const firstBracket = text.indexOf('[');
+      const lastBracket = text.lastIndexOf(']');
+      if (firstBracket >= 0 && lastBracket > firstBracket) {
+        try {
+          const sliced = JSON.parse(text.slice(firstBracket, lastBracket + 1));
+          if (Array.isArray(sliced)) return sliced;
+        } catch (_2) {}
+      }
+    }
+    return [];
+  }
+
   function callAndroidAiBridge(promptText, base64Image) {
     return new Promise((resolve, reject) => {
       if (
@@ -6485,7 +6517,7 @@
           delete aiPendingCallbacks[cbId];
           reject(new Error('AI timeout'));
         }
-      }, 65000);
+      }, 80000);
       aiPendingCallbacks[cbId] = { resolve, reject, timer };
       try {
         if (base64Image && typeof window.AndroidBridge.analyzeQuestionImageWithAi === 'function') {
@@ -6510,6 +6542,163 @@
     });
   }
 
+  async function detectUploadedFileKind(file, rawTextHint) {
+    if (!file) return 'text';
+    const name = String(file.name || '').toLowerCase();
+    const mime = String(file.type || '').toLowerCase();
+    if (name.endsWith('.pdf') || mime === 'application/pdf' || /^Method:\s*PDF_OCR/i.test(String(rawTextHint || ''))) {
+      return 'pdf';
+    }
+    if (/\.(png|jpe?g|webp)$/i.test(name) || mime.startsWith('image/')) {
+      return 'image';
+    }
+    try {
+      const sliceBlob = file.slice ? file.slice(0, 32) : file;
+      const buf = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(r.result);
+        r.onerror = (e) => reject(e);
+        r.readAsArrayBuffer(sliceBlob);
+      });
+      if (buf) {
+        const b = new Uint8Array(buf);
+        const ascii = new TextDecoder('latin1').decode(b);
+        if (ascii.includes('%PDF-')) return 'pdf';
+        if (b.length >= 4 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47) return 'image';
+        if (b.length >= 3 && b[0] === 0xFF && b[1] === 0xD8 && b[2] === 0xFF) return 'image';
+        if (ascii.startsWith('RIFF') && ascii.includes('WEBP')) return 'image';
+      }
+    } catch (_) {}
+    return 'text';
+  }
+
+  async function uploadPdfToAndroidBridge(file) {
+    if (
+      !window.AndroidBridge ||
+      typeof window.AndroidBridge.initPdfUpload !== 'function' ||
+      typeof window.AndroidBridge.appendPdfChunk !== 'function' ||
+      typeof window.AndroidBridge.finalizePdfUpload !== 'function'
+    ) {
+      return null;
+    }
+    const dataUrl = await readFileAsDataUrl(file);
+    const commaIdx = dataUrl.indexOf('base64,');
+    const rawBase64 = commaIdx >= 0 ? dataUrl.slice(commaIdx + 7) : dataUrl;
+    const uploadId = String(window.AndroidBridge.initPdfUpload() || '');
+    if (!uploadId) return null;
+    // Chunk size MUST be a multiple of 4 so each base64 chunk decodes cleanly on the Kotlin side
+    const chunkSize = 240000;
+    for (let offset = 0; offset < rawBase64.length; offset += chunkSize) {
+      const chunk = rawBase64.slice(offset, offset + chunkSize);
+      const ok = window.AndroidBridge.appendPdfChunk(uploadId, chunk);
+      if (!ok) {
+        if (typeof window.AndroidBridge.cleanupPdfUpload === 'function') {
+          window.AndroidBridge.cleanupPdfUpload(uploadId);
+        }
+        return null;
+      }
+    }
+    const pageCount = Number(window.AndroidBridge.finalizePdfUpload(uploadId) || 0);
+    if (pageCount <= 0) {
+      if (typeof window.AndroidBridge.cleanupPdfUpload === 'function') {
+        window.AndroidBridge.cleanupPdfUpload(uploadId);
+      }
+      return null;
+    }
+    return { uploadId, pageCount };
+  }
+
+  function callAndroidPdfVisionBatch(uploadId, startPageOneBased, endPageOneBased, promptText) {
+    return new Promise((resolve, reject) => {
+      if (
+        !window.AndroidBridge ||
+        typeof window.AndroidBridge.analyzePdfPagesWithAi !== 'function'
+      ) {
+        reject(new Error('Native PDF Vision Bridge not available'));
+        return;
+      }
+      const cbId = 'ai_pdf_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+      const timer = setTimeout(() => {
+        if (aiPendingCallbacks[cbId]) {
+          delete aiPendingCallbacks[cbId];
+          reject(new Error('PDF Vision AI timeout'));
+        }
+      }, 95000);
+      aiPendingCallbacks[cbId] = { resolve, reject, timer };
+      try {
+        window.AndroidBridge.analyzePdfPagesWithAi(
+          uploadId,
+          Number(startPageOneBased),
+          Number(endPageOneBased),
+          promptText,
+          cbId
+        );
+      } catch (err) {
+        clearTimeout(timer);
+        delete aiPendingCallbacks[cbId];
+        reject(err);
+      }
+    });
+  }
+
+  async function extractAnswerKeyWithAiFallback(akFile, paperSetCode, onProgress) {
+    if (!akFile) return '';
+    const akKind = await detectUploadedFileKind(akFile, '');
+    let extractedAk = '';
+    if (akKind !== 'image') {
+      try {
+        extractedAk = await extractTextFromUploadedFile(akFile);
+      } catch (_) {}
+    }
+    const cleanAk = extractReadableTextFromPdfStream(extractedAk || '');
+    const testMap = parseAnswerKeyMap(cleanAk, paperSetCode || 'A');
+    if (testMap && testMap.size > 0) {
+      return cleanAk;
+    }
+    // If Answer Key PDF/Image is scanned and has no selectable text, use AI Vision to extract the Answer Key!
+    const isPdf = akKind === 'pdf';
+    const isImg = akKind === 'image';
+    const akPrompt = `You are reading an official competitive exam Answer Key (Target Set: Set ${paperSetCode || 'A'}).
+Extract all QuestionNumber -> CorrectOption (A, B, C, or D) mappings for Set ${paperSetCode || 'A'}.
+Return ONLY a JSON array of strings like: ["1-A", "2-C", "3-B", "4-D"]`;
+
+    try {
+      if (isPdf && window.AndroidBridge && typeof window.AndroidBridge.initPdfUpload === 'function') {
+        if (onProgress) onProgress(`🔑 AI Vision द्वारा स्कैन की गई उत्तर कुंजी (${akFile.name}) पढ़ी जा रही है...`);
+        const uploaded = await uploadPdfToAndroidBridge(akFile);
+        if (uploaded && uploaded.pageCount > 0) {
+          const pairs = [];
+          try {
+            const maxAkPages = Math.min(uploaded.pageCount, 6);
+            for (let p = 1; p <= maxAkPages; p += 2) {
+              const endP = Math.min(maxAkPages, p + 1);
+              const resJson = await callAndroidPdfVisionBatch(uploaded.uploadId, p, endP, akPrompt);
+              const arr = parseAiJsonArraySafely(resJson);
+              arr.forEach((item) => {
+                if (typeof item === 'string') pairs.push(item);
+                else if (item && item.questionNumber && item.answer) pairs.push(`${item.questionNumber}-${item.answer}`);
+              });
+            }
+          } finally {
+            if (typeof window.AndroidBridge.cleanupPdfUpload === 'function') {
+              window.AndroidBridge.cleanupPdfUpload(uploaded.uploadId);
+            }
+          }
+          if (pairs.length > 0) return pairs.join(', ');
+        }
+      } else if (isImg && window.AndroidBridge && typeof window.AndroidBridge.analyzeQuestionImageWithAi === 'function') {
+        if (onProgress) onProgress(`🔑 AI Vision द्वारा उत्तर कुंजी इमेज (${akFile.name}) पढ़ी जा रही है...`);
+        const dataUrl = await readFileAsDataUrl(akFile);
+        const resJson = await callAndroidAiBridge(akPrompt, dataUrl);
+        const arr = parseAiJsonArraySafely(resJson);
+        if (arr.length > 0) return arr.join(', ');
+      }
+    } catch (akAiErr) {
+      console.warn('Answer Key AI Vision fallback error:', akAiErr);
+    }
+    return cleanAk;
+  }
+
   async function scanAndCategorizeWithAiOrFallback({
     questionFile,
     rawQuestionText,
@@ -6526,7 +6715,7 @@
       return `- Subject: "${s.titleEn}" (${s.titleHi}) -> Topics: [${topics.join(', ')}]`;
     }).join('\n');
 
-    // Step 1: Run local multi-stage parser first so we always have a baseline
+    // Step 1: Run local multi-stage parser first so we always have a fallback baseline
     const localParsed = parseRawImportFile(
       rawQuestionText || '',
       (questionFile && questionFile.name) || 'questions.pdf',
@@ -6536,33 +6725,56 @@
     );
     const localRows = Array.isArray(localParsed.rows) ? localParsed.rows : [];
     const parsedKeyMap = parseAnswerKeyMap(answerKeyText || '', paperSetCode || 'A');
-    const compactKeyStr = Object.keys(parsedKeyMap)
-      .slice(0, 200)
-      .map((qn) => `${qn}:${['A', 'B', 'C', 'D'][parsedKeyMap[qn]] || 'A'}`)
+    const keyEntries = parsedKeyMap instanceof Map
+      ? Array.from(parsedKeyMap.entries())
+      : Object.entries(parsedKeyMap || {}).map(([k, v]) => [Number(k), Number(v)]);
+    const getKeyAnswerForQ = (qNum) => {
+      if (parsedKeyMap instanceof Map) {
+        return parsedKeyMap.has(qNum) ? parsedKeyMap.get(qNum) : undefined;
+      }
+      return parsedKeyMap && parsedKeyMap[qNum] !== undefined ? parsedKeyMap[qNum] : undefined;
+    };
+    const compactKeyStr = keyEntries
+      .slice(0, 250)
+      .map(([qn, optIdx]) => `${qn}:${['A', 'B', 'C', 'D'][optIdx] || 'A'}`)
       .join(', ');
 
-    const isImageFile = questionFile && /\.(png|jpe?g|webp)$/i.test(questionFile.name || '');
+    const fileName = (questionFile && questionFile.name) || '';
+    const detectedKind = await detectUploadedFileKind(questionFile, rawQuestionText);
+    const isPdfFile = detectedKind === 'pdf';
+    const isImageFile = detectedKind === 'image';
     const hasAiBridge = Boolean(
       window.AndroidBridge &&
       typeof window.AndroidBridge.analyzeQuestionsWithAi === 'function'
     );
+    const hasNativePdfVision = Boolean(
+      window.AndroidBridge &&
+      typeof window.AndroidBridge.initPdfUpload === 'function' &&
+      typeof window.AndroidBridge.analyzePdfPagesWithAi === 'function'
+    );
 
-    const aiExtractedItems = [];
+    const answerInstructionBlock = compactKeyStr
+      ? `Provided Answer Key Map (Set ${paperSetCode || 'A'}, QuestionNumber:CorrectOption): ${compactKeyStr}
+- Priority 1: Use the Provided Answer Key Map above when QuestionNumber is present.
+- Priority 2: If a question is not in the map, check if the answer is marked/written inside the Question Paper itself (e.g., "उत्तर:", "Ans:", bold/ticked option ✓, or answer table).
+- Priority 3: If no answer is given anywhere, solve the question accurately yourself and set "correctOptionIndex" (0=A, 1=B, 2=C, 3=D).`
+      : `No separate Answer Key file was uploaded.
+- Priority 1: Carefully check if the Question Paper itself contains the answer (inline like "उत्तर: (A)", "Ans: B", "सही उत्तर:", a ticked/highlighted/bold option ✓, or an answer key table at the end of the paper).
+- Priority 2: If the Question Paper does NOT mention the answer for a question, YOU MUST SOLVE the question accurately using your expert knowledge and set the exact "correctOptionIndex" (0=A, 1=B, 2=C, 3=D) along with a clear explanation.`;
 
-    if (hasAiBridge) {
-      try {
-        if (isImageFile) {
-          if (onProgress) onProgress('🤖 AI द्वारा प्रश्न-पत्र इमेज और उत्तर कुंजी स्कैन की जा रही है...');
-          const dataUrl = await readFileAsDataUrl(questionFile);
-          const prompt = `You are an expert competitive exam Question Bank AI scanner.
-Extract ALL multiple-choice questions from this image, match answers with the provided Answer Key (Paper Set ${paperSetCode || 'A'}), and categorise each question into a Subject and Topic folder.
-Provided Answer Key Map (QuestionNumber:CorrectOption): ${compactKeyStr || 'None provided (determine accurate correct option yourself)'}
-${forcedSubjectTag ? `Force Subject Folder: "${forcedSubjectTag}"` : ''}
+    const buildVisionExtractionPrompt = (pageRangeLabel) => `You are an expert Indian Competitive Exam (CGPSC / Vyapam / UPSC / SSC) Question Bank AI Vision Scanner.
+Carefully inspect ${pageRangeLabel} of this Question Paper image(s) and extract EVERY multiple-choice question visible on the page(s).
+Read both Hindi (Devanagari, even if printed in legacy fonts like KrutiDev/DevLys/Chanakya or scanned) and English text accurately into clean Unicode Devanagari ("questionHi", "optionsHi") and clean English ("questionEn", "optionsEn"). If the paper is only in Hindi, put the Hindi text in both or translate to English; if only in English, translate to Hindi as well so both languages are complete.
+
+ANSWER RESOLUTION RULES (CRITICAL):
+${answerInstructionBlock}
+
+SUBJECT & TOPIC FOLDER CATEGORISATION (Subject-Wise -> Topic-Wise ONLY, NO Exam-Wise folder):
+${forcedSubjectTag ? `Force Subject Folder: "${forcedSubjectTag}"` : 'Choose the most accurate Subject ("subjectTag") and Topic ("topic") from the list below (or create a clean Topic name if needed):'}
 ${forcedTopic ? `Force Topic Folder: "${forcedTopic}"` : ''}
-Available Subject & Topic Folders:
 ${subjectTopicGuide}
 
-Return ONLY a valid JSON array of objects with this exact schema:
+Return ONLY a valid JSON array of objects with this exact schema (if a page has only instructions and 0 questions, return []):
 [
   {
     "questionNumber": 1,
@@ -6574,37 +6786,91 @@ Return ONLY a valid JSON array of objects with this exact schema:
     "optionsHi": ["विकल्प A", "विकल्प B", "विकल्प C", "विकल्प D"],
     "optionsEn": ["Option A", "Option B", "Option C", "Option D"],
     "correctOptionIndex": 0,
-    "explanationHi": "संक्षिप्त हिन्दी व्याख्या...",
-    "explanationEn": "Concise English explanation..."
+    "explanationHi": "सही उत्तर और संक्षिप्त हिन्दी व्याख्या...",
+    "explanationEn": "Correct answer and concise English explanation..."
   }
 ]`;
+
+    const aiExtractedItems = [];
+
+    if (hasAiBridge) {
+      try {
+        if (isPdfFile && hasNativePdfVision) {
+          if (onProgress) {
+            onProgress(`📄 PDF "${fileName}" के पेजों को AI Vision स्कैनिंग के लिए तैयार किया जा रहा है...`);
+          }
+          const uploadedPdf = await uploadPdfToAndroidBridge(questionFile);
+          if (uploadedPdf && uploadedPdf.pageCount > 0) {
+            try {
+              const totalPages = Math.min(uploadedPdf.pageCount, 30);
+              const pagesPerBatch = 2;
+              for (let startP = 1; startP <= totalPages; startP += pagesPerBatch) {
+                const endP = Math.min(totalPages, startP + pagesPerBatch - 1);
+                if (onProgress) {
+                  onProgress(
+                    `🤖 AI Vision द्वारा PDF पेज ${startP}${endP > startP ? `-${endP}` : ''} / ${totalPages} को इमेज बनाकर प्रश्न और उत्तर स्कैन किए जा रहे हैं (${aiExtractedItems.length} प्रश्न मिले)...`
+                  );
+                }
+                try {
+                  const batchPrompt = buildVisionExtractionPrompt(
+                    endP > startP ? `Pages ${startP} to ${endP}` : `Page ${startP}`
+                  );
+                  const aiJsonStr = await callAndroidPdfVisionBatch(
+                    uploadedPdf.uploadId,
+                    startP,
+                    endP,
+                    batchPrompt
+                  );
+                  const parsedArr = parseAiJsonArraySafely(aiJsonStr);
+                  if (parsedArr.length > 0) {
+                    aiExtractedItems.push(...parsedArr);
+                  }
+                } catch (pageBatchErr) {
+                  console.warn(`PDF Vision batch ${startP}-${endP} error:`, pageBatchErr);
+                }
+              }
+            } finally {
+              if (typeof window.AndroidBridge.cleanupPdfUpload === 'function') {
+                window.AndroidBridge.cleanupPdfUpload(uploadedPdf.uploadId);
+              }
+            }
+          }
+        } else if (isImageFile) {
+          if (onProgress) onProgress('🤖 AI Vision द्वारा प्रश्न-पत्र इमेज और उत्तर स्कैन किए जा रहे हैं...');
+          const dataUrl = await readFileAsDataUrl(questionFile);
+          const prompt = buildVisionExtractionPrompt('this image');
           const aiJsonStr = await callAndroidAiBridge(prompt, dataUrl);
-          const parsedArr = JSON.parse(aiJsonStr);
-          if (Array.isArray(parsedArr)) aiExtractedItems.push(...parsedArr);
-        } else if (localRows.length > 0) {
-          // Enhance and categorise local parsed questions in batches of 15 via Gemini AI
+          const parsedArr = parseAiJsonArraySafely(aiJsonStr);
+          if (parsedArr.length > 0) aiExtractedItems.push(...parsedArr);
+        }
+
+        // Fallback / non-PDF text enhancement if Vision returned 0 items (e.g. CSV/JSON upload or text-only fallback)
+        if (aiExtractedItems.length === 0 && localRows.length > 0) {
           const batchSize = 15;
           for (let i = 0; i < localRows.length; i += batchSize) {
             const batch = localRows.slice(i, i + batchSize);
             if (onProgress) {
-              onProgress(`🤖 AI द्वारा प्रश्न ${i + 1} से ${Math.min(localRows.length, i + batchSize)} स्कैन और Subject/Topic में वर्गीकृत किए जा रहे हैं...`);
+              onProgress(`🤖 AI द्वारा प्रश्न ${i + 1} से ${Math.min(localRows.length, i + batchSize)} स्कैन, उत्तर जाँच और Subject/Topic में वर्गीकृत किए जा रहे हैं...`);
             }
             const compactBatch = batch.map((r, idx) => {
               const qNum = Number(r.questionNumber || i + idx + 1);
-              const akIdx = parsedKeyMap[qNum] !== undefined ? parsedKeyMap[qNum] : r.rawCorrectIndex;
+              const keyAns = getKeyAnswerForQ(qNum);
+              const akIdx = keyAns !== undefined ? keyAns : r.rawCorrectIndex;
               return {
                 qNum,
                 qHi: r.questionHi || '',
                 qEn: r.questionEn || '',
                 optsHi: [r.optA_Hi || '', r.optB_Hi || '', r.optC_Hi || '', r.optD_Hi || ''],
                 optsEn: [r.optA_En || '', r.optB_En || '', r.optC_En || '', r.optD_En || ''],
-                ansIndexFromKey: akIdx !== '' && akIdx !== undefined ? Number(akIdx) : null,
+                ansIndexFromKeyOrPaper: akIdx !== '' && akIdx !== undefined && akIdx !== null ? Number(akIdx) : null,
                 expHi: r.explanationHi || '',
                 expEn: r.explanationEn || ''
               };
             });
             const prompt = `You are an expert bilingual (Hindi + English) competitive exam AI Question Bank processor.
-Clean up these extracted questions (fix any broken OCR or KrutiDev characters into pure Devanagari Hindi and clean English), ensure all 4 options exist in both Hindi and English, use "ansIndexFromKey" (0=A, 1=B, 2=C, 3=D) when present or determine the accurate answer (0..3), write a short explanation in Hindi & English, and classify each question into the exact Subject ("subjectTag") and Topic ("topic") folder.
+Clean up these extracted questions (fix any broken OCR or KrutiDev characters into pure Devanagari Hindi and clean English), ensure all 4 options exist in both Hindi and English.
+For "correctOptionIndex" (0=A, 1=B, 2=C, 3=D): if "ansIndexFromKeyOrPaper" is 0, 1, 2, or 3, use it; if it is null, check if the answer is mentioned inside the question text, and if not, SOLVE the question accurately yourself and set "correctOptionIndex" (0..3).
+Write a short explanation in Hindi & English, and classify each question into the exact Subject ("subjectTag") and Topic ("topic") folder.
 ${forcedSubjectTag ? `Force Subject Folder: "${forcedSubjectTag}"` : ''}
 ${forcedTopic ? `Force Topic Folder: "${forcedTopic}"` : ''}
 Available Subject & Topic Folders:
@@ -6617,8 +6883,8 @@ Return ONLY a JSON array where each element has:
 {"questionNumber": number, "subjectTag": string, "topic": string, "difficulty": "Easy"|"Moderate"|"Hard", "questionHi": string, "questionEn": string, "optionsHi": [string,string,string,string], "optionsEn": [string,string,string,string], "correctOptionIndex": 0|1|2|3, "explanationHi": string, "explanationEn": string}`;
             try {
               const aiJsonStr = await callAndroidAiBridge(prompt, null);
-              const parsedBatch = JSON.parse(aiJsonStr);
-              if (Array.isArray(parsedBatch) && parsedBatch.length > 0) {
+              const parsedBatch = parseAiJsonArraySafely(aiJsonStr);
+              if (parsedBatch.length > 0) {
                 aiExtractedItems.push(...parsedBatch);
               } else {
                 aiExtractedItems.push(...batch);
@@ -6627,18 +6893,17 @@ Return ONLY a JSON array where each element has:
               aiExtractedItems.push(...batch);
             }
           }
-        } else if (rawQuestionText && rawQuestionText.trim().length > 20) {
-          // Raw text didn't match strict regex — let Gemini AI extract directly from raw text chunks!
+        } else if (aiExtractedItems.length === 0 && rawQuestionText && rawQuestionText.replace(/^Method:\s*PDF_OCR\s*/i, '').trim().length > 15) {
           const cleanRaw = convertKrutiDevInText(extractReadableTextFromPdfStream(rawQuestionText));
           const chunkLen = 9000;
           for (let offset = 0; offset < Math.min(cleanRaw.length, 45000); offset += chunkLen) {
             const textSlice = cleanRaw.slice(offset, offset + chunkLen);
             if (onProgress) {
-              onProgress(`🤖 AI द्वारा कच्चे टेक्स्ट से प्रश्न और उत्तर निकाले जा रहे हैं (${Math.min(100, Math.round(((offset + chunkLen) / cleanRaw.length) * 100))}%)...`);
+              onProgress(`🤖 AI द्वारा टेक्स्ट से प्रश्न और उत्तर निकाले जा रहे हैं (${Math.min(100, Math.round(((offset + chunkLen) / cleanRaw.length) * 100))}%)...`);
             }
             const prompt = `You are an expert competitive exam Question Bank AI scanner.
-Extract all multiple-choice questions from the following Question Paper text, match correct answers using the provided Answer Key Map (Set ${paperSetCode || 'A'}), fix any garbled/KrutiDev Hindi into Unicode Devanagari, and categorise each question into a Subject and Topic folder.
-Provided Answer Key Map (QuestionNumber:CorrectOption): ${compactKeyStr || 'None provided (determine accurate correct option 0..3)'}
+Extract all multiple-choice questions from the following Question Paper text, fix any garbled/KrutiDev Hindi into Unicode Devanagari, and categorise each question into a Subject and Topic folder.
+${answerInstructionBlock}
 ${forcedSubjectTag ? `Force Subject Folder: "${forcedSubjectTag}"` : ''}
 ${forcedTopic ? `Force Topic Folder: "${forcedTopic}"` : ''}
 Available Subject & Topic Folders:
@@ -6651,8 +6916,8 @@ Return ONLY a JSON array of objects:
 [{"questionNumber": 1, "subjectTag": "...", "topic": "...", "difficulty": "Moderate", "questionHi": "...", "questionEn": "...", "optionsHi": ["A","B","C","D"], "optionsEn": ["A","B","C","D"], "correctOptionIndex": 0, "explanationHi": "...", "explanationEn": "..."}]`;
             try {
               const aiJsonStr = await callAndroidAiBridge(prompt, null);
-              const parsedSlice = JSON.parse(aiJsonStr);
-              if (Array.isArray(parsedSlice)) aiExtractedItems.push(...parsedSlice);
+              const parsedSlice = parseAiJsonArraySafely(aiJsonStr);
+              if (parsedSlice.length > 0) aiExtractedItems.push(...parsedSlice);
             } catch (_sliceErr) {
               // ignore slice error
             }
@@ -6686,10 +6951,11 @@ Return ONLY a JSON array of objects:
       const optsHi = [0, 1, 2, 3].map((i) => convertKrutiDevInText(String(rawOptsHi[i] || rawOptsEn[i] || `विकल्प ${['A', 'B', 'C', 'D'][i]}`).trim()));
       const optsEn = [0, 1, 2, 3].map((i) => convertKrutiDevInText(String(rawOptsEn[i] || rawOptsHi[i] || `Option ${['A', 'B', 'C', 'D'][i]}`).trim()));
 
-      // Match Answer Key priority: explicit Answer Key map for qNum -> AI/local correctOptionIndex -> 0
+      // Match Answer Key priority: explicit Answer Key map for qNum -> AI/inline correctOptionIndex -> rawCorrectIndex -> 0
       let corrIdx = 0;
-      if (parsedKeyMap[qNum] !== undefined && parsedKeyMap[qNum] >= 0 && parsedKeyMap[qNum] <= 3) {
-        corrIdx = Number(parsedKeyMap[qNum]);
+      const keyMappedAns = getKeyAnswerForQ(qNum);
+      if (keyMappedAns !== undefined && keyMappedAns >= 0 && keyMappedAns <= 3) {
+        corrIdx = Number(keyMappedAns);
       } else if (rawItem.correctOptionIndex !== undefined && rawItem.correctOptionIndex !== null && rawItem.correctOptionIndex !== '') {
         const parsedCorr = parseCorrectIndexValue(rawItem.correctOptionIndex, optsHi, optsEn, false);
         corrIdx = parsedCorr !== null ? parsedCorr : 0;
@@ -8005,8 +8271,10 @@ Return ONLY a JSON array of objects:
         if (akFileInp.files && akFileInp.files[0]) {
           nav.selectedAnswerKeyFile = akFileInp.files[0];
           try {
-            const extractedAk = await extractTextFromUploadedFile(nav.selectedAnswerKeyFile);
-            const cleanAk = extractReadableTextFromPdfStream(extractedAk);
+            const cleanAk = await extractAnswerKeyWithAiFallback(
+              nav.selectedAnswerKeyFile,
+              nav.paperSetCode || 'A'
+            );
             qbState.pendingAnswerKeyText = cleanAk;
             const akTxtInp = document.getElementById('qbAiAnswerKeyTextInput');
             if (akTxtInp) akTxtInp.value = cleanAk;
@@ -8047,13 +8315,29 @@ Return ONLY a JSON array of objects:
           api.toast('⚠️ कृपया पहले 1️⃣ प्रश्न-पत्र फ़ाइल (Question Paper File) चुनें।');
           return;
         }
+        const optionalAkFile = (akFileInp && akFileInp.files && akFileInp.files[0]) || nav.selectedAnswerKeyFile || null;
         nav.isScanning = true;
         nav.lastScanSummary = null;
-        nav.scanStatusText = `⏳ Step 1/3: "${qFile.name}" से प्रश्न पढ़े जा रहे हैं...`;
+        nav.scanStatusText = `⏳ Step 1/3: "${qFile.name}" को AI स्कैनिंग के लिए पढ़ा जा रहा है...`;
         renderAdminConsole(rootEl, state, api);
 
         try {
-          const isImg = /\.(png|jpe?g|webp)$/i.test(qFile.name || '');
+          let answerKeyText = String(qbState.pendingAnswerKeyText || '').trim();
+          if (optionalAkFile && !answerKeyText) {
+            answerKeyText = await extractAnswerKeyWithAiFallback(
+              optionalAkFile,
+              nav.paperSetCode || 'A',
+              (msg) => {
+                nav.scanStatusText = msg;
+                const box = document.getElementById('qbAiScanStatusBox');
+                if (box) box.textContent = msg;
+              }
+            );
+            qbState.pendingAnswerKeyText = answerKeyText;
+          }
+
+          const qKind = await detectUploadedFileKind(qFile, '');
+          const isImg = qKind === 'image';
           const rawQuestionText = isImg
             ? ''
             : await extractTextFromUploadedFile(qFile, (msg) => {
@@ -8062,7 +8346,6 @@ Return ONLY a JSON array of objects:
                 if (box) box.textContent = msg;
               });
 
-          const answerKeyText = qbState.pendingAnswerKeyText || '';
           const scannedDocs = await scanAndCategorizeWithAiOrFallback({
             questionFile: qFile,
             rawQuestionText,
