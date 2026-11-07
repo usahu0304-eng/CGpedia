@@ -452,6 +452,93 @@
     }
   }
 
+  const DELETED_DOCS_STORAGE_KEY = 'cgpedia_deleted_cloud_ids_v1';
+
+  function loadDeletedDocMap() {
+    try {
+      const raw = localStorage.getItem(DELETED_DOCS_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') return parsed;
+      }
+    } catch (_) {}
+    return {};
+  }
+
+  function markDocDeletedLocally(collectionName, docId) {
+    if (!collectionName || !docId) return;
+    try {
+      const map = loadDeletedDocMap();
+      map[`${collectionName}/${String(docId)}`] = Date.now();
+      localStorage.setItem(DELETED_DOCS_STORAGE_KEY, JSON.stringify(map));
+    } catch (_) {}
+  }
+
+  function unmarkDocDeletedLocally(collectionName, docId) {
+    if (!collectionName || !docId) return;
+    try {
+      const map = loadDeletedDocMap();
+      const key = `${collectionName}/${String(docId)}`;
+      if (key in map) {
+        delete map[key];
+        localStorage.setItem(DELETED_DOCS_STORAGE_KEY, JSON.stringify(map));
+      }
+    } catch (_) {}
+  }
+
+  function isDocDeletedLocally(collectionName, docId) {
+    if (!collectionName || !docId) return false;
+    const map = loadDeletedDocMap();
+    return Boolean(map[`${collectionName}/${String(docId)}`]);
+  }
+
+  function isCurrentLocalAdminSession() {
+    try {
+      if (window.CGpediaApp && typeof window.CGpediaApp.isCurrentUserAdmin === 'function') {
+        if (window.CGpediaApp.isCurrentUserAdmin()) return true;
+      }
+      if (auth && auth.currentUser && String(auth.currentUser.email || '').trim().toLowerCase() === OWNER_ADMIN_EMAIL) {
+        return true;
+      }
+      const raw = localStorage.getItem('cgpedia_enterprise_state_v3');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const stuEmail = String((parsed && parsed.student && parsed.student.email) || '').trim().toLowerCase();
+        if (stuEmail === OWNER_ADMIN_EMAIL) return true;
+      }
+    } catch (_) {}
+    return false;
+  }
+
+  function bindNamedFirestoreDatabaseInstance(appInstance) {
+    // Firebase v10 compat SDK ignores the databaseId parameter in app.firestore(databaseId)
+    // unless the underlying modular 'firestore' provider's [DEFAULT] instance is bound to NAMED_DATABASE_ID.
+    try {
+      if (
+        NAMED_DATABASE_ID &&
+        appInstance &&
+        appInstance._delegate &&
+        appInstance._delegate._container &&
+        typeof appInstance._delegate._container.getProvider === 'function'
+      ) {
+        const fsProvider = appInstance._delegate._container.getProvider('firestore');
+        if (fsProvider && typeof fsProvider.getImmediate === 'function' && fsProvider.instances) {
+          const namedDelegate = fsProvider.getImmediate({ identifier: NAMED_DATABASE_ID });
+          if (namedDelegate) {
+            fsProvider.instances.set('[DEFAULT]', namedDelegate);
+          }
+        }
+      }
+    } catch (bindErr) {
+      console.warn('Named Firestore database binding notice:', bindErr);
+    }
+    try {
+      return appInstance.firestore(NAMED_DATABASE_ID);
+    } catch (_) {
+      return window.firebase.firestore();
+    }
+  }
+
   function initFirebaseConnection(onStateReady) {
     if (typeof window.firebase === 'undefined') {
       updateSyncBadge('⚡ Local + Offline Ready', false);
@@ -469,12 +556,9 @@
         firebaseApp = window.firebase.app();
       }
       auth = window.firebase.auth();
-      // Connect to named Firestore database if supported, otherwise default instance
-      try {
-        db = firebaseApp.firestore(NAMED_DATABASE_ID);
-      } catch (_) {
-        db = window.firebase.firestore();
-      }
+      // Connect to provisioned named Firestore database
+      db = bindNamedFirestoreDatabaseInstance(firebaseApp);
+
       // Initialize Firebase Storage using the existing project bucket
       try {
         if (typeof window.firebase.storage === 'function') {
@@ -538,12 +622,17 @@
             if (!window.CGpediaApp || typeof window.CGpediaApp.mergeCloudCollection !== 'function') return;
             const docs = [];
             snap.forEach((doc) => {
-              docs.push(Object.assign({ id: doc.id }, doc.data()));
+              const data = doc.data() || {};
+              if (data.isDeleted === true || data.status === 'deleted') {
+                markDocDeletedLocally(col, doc.id);
+                return;
+              }
+              docs.push(Object.assign({ id: doc.id }, data));
             });
-            window.CGpediaApp.mergeCloudCollection(key, docs);
+            window.CGpediaApp.mergeCloudCollection(key, docs, col);
           },
-          () => {
-            // Silent fallback if rules or offline state prevent a specific collection listener
+          (err) => {
+            console.warn(`Firestore listener notice [${col}]:`, err && err.message ? err.message : err);
           }
         );
         activeUnsubscribes.push(unsub);
@@ -551,13 +640,28 @@
     });
   }
 
+  function prepareCloudPayload(docId, payload) {
+    const cleanPayload = JSON.parse(JSON.stringify(payload || {}));
+    if (!cleanPayload.id && docId) {
+      cleanPayload.id = String(docId);
+    }
+    if (!cleanPayload.updatedAtIso) {
+      cleanPayload.updatedAtIso = new Date().toISOString();
+    }
+    if (isCurrentLocalAdminSession() || !cleanPayload.updatedByAdminEmail) {
+      cleanPayload.updatedByAdminEmail = OWNER_ADMIN_EMAIL;
+    }
+    if (window.firebase && window.firebase.firestore && window.firebase.firestore.FieldValue) {
+      cleanPayload.updatedAtTs = window.firebase.firestore.FieldValue.serverTimestamp();
+    }
+    return cleanPayload;
+  }
+
   async function saveCloudDoc(collectionName, docId, payload) {
     if (!db || !docId) return false;
     try {
-      const cleanPayload = JSON.parse(JSON.stringify(payload));
-      if (window.firebase && window.firebase.firestore && window.firebase.firestore.FieldValue) {
-        cleanPayload.updatedAtTs = window.firebase.firestore.FieldValue.serverTimestamp();
-      }
+      unmarkDocDeletedLocally(collectionName, docId);
+      const cleanPayload = prepareCloudPayload(docId, payload);
       await db.collection(collectionName).doc(String(docId)).set(cleanPayload, { merge: true });
       return true;
     } catch (err) {
@@ -567,13 +671,26 @@
   }
 
   async function deleteCloudDoc(collectionName, docId) {
-    if (!db || !docId) return false;
+    if (!docId) return false;
+    markDocDeletedLocally(collectionName, docId);
+    if (!db) return false;
     try {
       await db.collection(collectionName).doc(String(docId)).delete();
       return true;
     } catch (err) {
-      console.warn(`Cloud delete [${collectionName}/${docId}] failed:`, err.message || err);
-      return false;
+      try {
+        await db.collection(collectionName).doc(String(docId)).set({
+          id: String(docId),
+          isDeleted: true,
+          status: 'deleted',
+          updatedAtIso: new Date().toISOString(),
+          updatedByAdminEmail: OWNER_ADMIN_EMAIL
+        }, { merge: true });
+        return true;
+      } catch (err2) {
+        console.warn(`Cloud delete [${collectionName}/${docId}] failed:`, err2.message || err2);
+        return false;
+      }
     }
   }
 
@@ -584,20 +701,17 @@
       if (typeof onProgress === 'function') onProgress(100, items.length, items.length);
       return { committed: items.length, failed: 0, offline: true };
     }
-    const CHUNK_SIZE = 400; // Safe margin below Firestore 500 operations/batch limit
+    const CHUNK_SIZE = 100; // Keep batch payload size well within Firestore request limits
     let committed = 0;
     let failed = 0;
-    const hasServerTs = Boolean(window.firebase && window.firebase.firestore && window.firebase.firestore.FieldValue);
 
     for (let i = 0; i < items.length; i += CHUNK_SIZE) {
       const chunk = items.slice(i, i + CHUNK_SIZE);
       try {
         const batch = db.batch();
         chunk.forEach((docObj) => {
-          const cleanPayload = JSON.parse(JSON.stringify(docObj));
-          if (hasServerTs) {
-            cleanPayload.updatedAtTs = window.firebase.firestore.FieldValue.serverTimestamp();
-          }
+          unmarkDocDeletedLocally(collectionName, docObj.id);
+          const cleanPayload = prepareCloudPayload(docObj.id, docObj);
           const docRef = db.collection(collectionName).doc(String(docObj.id));
           batch.set(docRef, cleanPayload, { merge: true });
         });
@@ -623,11 +737,12 @@
   async function batchDeleteCloudDocs(collectionName, docIdsArray, onProgress) {
     const ids = Array.isArray(docIdsArray) ? docIdsArray.map((id) => String(id || '').trim()).filter(Boolean) : [];
     if (ids.length === 0) return { deleted: 0, failed: 0 };
+    ids.forEach((docId) => markDocDeletedLocally(collectionName, docId));
     if (!db || typeof db.batch !== 'function') {
       if (typeof onProgress === 'function') onProgress(100, ids.length, ids.length);
       return { deleted: ids.length, failed: 0, offline: true };
     }
-    const CHUNK_SIZE = 400;
+    const CHUNK_SIZE = 100;
     let deleted = 0;
     let failed = 0;
 
@@ -960,6 +1075,47 @@
     _queryCache.clear();
   }
 
+  async function syncAllAdminStateToCloud(stateObj) {
+    if (!db || !stateObj) return { synced: 0 };
+    let totalSynced = 0;
+    try {
+      if (stateObj.config) {
+        const ok = await saveCloudDoc('app_config', 'global', Object.assign({ id: 'global', configKey: 'global' }, stateObj.config));
+        if (ok) totalSynced += 1;
+      }
+      if (stateObj.customTaxonomy) {
+        const ok = await saveCloudDoc('app_config', 'taxonomy', Object.assign({ id: 'taxonomy', configKey: 'taxonomy' }, stateObj.customTaxonomy));
+        if (ok) totalSynced += 1;
+      }
+      const collectionsMap = [
+        { col: 'exam_folders', list: stateObj.folders },
+        { col: 'tests', list: stateObj.tests },
+        { col: 'question_bank', list: stateObj.questionBank },
+        { col: 'current_affairs', list: stateObj.stories },
+        { col: 'broadcast_notifications', list: stateObj.notifications },
+        { col: 'upcoming_tests', list: stateObj.upcomingTests },
+        { col: 'coupons', list: stateObj.coupons },
+        { col: 'purchases', list: stateObj.activations },
+        { col: 'orders', list: stateObj.orders },
+        { col: 'admin_staff', list: stateObj.adminStaff },
+        { col: 'exams', list: stateObj.examMaster },
+        { col: 'subjects', list: stateObj.subjectMaster },
+        { col: 'topics', list: stateObj.topicMaster },
+        { col: 'subtopics', list: stateObj.subtopicMaster }
+      ];
+      for (const entry of collectionsMap) {
+        const arr = Array.isArray(entry.list) ? entry.list.filter((item) => item && item.id && !isDocDeletedLocally(entry.col, item.id)) : [];
+        if (arr.length > 0) {
+          const res = await batchSaveCloudDocs(entry.col, arr);
+          totalSynced += (res && res.committed) ? res.committed : 0;
+        }
+      }
+    } catch (err) {
+      console.warn('syncAllAdminStateToCloud notice:', err && err.message ? err.message : err);
+    }
+    return { synced: totalSynced };
+  }
+
   window.CGpediaCloud = {
     OWNER_ADMIN_EMAIL,
     NAMED_DATABASE_ID,
@@ -973,6 +1129,10 @@
     deleteCloudDoc,
     batchSaveCloudDocs,
     batchDeleteCloudDocs,
+    syncAllAdminStateToCloud,
+    isDocDeletedLocally,
+    markDocDeletedLocally,
+    unmarkDocDeletedLocally,
     queryQuestionBankFromCloud,
     invalidateQuestionBankQueryCache,
     validateAnthemAudioFile,
@@ -989,3 +1149,4 @@
     isConnected: () => isCloudConnected
   };
 })();
+

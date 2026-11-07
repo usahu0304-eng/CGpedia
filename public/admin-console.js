@@ -145,6 +145,7 @@
               <button type="button" class="btn btn-header-chip" data-admin-util-jump="stories" title="Publish 24-Hour Current Affairs">⚡ Current Affairs</button>
               <button type="button" class="btn btn-header-chip" data-admin-util-jump="broadcast" title="Announcements & Student Queries">📢 Announcements</button>
               <button type="button" class="btn btn-header-chip" data-admin-util-jump="branding" title="Branding, Anthem Audio & Roles">⚙️ Branding &amp; Anthem</button>
+              <button type="button" class="btn btn-header-chip" id="adminSyncAllCloudBtn" title="Sync all local Admin data to Cloud for Students">☁️ Sync to Cloud</button>
               <button type="button" class="btn btn-header-chip" id="adminExportBackupBtn">⬇️ Export JSON Backup</button>
               <button type="button" class="btn btn-header-chip" id="adminLockBtn">🔒 Exit Admin</button>
             </div>
@@ -230,6 +231,26 @@
           state.activeTab = 'dashboard';
           api.saveState();
           api.renderApp();
+        }
+      };
+    }
+
+    const syncCloudBtn = document.getElementById('adminSyncAllCloudBtn');
+    if (syncCloudBtn) {
+      syncCloudBtn.onclick = async () => {
+        syncCloudBtn.disabled = true;
+        const origLabel = syncCloudBtn.textContent;
+        syncCloudBtn.textContent = '⏳ Syncing...';
+        try {
+          if (api && typeof api.syncLocalAdminStateToCloud === 'function') {
+            await api.syncLocalAdminStateToCloud(true);
+          } else if (window.CGpediaCloud && typeof window.CGpediaCloud.syncAllAdminStateToCloud === 'function') {
+            await window.CGpediaCloud.syncAllAdminStateToCloud(state);
+            api.toast('☁️ All Admin Tests, Question Bank & Settings synced to Cloud!');
+          }
+        } finally {
+          syncCloudBtn.disabled = false;
+          syncCloudBtn.textContent = origLabel;
         }
       };
     }
@@ -1755,14 +1776,44 @@
         return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
       }
 
+      // Immediately sync Anthem checkbox toggle as well as Save Platform Settings button
+      const anthemCheckboxEl = document.getElementById('admAnthemEnabled');
+      if (anthemCheckboxEl) {
+        anthemCheckboxEl.onchange = async () => {
+          state.config.anthemEnabled = anthemCheckboxEl.checked;
+          if (!state.config.anthemEnabled && state.config.anthemData) {
+            state.config.anthemData = Object.assign({}, state.config.anthemData, {
+              published: false,
+              updatedAtIso: new Date().toISOString()
+            });
+          }
+          state.config.updatedAtIso = new Date().toISOString();
+          api.saveState();
+          if (window.CGpediaCloud) {
+            await window.CGpediaCloud.saveCloudDoc('app_config', 'global', Object.assign({ id: 'global', configKey: 'global' }, state.config));
+          }
+          api.applyBrandingAndSecurity();
+          api.toast(state.config.anthemEnabled ? '🎵 Anthem button enabled for students.' : '🔇 Anthem disabled and hidden from student view.');
+        };
+      }
+
       // Wire standard Platform Branding save button
-      document.getElementById('admSaveBrandingBtn').onclick = () => {
+      document.getElementById('admSaveBrandingBtn').onclick = async () => {
         state.config.appTitle = document.getElementById('admBrandTitle').value.trim() || 'CGpedia';
         state.config.appSubtitle = document.getElementById('admBrandSub').value.trim() || 'Competitive Exam & CBT Test Portal';
         state.config.screenshotRestriction = document.getElementById('admScreenshotRestrict').checked;
         state.config.anthemEnabled = document.getElementById('admAnthemEnabled').checked;
+        if (!state.config.anthemEnabled && state.config.anthemData) {
+          state.config.anthemData = Object.assign({}, state.config.anthemData, {
+            published: false,
+            updatedAtIso: new Date().toISOString()
+          });
+        }
+        state.config.updatedAtIso = new Date().toISOString();
         api.saveState();
-        if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('app_config', 'global', state.config);
+        if (window.CGpediaCloud) {
+          await window.CGpediaCloud.saveCloudDoc('app_config', 'global', Object.assign({ id: 'global', configKey: 'global' }, state.config));
+        }
         api.applyBrandingAndSecurity();
         api.toast('✅ Branding & security settings updated!');
         renderAdminConsole(rootEl, state, api);
@@ -2138,19 +2189,19 @@
       if (togglePublishBtn && hasUploadedAnthem) {
         togglePublishBtn.onclick = async () => {
           const nextPublished = !Boolean(state.config.anthemData && state.config.anthemData.published);
+          const nowIso = new Date().toISOString();
           state.config.anthemData = Object.assign({}, state.config.anthemData, {
             published: nextPublished,
-            updatedAtIso: new Date().toISOString()
+            updatedAtIso: nowIso
           });
-          if (nextPublished) {
-            state.config.anthemEnabled = true;
-          }
+          state.config.anthemEnabled = nextPublished;
+          state.config.updatedAtIso = nowIso;
           api.saveState();
           if (window.CGpediaCloud) {
-            await window.CGpediaCloud.saveCloudDoc('app_config', 'global', state.config);
+            await window.CGpediaCloud.saveCloudDoc('app_config', 'global', Object.assign({ id: 'global', configKey: 'global' }, state.config));
           }
           api.applyBrandingAndSecurity();
-          api.toast(nextPublished ? '🟢 Anthem published for students!' : '⏸️ Anthem unpublished from student view.');
+          api.toast(nextPublished ? '🟢 Anthem published for students!' : '⏸️ Anthem unpublished and hidden from student view.');
           renderAdminConsole(rootEl, state, api);
         };
       }
@@ -2188,6 +2239,7 @@
             }
           } catch (_) {}
 
+          const nowIso = new Date().toISOString();
           state.config.anthemData = {
             title: '',
             description: '',
@@ -2199,16 +2251,17 @@
             sizeBytes: 0,
             sizeMbText: '',
             published: false,
-            updatedAtIso: new Date().toISOString()
+            updatedAtIso: nowIso
           };
           state.config.anthemEnabled = false;
+          state.config.updatedAtIso = nowIso;
 
           api.saveState();
           if (window.CGpediaCloud) {
-            await window.CGpediaCloud.saveCloudDoc('app_config', 'global', state.config);
+            await window.CGpediaCloud.saveCloudDoc('app_config', 'global', Object.assign({ id: 'global', configKey: 'global' }, state.config));
           }
           api.applyBrandingAndSecurity();
-          api.toast('🗑️ Anthem audio deleted from Firebase Storage.');
+          api.toast('🗑️ Anthem audio deleted and hidden from student view.');
           renderAdminConsole(rootEl, state, api);
         };
       }

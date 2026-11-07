@@ -394,22 +394,16 @@
     }
 
     const anthemBtn = document.getElementById('anthemToggleBtn');
-    const hasUploadedButUnpublished = Boolean(
-      state &&
-      state.config &&
-      state.config.anthemData &&
-      (state.config.anthemData.downloadUrl || state.config.anthemData.storagePath) &&
-      state.config.anthemData.published === false
-    );
+    const canShowStudentAnthem = Boolean(authenticated && isAnthemPublishedForStudents());
     if (anthemBtn) {
-      anthemBtn.style.display = hasUploadedButUnpublished ? 'none' : 'inline-flex';
-      if (state.config && state.config.anthemData && state.config.anthemData.title) {
+      anthemBtn.style.display = canShowStudentAnthem ? 'inline-flex' : 'none';
+      if (canShowStudentAnthem && state.config && state.config.anthemData && state.config.anthemData.title) {
         anthemBtn.title = state.config.anthemData.title;
       } else {
         anthemBtn.title = 'Play CGpedia Anthem';
       }
     }
-    if (hasUploadedButUnpublished || !authenticated) {
+    if (!canShowStudentAnthem) {
       closeAndStopStudentAnthemPlayer();
     } else if (studentAnthemPlayerOpen) {
       syncStudentAnthemPlayerMeta();
@@ -4004,30 +3998,140 @@
     renderApp();
   }
 
-  function mergeCloudCollection(key, docs) {
+  let cloudGlobalConfigSynced = false;
+  let adminInitialAutoSyncTriggered = false;
+  const syncedLocalCollectionKeys = new Set();
+
+  function getCollectionNameForStateKey(key) {
+    const map = {
+      examMaster: 'exams',
+      subjectMaster: 'subjects',
+      topicMaster: 'topics',
+      subtopicMaster: 'subtopics',
+      folders: 'exam_folders',
+      tests: 'tests',
+      questionBank: 'question_bank',
+      stories: 'current_affairs',
+      notifications: 'broadcast_notifications',
+      upcomingTests: 'upcoming_tests',
+      coupons: 'coupons',
+      activations: 'purchases',
+      orders: 'orders',
+      leaderboard: 'leaderboard',
+      queries: 'student_queries',
+      questionReports: 'question_reports',
+      adminStaff: 'admin_staff',
+      registeredStudents: 'users'
+    };
+    return map[key] || '';
+  }
+
+  async function syncLocalAdminStateToCloud(showNotification) {
+    if (!window.CGpediaCloud || typeof window.CGpediaCloud.syncAllAdminStateToCloud !== 'function') {
+      return { synced: 0 };
+    }
+    const res = await window.CGpediaCloud.syncAllAdminStateToCloud(state);
+    if (showNotification) {
+      toast('☁️ All Admin Tests, Question Bank & Settings synced to Cloud!');
+    }
+    return res;
+  }
+
+  function mergeCloudCollection(key, docs, colNameArg) {
     if (!Array.isArray(docs)) return;
+    const colName = colNameArg || getCollectionNameForStateKey(key);
+    const adminMode = isCurrentUserAdmin();
+
     if (key === 'configDocs') {
       const globalDoc = docs.find((d) => d.id === 'global' || d.configKey === 'global');
       if (globalDoc) {
-        state.config = Object.assign({}, state.config, globalDoc);
-        if (globalDoc.whatsappSupportNumber && !globalDoc.whatsappNumber) {
-          state.config.whatsappNumber = globalDoc.whatsappSupportNumber;
+        cloudGlobalConfigSynced = true;
+        const cloudTs = globalDoc.updatedAtIso ? Date.parse(globalDoc.updatedAtIso) : 0;
+        const localTs = (state.config && state.config.updatedAtIso) ? Date.parse(state.config.updatedAtIso) : 0;
+        if (!adminMode || !localTs || cloudTs >= localTs) {
+          state.config = Object.assign({}, state.config, globalDoc);
+          if (globalDoc.whatsappSupportNumber && !globalDoc.whatsappNumber) {
+            state.config.whatsappNumber = globalDoc.whatsappSupportNumber;
+          }
+        } else if (adminMode && localTs > cloudTs && window.CGpediaCloud && window.CGpediaCloud.saveCloudDoc) {
+          window.CGpediaCloud.saveCloudDoc('app_config', 'global', Object.assign({ id: 'global', configKey: 'global' }, state.config));
         }
+      } else if (adminMode && state.config && window.CGpediaCloud && window.CGpediaCloud.saveCloudDoc) {
+        window.CGpediaCloud.saveCloudDoc('app_config', 'global', Object.assign({ id: 'global', configKey: 'global' }, state.config));
       }
+
       const taxDoc = docs.find((d) => d.id === 'taxonomy' || d.configKey === 'taxonomy');
       if (taxDoc) {
         state.customTaxonomy = Object.assign({ customCategories: [], customSubjects: [] }, state.customTaxonomy || {}, taxDoc);
+      } else if (adminMode && state.customTaxonomy && window.CGpediaCloud && window.CGpediaCloud.saveCloudDoc) {
+        window.CGpediaCloud.saveCloudDoc('app_config', 'taxonomy', Object.assign({ id: 'taxonomy', configKey: 'taxonomy' }, state.customTaxonomy));
       }
-    } else if (key === 'questionBank') {
-      state.questionBank = docs;
-    } else if (key === 'orders' || key === 'activations' || key === 'coupons' || key === 'registeredStudents') {
-      state[key] = docs;
-    } else if (key === 'examMaster' || key === 'subjectMaster' || key === 'topicMaster' || key === 'subtopicMaster') {
-      state[key] = docs;
-    } else if (docs.length > 0) {
-      state[key] = docs;
+      saveState();
+      applyBrandingAndSecurity();
+      renderApp();
+      return;
     }
+
+    const activeCloudDocs = docs.filter((d) => d && d.id && d.isDeleted !== true && d.status !== 'deleted');
+
+    if (adminMode) {
+      const isDeletedFn = (window.CGpediaCloud && typeof window.CGpediaCloud.isDocDeletedLocally === 'function')
+        ? window.CGpediaCloud.isDocDeletedLocally
+        : () => false;
+
+      const localArr = Array.isArray(state[key])
+        ? state[key].filter((item) => item && item.id && !isDeletedFn(colName, item.id))
+        : [];
+
+      const mergedMap = new Map();
+      const cloudIds = new Set();
+      activeCloudDocs.forEach((cDoc) => {
+        if (!isDeletedFn(colName, cDoc.id)) {
+          mergedMap.set(String(cDoc.id), cDoc);
+          cloudIds.add(String(cDoc.id));
+        }
+      });
+
+      const toPushToCloud = [];
+      const cloudHasDocs = activeCloudDocs.length > 0;
+
+      localArr.forEach((lDoc) => {
+        const lid = String(lDoc.id);
+        if (!mergedMap.has(lid)) {
+          // If Cloud is empty on initial load, push all local Admin items to Cloud.
+          // If Cloud already has documents, only push local items that have admin timestamps/metadata
+          // (so untouched default seed items on a second Admin device don't overwrite Cloud).
+          const isAuthoredOrEmptyCloud = !cloudHasDocs || Boolean(lDoc.updatedAtIso || lDoc.createdAtIso || lDoc.updatedByAdminEmail);
+          if (isAuthoredOrEmptyCloud) {
+            mergedMap.set(lid, lDoc);
+            toPushToCloud.push(lDoc);
+          }
+        } else {
+          const cDoc = mergedMap.get(lid);
+          const cTime = cDoc.updatedAtIso ? Date.parse(cDoc.updatedAtIso) : 0;
+          const lTime = lDoc.updatedAtIso ? Date.parse(lDoc.updatedAtIso) : 0;
+          if (lTime > cTime) {
+            mergedMap.set(lid, lDoc);
+            toPushToCloud.push(lDoc);
+          }
+        }
+      });
+
+      state[key] = Array.from(mergedMap.values());
+
+      if (toPushToCloud.length > 0 && colName && window.CGpediaCloud && window.CGpediaCloud.batchSaveCloudDocs && !syncedLocalCollectionKeys.has(key)) {
+        syncedLocalCollectionKeys.add(key);
+        window.CGpediaCloud.batchSaveCloudDocs(colName, toPushToCloud).catch(() => {});
+      }
+    } else {
+      // Student mode: Cloud is authoritative when non-empty or once global config is synced
+      if (activeCloudDocs.length > 0 || cloudGlobalConfigSynced || key === 'questionBank' || key === 'orders' || key === 'activations' || key === 'coupons' || key === 'registeredStudents') {
+        state[key] = activeCloudDocs;
+      }
+    }
+
     saveState();
+    applyBrandingAndSecurity();
     renderApp();
   }
 
@@ -4115,6 +4219,11 @@
   }
 
   async function toggleStudentAnthemFloatingPlayer() {
+    if (!isStudentAuthenticated() || !isAnthemPublishedForStudents()) {
+      closeAndStopStudentAnthemPlayer();
+      return;
+    }
+
     const container = document.getElementById('studentAnthemFloatingPlayer');
     const anthemBtn = document.getElementById('anthemToggleBtn');
     if (!container) return;
@@ -4155,7 +4264,7 @@
 
           <div class="anthem-floating-timeline">
             <input type="range" id="stuAnthemSeekSlider" min="0" max="100" value="0" step="0.1" aria-label="Anthem playback timeline" />
-            <span id="stuAnthemTimeDisplay" class="anthem-floating-time">00:00 / ${hasUploadedPublishedAudio ? '00:00' : '00:05'}</span>
+            <span id="stuAnthemTimeDisplay" class="anthem-floating-time">00:00 / 00:00</span>
           </div>
 
           <div class="anthem-floating-volume">
@@ -4197,39 +4306,22 @@
 
     if (playPauseBtn) {
       playPauseBtn.onclick = async () => {
-        if (hasUploadedPublishedAudio) {
-          if (!studentAnthemAudioEl.src) {
-            const freshUrl = window.CGpediaCloud && window.CGpediaCloud.resolveAnthemPlaybackUrl
-              ? await window.CGpediaCloud.resolveAnthemPlaybackUrl(ad)
-              : (ad.downloadUrl || '');
-            if (freshUrl) studentAnthemAudioEl.src = freshUrl;
-          }
-          if (studentAnthemAudioEl.paused) {
-            studentAnthemAudioEl.play().catch((err) => {
-              toast('⚠️ Unable to play Anthem audio: ' + (err.message || 'Check connection'));
-            });
-          } else {
-            studentAnthemAudioEl.pause();
-          }
+        if (!isAnthemPublishedForStudents()) {
+          closeAndStopStudentAnthemPlayer();
+          return;
+        }
+        if (!studentAnthemAudioEl.src) {
+          const freshUrl = window.CGpediaCloud && window.CGpediaCloud.resolveAnthemPlaybackUrl
+            ? await window.CGpediaCloud.resolveAnthemPlaybackUrl(ad)
+            : (ad.downloadUrl || '');
+          if (freshUrl) studentAnthemAudioEl.src = freshUrl;
+        }
+        if (studentAnthemAudioEl.paused) {
+          studentAnthemAudioEl.play().catch((err) => {
+            toast('⚠️ Unable to play Anthem audio: ' + (err.message || 'Check connection'));
+          });
         } else {
-          // Synthesized ceremonial Anthem fallback when no custom audio file is uploaded yet
-          if (synthAnthemPlaying) {
-            stopSynthesizedAnthem();
-            playPauseBtn.innerHTML = '▶️ Play';
-            if (seekSlider) seekSlider.value = '0';
-            if (timeDisplay) timeDisplay.textContent = '00:00 / 00:05';
-          } else {
-            const ok = startSynthesizedAnthem(() => {
-              if (playPauseBtn) playPauseBtn.innerHTML = '▶️ Play';
-              if (seekSlider) seekSlider.value = '0';
-              if (timeDisplay) timeDisplay.textContent = '00:00 / 00:05';
-            });
-            if (ok) {
-              playPauseBtn.innerHTML = '⏸️ Pause';
-              if (seekSlider) seekSlider.value = '50';
-              if (timeDisplay) timeDisplay.textContent = '00:02 / 00:05';
-            }
-          }
+          studentAnthemAudioEl.pause();
         }
       };
     }
@@ -4632,6 +4724,8 @@
     parseBulkQuestionsText,
     handleFirebaseAuthUser,
     mergeCloudCollection,
+    syncLocalAdminStateToCloud,
+    isCurrentUserAdmin,
     getCurrentStudentUid,
     openStudentAuthModal,
     performStudentLogout,
@@ -4821,14 +4915,21 @@
 
     // Register Service Worker & force update check
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
-      navigator.serviceWorker.register('sw.js?v=5.7').then((reg) => {
+      navigator.serviceWorker.register('sw.js?v=6.2').then((reg) => {
         try { reg.update(); } catch (_) {}
       }).catch(() => {});
     }
 
     // Connect Firebase Cloud Sync
     if (window.CGpediaCloud) {
-      window.CGpediaCloud.initFirebaseConnection();
+      window.CGpediaCloud.initFirebaseConnection((connected) => {
+        if (connected && isCurrentUserAdmin() && !adminInitialAutoSyncTriggered) {
+          adminInitialAutoSyncTriggered = true;
+          setTimeout(() => {
+            syncLocalAdminStateToCloud(false);
+          }, 1200);
+        }
+      });
     }
 
     renderApp();

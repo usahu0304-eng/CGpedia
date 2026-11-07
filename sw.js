@@ -1,12 +1,12 @@
-const CACHE_NAME = 'cgpedia-platform-v15';
+const CACHE_NAME = 'cgpedia-platform-v16';
 const ASSETS = [
   '/',
   '/index.html',
   '/styles.css?v=5.2',
-  '/firebase-sync.js?v=6.1',
-  '/exam-engine.js?v=6.1',
-  '/admin-console.js?v=6.1',
-  '/app.js?v=6.1',
+  '/firebase-sync.js?v=6.2',
+  '/exam-engine.js?v=6.2',
+  '/admin-console.js?v=6.2',
+  '/app.js?v=6.2',
   '/manifest.webmanifest',
   '/favicon.png',
   '/assets/cgpedia-logo-clean.png',

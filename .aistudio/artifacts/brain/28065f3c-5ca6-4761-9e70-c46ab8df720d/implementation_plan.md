@@ -1,42 +1,35 @@
-# प्रश्न बैंक (Question Bank) — Complete PDF Scan Fix + AI Prompt & Paragraph Copy-Paste Plan
+# Implementation Plan: Admin-to-Student Cloud Sync & Anthem Shutdown Fix
 
-## 1. "फ़ाइल स्कैन करने में त्रुटि आई" का सटीक कारण और समाधान
+## 1. Root Cause Analysis (समस्या का मुख्य कारण)
+जाँच में यह स्पष्ट हुआ है कि आपके मुख्य डिवाइस पर किए गए बदलाव Students और दूसरे डिवाइस पर क्यों नहीं दिख रहे थे:
 
-### कारण 1: `addCustomTaxonomyEntry` में `api.saveState()` Null Crash
-- `scanAndCategorizeWithAiOrFallback` के अंदर जब निकाले गए प्रश्नों को फ़ोल्डर में बदलने के लिए `addCustomTaxonomyEntry(state, null, ...)` कॉल किया जा रहा था, तो दूसरी वैल्यू `null` भेजी गई थी।
-- `addCustomTaxonomyEntry` की लाइन 2798 पर `api.saveState()` बिना `if (api && typeof api.saveState === 'function')` चेक किए चल रहा था, जिससे पहले ही प्रश्न पर `TypeError: Cannot read properties of null (reading 'saveState')` क्रैश हो रहा था और सीधे **"⚠️ फ़ाइल स्कैन करने में त्रुटि आई"** दिख रहा था।
-- **समाधान:** `addCustomTaxonomyEntry` में `if (api && typeof api.saveState === 'function') api.saveState();` सुरक्षित चेक लगाया जाएगा और `scanAndCategorizeWithAiOrFallback` में `api` भी पास किया जाएगा।
-
-### कारण 2: आपकी CGPSC PDF (`CGPSC_court_manager_2026_QUESTIONS_PAPER.pdf`) का **Shree-Dev 0708** फ़ॉन्ट और 2-कॉलम संरचना
-- आपकी 32-पेज की CGPSC PDF में कुल **100 द्विभाषी (Hindi + English) प्रश्न** हैं:
-  - बाईं ओर हिन्दी **Shree-Dev 0708** फ़ॉन्ट (`1. Am§V[aH$ à{V\$b Xa...` = `1. आंतरिक प्रतिफल दर...`) में है।
-  - दाईं ओर अंग्रेज़ी **Unicode English** (`1. The Internal Rate of Return (IRR)...`) में है।
-- **समाधान:**
-  1. **Shree-Dev 0708 → Unicode Devanagari Converter (`convertShreeDevToUnicode`):** CGPSC और Vyapam के सभी Shree-Dev अक्षरों (`àíZ` → `प्रश्न`, `CÎma` → `उत्तर`, `h¡` → `है`, `Am§V[aH$` → `आंतरिक`, `&` → `।`, मात्राएं `{`, `r`, `w`, `y`, `o`, `¡`, `mo`, `m¡`, `§`, `©` आदि) को शुद्ध यूनिकोड हिन्दी में बदलने का कन्वर्टर जोड़ा जाएगा।
-  2. **सटीक 2-Column PDF.js + Native Stream Extractor:** प्रत्येक पेज के बाएँ (Hindi) और दाएँ (English) कॉलम को अलग-अलग पढ़कर प्रश्न संख्या `1..100` के आधार पर दोनों भाषाओं और उनके 4 विकल्पों `(A), (B), (C), (D)` को आपस में जोड़ा जाएगा।
-  3. **अंतर्निहित कुशल सॉल्वर (Smart Built-in + AI Answer Resolver):** जब बिना Answer Key के पेपर अपलोड हो, तो AI + स्मार्ट नियम दोनों मिलकर सभी 100 प्रश्नों के सही उत्तर और व्याख्या तय करेंगे और मात्र **1–2 सेकंड में** सभी 100 प्रश्न सही **Subject → Topic फ़ोल्डर** में सेव हो जाएंगे।
+1. **Cloud Sync / Firestore Rules Block (`firestore.rules` & `firebase-sync.js`)**:
+   - `firestore.rules` में `isSuperAdmin()` नियम `request.auth.token.email_verified == true` की शर्त लगा रहा था, जबकि Email/Password लॉगिन में Firebase इसे डिफ़ॉल्ट रूप से `false` रखता है। इसके अलावा जब Admin सेशन लोकल कैश से रिस्टोर होता था, तब Cloud पर डेटा सेव होने से रुक रहा था (`Cloud write deferred locally`)।
+   - आपके मुख्य डिवाइस के ब्राउज़र (`localStorage`) में जो Tests, Folders, Question Bank और Updates पहले से बने हुए हैं, उन्हें ऐप खुलते ही अपने-आप Cloud पर Push करने का ऑटो-सिंक ब्रिज सक्रिय नहीं था।
+2. **Anthem Button & Synthesized Audio Bug (`app.js`)**:
+   - `applyBrandingAndSecurity()` में जब Admin द्वारा Anthem को बंद (`anthemEnabled = false`) या डिलीट कर दिया जाता था, तब भी `#anthemToggleBtn` (`🎵`) बटन स्टूडेंट की स्क्रीन पर दिखता रहता था और उस पर क्लिक करने पर `startSynthesizedAnthem()` (5-सेकंड की सिंथेसाइज्ड धुन) बजने लगती थी।
 
 ---
 
-## 2. पुराने इंटरफ़ेस को बदले बिना 2 नए स्मार्ट पॉपअप बटन (Top Action Bar में)
+## 2. Proposed Changes (प्रस्तावित सुधार)
 
-पुराना इंटरफ़ेस और अपलोड कार्ड वैसा ही रहेगा। ऊपर हेडर बार में (`➕ नया प्रश्न जोड़ें` बटन के बगल में) **2 नए पॉपअप बटन** जोड़े जाएंगे:
+### A. Real-Time Cloud Sync & Auto-Push for Existing Admin Data (`firestore.rules`, `firebase-sync.js`, `app.js`)
+- **Firestore Security Rules (`firestore.rules`)**:
+  - Admin (`usahu0304@gmail.com`) और Admin पैनल से होने वाले सभी अपडेट्स (`tests`, `exam_folders`, `question_bank`, `app_config`, `current_affairs`, `broadcast_notifications`, `upcoming_tests`, `coupons`) को बिना `email_verified` रुकावट के तुरंत सेव होने की अनुमति दी जाएगी और नए नियम `deploy_firebase` से लाइव किए जाएंगे।
+- **Automatic Local-to-Cloud Sync (`syncLocalAdminStateToCloud`)**:
+  - जैसे ही आप अपने मुख्य डिवाइस पर ऐप खोलेंगे या कोई भी बदलाव करेंगे, आपके डिवाइस में पहले से मौजूद सारा Admin डेटा (**Tests, Test Series Folders, Question Bank, App Config, Anthem Status, Current Affairs Stories, Broadcast Notifications, Upcoming Tests, Coupons**) अपने-आप Cloud Firestore पर सिंक हो जाएगा।
+- **Smart Cross-Device & Student Merge (`mergeCloudCollection`)**:
+  - जब आप दूसरे डिवाइस में अपने अकाउंट से लॉगिन करेंगे या कोई भी Student अपना ऐप खोलेगा, तो उसे तुरंत सभी उपलब्ध Tests, Folders और Admin Updates रियल-टाइम (`onSnapshot`) में दिखाई देंगे।
+  - साथ ही, मुख्य Admin डिवाइस का लोकल डेटा कभी भी खाली क्लाउड डेटा से ओवरराइट नहीं होगा, बल्कि दोनों सुरक्षित रूप से मर्ज होकर क्लाउड पर अपडेट होंगे।
 
-### बटन 1: `✨ AI प्रॉम्प्ट से प्रश्न बनाएं (AI Prompt Generator)`
-- क्लिक करने पर एक सरल पॉपअप खुलेगा जिसमें आप:
-  - **प्रॉम्प्ट / टॉपिक लिखें:** जैसे *"छत्तीसगढ़ की नदियाँ और जलप्रपात पर 10 महत्वपूर्ण प्रश्न बनाओ"* या *"Human Resource Management और Maslow Theory पर 10 कठिन प्रश्न"*।
-  - **प्रश्नों की संख्या चुनें:** (5, 10, 15, 20, 25 प्रश्न) और कठिनाई स्तर चुनें।
-  - **फ़ोल्डर चयन:** `AI अपने-आप सही विषय (Subject → Topic) पहचाने` या कोई निश्चित विषय चुनें।
-- बटन दबाते ही AI द्विभाषी (Hindi + English) प्रश्न, चारों विकल्प, सही उत्तर और व्याख्या बनाकर सीधे संबंधित **Subject → Topic फ़ोल्डर** में जोड़ देगा।
-
-### बटन 2: `📋 पैराग्राफ / टेक्स्ट कॉपी-पेस्ट करें (Paste Text / Paragraph to Folder)`
-- क्लिक करने पर एक पॉपअप खुलेगा जिसमें आप कोई भी **पैराग्राफ (नोट्स, किताब का अंश, करंट अफेयर्स)** या **कहीं से कॉपी किए गए प्रश्न-उत्तर** पेस्ट कर सकते हैं।
-- इसमें दो स्मार्ट मोड (या ऑटो-डिटेक्ट) काम करेंगे:
-  1. **यदि पेस्ट किया गया टेक्स्ट पहले से प्रश्न-उत्तर (MCQs) है:** तो उन सभी प्रश्नों को स्कैन करके सही उत्तर और व्याख्या सहित सीधे सही **Subject → Topic फ़ोल्डर** में सेव कर देगा।
-  2. **यदि पेस्ट किया गया टेक्स्ट कोई पैराग्राफ / नोट्स / आर्टिकल है:** तो उस पैराग्राफ के सभी महत्वपूर्ण तथ्यों से अपने-आप **नए परीक्षा-उपयोगी MCQ प्रश्न (4 विकल्प + सही उत्तर + व्याख्या)** बनाकर सीधे संबंधित **Subject → Topic फ़ोल्डर** में सेव कर देगा।
+### B. Complete Anthem Shutdown When Disabled or Deleted (`app.js`)
+- **`applyBrandingAndSecurity()` में सुधार**:
+  - स्टूडेंट के हेडर में `🎵` (`#anthemToggleBtn`) बटन केवल तभी दिखेगा जब `isAnthemPublishedForStudents()` सत्य हो (अर्थात् Admin ने `anthemEnabled` चालू रखा हो और वैध ऑडियो पब्लिश किया हो)।
+  - जैसे ही Admin पैनल से Anthem को **Off (बंद)** या **Delete** किया जाएगा, सभी स्टूडेंट्स की स्क्रीन से `🎵` बटन तुरंत गायब (`display: none`) हो जाएगा और यदि कोई ऑडियो बज रहा है तो वह तुरंत बंद (`closeAndStopStudentAnthemPlayer()`) हो जाएगा।
+- **`toggleStudentAnthemFloatingPlayer()` में सुरक्षा**:
+  - जब Anthem बंद या डिलीट हो, तब किसी भी स्थिति में बैकअप सिंथेसाइज्ड धुन (`startSynthesizedAnthem`) नहीं बजेगी।
 
 ---
 
-## 3. परीक्षण और सत्यापन (Verification on Your Attached PDF)
-- कोड लिखने के तुरंत बाद आपकी भेजी गई **`CGPSC_court_manager_2026_QUESTIONS_PAPER_a2a362fe.pdf`** फ़ाइल पर ऑटोमेटेड टेस्ट चलाकर सत्यापित किया जाएगा कि पूरे **100 प्रश्न** बिना किसी त्रुटि के साफ़ हिन्दी + अंग्रेज़ी में सही Subject → Topic फ़ोल्डर में सेव हो रहे हैं।
-- **दायरा:** केवल `प्रश्न बैंक (Question Bank)` में ही यह सुधार और दोनों पॉपअप बटन जोड़े जाएंगे; अन्य किसी भी सेक्शन में कोई बदलाव नहीं होगा।
+## 3. Scope Constraint (सीमाएं)
+- आपके निर्देशानुसार **केवल** Admin-to-Student / Cross-Device अपडेट सिंक और Anthem बंद करने की समस्या को ही ठीक किया जाएगा। ऐप के किसी भी अन्य फीचर या डिज़ाइन में कोई बदलाव नहीं किया जाएगा।
