@@ -13483,11 +13483,19 @@ Return ONLY a valid JSON array of objects:
   }
 
   function enrichAndDeduplicateCurrentAffairsItems(rawItems, existingStories, defaultCategory, defaultSource, targetMonthKey) {
+    let resolvedCategory = defaultCategory;
+    let resolvedSource = defaultSource;
+    let resolvedMonthKey = targetMonthKey;
+    if (defaultCategory && typeof defaultCategory === 'object' && !Array.isArray(defaultCategory)) {
+      resolvedCategory = defaultCategory.category || 'chhattisgarh';
+      resolvedSource = defaultCategory.sourceName || defaultSource;
+      resolvedMonthKey = defaultCategory.monthKey || targetMonthKey;
+    }
     const items = Array.isArray(rawItems) ? rawItems : [];
     const nowMs = Date.now();
     const nowDate = new Date(nowMs);
     const fallbackMonth = `${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, '0')}`;
-    const monthKey = String(targetMonthKey || fallbackMonth).trim();
+    const monthKey = String(resolvedMonthKey || fallbackMonth).trim();
     const yearKey = monthKey.split('-')[0] || String(nowDate.getFullYear());
     const runningPool = Array.isArray(existingStories) ? existingStories.slice() : [];
     const results = [];
@@ -13510,7 +13518,7 @@ Return ONLY a valid JSON array of objects:
         return;
       }
 
-      let cat = String(raw.category || defaultCategory || 'chhattisgarh').toLowerCase().trim();
+      let cat = String(raw.category || resolvedCategory || 'chhattisgarh').toLowerCase().trim();
       if (cat === 'all' || !['chhattisgarh', 'national', 'international'].includes(cat)) {
         const combined = `${headHi} ${headEn} ${sumHi}`.toLowerCase();
         if (/छत्तीसगढ़|रायपुर|बस्तर|बिलासपुर|सरगुजा|chhattisgarh|raipur|cgpsc|vyapam|महतारी|धान/.test(combined)) {
@@ -13534,7 +13542,7 @@ Return ONLY a valid JSON array of objects:
         headlineEn: candidate.headlineEn,
         summaryHi: candidate.summaryHi,
         summaryEn: candidate.summaryEn,
-        sourceName: String(raw.sourceName || defaultSource || 'PIB / DPR Chhattisgarh').trim(),
+        sourceName: String(raw.sourceName || resolvedSource || 'PIB / DPR Chhattisgarh').trim(),
         monthKey: itemMonth,
         yearKey: itemYear,
         dateIso: String(raw.dateLabel || raw.dateIso || itemIso.slice(0, 10)),
@@ -13677,17 +13685,30 @@ ${schemaInstruction}`;
     return [];
   }
 
-  async function generateCurrentAffairsQuizQuestionsWithAi(storiesList, requestedCount, scopeLabel) {
-    const stories = Array.isArray(storiesList) ? storiesList.filter((s) => s && (s.headlineHi || s.headlineEn)) : [];
-    const count = Math.max(1, Math.min(100, Number(requestedCount || 10)));
+  async function generateCurrentAffairsQuizQuestionsWithAi(storiesListOrOpts, requestedCount, scopeLabel) {
+    let rawStories = storiesListOrOpts;
+    let reqCount = requestedCount;
+    let resolvedScopeLabel = scopeLabel;
+    if (storiesListOrOpts && typeof storiesListOrOpts === 'object' && !Array.isArray(storiesListOrOpts)) {
+      rawStories = storiesListOrOpts.stories || [];
+      reqCount = storiesListOrOpts.questionCount || requestedCount || 10;
+      const stype = storiesListOrOpts.scopeType || 'recent';
+      resolvedScopeLabel = stype === 'monthly'
+        ? `Monthly Current Affairs (${storiesListOrOpts.monthKey || ''})`
+        : stype === 'yearly'
+          ? `Yearly Current Affairs (${storiesListOrOpts.yearKey || ''})`
+          : 'Recent Current Affairs';
+    }
+    const stories = Array.isArray(rawStories) ? rawStories.filter((s) => s && (s.headlineHi || s.headlineEn || s.titleHi || s.titleEn)) : [];
+    const count = Math.max(1, Math.min(100, Number(reqCount || 10)));
     if (stories.length === 0) return [];
 
     const contextDigest = stories.slice(0, 40).map((s, idx) =>
-      `[${idx + 1}] Category: ${s.category || 'Current Affairs'} | Month: ${s.monthKey || ''}\nHeadline (HI): ${s.headlineHi || ''}\nHeadline (EN): ${s.headlineEn || ''}\nDetails (HI): ${s.summaryHi || ''}\nDetails (EN): ${s.summaryEn || s.summaryHi || ''}`
+      `[${idx + 1}] Category: ${s.category || 'Current Affairs'} | Month: ${s.monthKey || ''}\nHeadline (HI): ${s.headlineHi || s.titleHi || ''}\nHeadline (EN): ${s.headlineEn || s.titleEn || ''}\nDetails (HI): ${s.summaryHi || ''}\nDetails (EN): ${s.summaryEn || s.summaryHi || ''}`
     ).join('\n\n');
 
     const promptText = `You are a Senior Competitive Exam Question Paper Setter for CGPSC, CG Vyapam, UPSC, and SSC.
-Generate ${count} high-quality Bilingual (Hindi Devanagari + English) Multiple-Choice Questions (MCQs) STRICTLY based on the following Current Affairs updates (${scopeLabel || 'Recent Current Affairs'}):
+Generate ${count} high-quality Bilingual (Hindi Devanagari + English) Multiple-Choice Questions (MCQs) STRICTLY based on the following Current Affairs updates (${resolvedScopeLabel || 'Recent Current Affairs'}):
 
 ${contextDigest}
 

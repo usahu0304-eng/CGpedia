@@ -11,6 +11,31 @@
   const USER_WORKSPACE_PREFIX = 'cgpedia_user_workspace_v4_';
   const OWNER_ADMIN_EMAIL = 'usahu0304@gmail.com';
 
+  const BLOCKED_FAKE_EMAIL_DOMAINS = new Set([
+    'test.com', 'fake.com', 'example.com', 'example.org', 'example.net',
+    'abc.com', 'xyz.com', 'temp.com', 'tempmail.com', 'temp-mail.org',
+    'mailinator.com', 'yopmail.com', '10minutemail.com', 'guerrillamail.com',
+    'trashmail.com', 'fakeinbox.com', 'sharklasers.com', 'maildrop.cc',
+    'dispostable.com', 'getnada.com', 'throwawaymail.com', 'demo.com',
+    'sample.com', 'dummy.com', 'invalid.com', 'localhost', 'none.com', 'null.com'
+  ]);
+
+  function isValidRealEmailAddress(rawEmail) {
+    const email = String(rawEmail || '').trim().toLowerCase();
+    if (!email || email.length < 6 || email.length > 120) return false;
+    const emailRegex = /^[a-z0-9._%+-]+@([a-z0-9-]+\.)+[a-z]{2,12}$/;
+    if (!emailRegex.test(email)) return false;
+    const parts = email.split('@');
+    if (parts.length !== 2) return false;
+    const localPart = parts[0];
+    const domain = parts[1];
+    if (localPart.length < 2) return false;
+    if (BLOCKED_FAKE_EMAIL_DOMAINS.has(domain)) return false;
+    const domainLabels = domain.split('.');
+    if (domainLabels.some((lbl) => !lbl || lbl.length < 2)) return false;
+    return true;
+  }
+
   function esc(str) {
     return String(str == null ? '' : str)
       .replace(/&/g, '&amp;')
@@ -266,31 +291,6 @@
     } catch (_) {
       return def;
     }
-  }
-
-  const BLOCKED_FAKE_EMAIL_DOMAINS = new Set([
-    'test.com', 'fake.com', 'example.com', 'example.org', 'example.net',
-    'abc.com', 'xyz.com', 'temp.com', 'tempmail.com', 'temp-mail.org',
-    'mailinator.com', 'yopmail.com', '10minutemail.com', 'guerrillamail.com',
-    'trashmail.com', 'fakeinbox.com', 'sharklasers.com', 'maildrop.cc',
-    'dispostable.com', 'getnada.com', 'throwawaymail.com', 'demo.com',
-    'sample.com', 'dummy.com', 'invalid.com', 'localhost', 'none.com', 'null.com'
-  ]);
-
-  function isValidRealEmailAddress(rawEmail) {
-    const email = String(rawEmail || '').trim().toLowerCase();
-    if (!email || email.length < 6 || email.length > 120) return false;
-    const emailRegex = /^[a-z0-9._%+-]+@([a-z0-9-]+\.)+[a-z]{2,12}$/;
-    if (!emailRegex.test(email)) return false;
-    const parts = email.split('@');
-    if (parts.length !== 2) return false;
-    const localPart = parts[0];
-    const domain = parts[1];
-    if (localPart.length < 2) return false;
-    if (BLOCKED_FAKE_EMAIL_DOMAINS.has(domain)) return false;
-    const domainLabels = domain.split('.');
-    if (domainLabels.some((lbl) => !lbl || lbl.length < 2)) return false;
-    return true;
   }
 
   function isStudentAuthenticated() {
@@ -5844,7 +5844,7 @@
 
     // Register Service Worker & force update check
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
-      navigator.serviceWorker.register('sw.js?v=6.3').then((reg) => {
+      navigator.serviceWorker.register('sw.js?v=6.5').then((reg) => {
         try { reg.update(); } catch (_) {}
       }).catch(() => {});
     }

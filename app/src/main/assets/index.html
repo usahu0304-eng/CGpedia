@@ -196,9 +196,16 @@
   <div class="toast-container" id="toastContainer"></div>
 
   <!-- Modular Platform Scripts -->
-  <script src="firebase-sync.js?v=6.4" defer></script>
-  <script src="exam-engine.js?v=6.4" defer></script>
-  <script src="admin-console.js?v=6.4" defer></script>
-  <script src="app.js?v=6.4" defer></script>
+  <script>
+    // Fail-safe splash dismissal guard so the splash screen can never remain stuck
+    setTimeout(function () {
+      var sp = document.getElementById('splashOverlay');
+      if (sp) sp.classList.add('hidden');
+    }, 1200);
+  </script>
+  <script src="firebase-sync.js?v=6.5" defer></script>
+  <script src="exam-engine.js?v=6.5" defer></script>
+  <script src="admin-console.js?v=6.5" defer></script>
+  <script src="app.js?v=6.5" defer></script>
 </body>
 </html>
