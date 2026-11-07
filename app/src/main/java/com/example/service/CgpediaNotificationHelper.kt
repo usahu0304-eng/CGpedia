@@ -45,7 +45,7 @@ object CgpediaNotificationHelper {
         }
     }
 
-    private fun canPostNotifications(context: Context): Boolean {
+    fun canPostNotifications(context: Context): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             ContextCompat.checkSelfPermission(
                 context,
@@ -53,6 +53,48 @@ object CgpediaNotificationHelper {
             ) == PackageManager.PERMISSION_GRANTED
         } else {
             true
+        }
+    }
+
+    fun notifyGenericAlert(
+        context: Context,
+        title: String,
+        message: String,
+        category: String,
+        notificationKey: String
+    ) {
+        if (!canPostNotifications(context)) return
+        runCatching {
+            ensureChannels(context)
+            val intent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val notifId = (notificationKey.ifBlank { title + message }.hashCode() and 0x7FFFFFFF).coerceAtLeast(3000)
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                notifId,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val channelId = if (category.equals("stories", ignoreCase = true) || category.equals("current_affairs", ignoreCase = true)) {
+                CHANNEL_ID_CURRENT_AFFAIRS
+            } else {
+                CHANNEL_ID_BROADCAST
+            }
+            val cleanTitle = title.ifBlank { "CGpedia Update" }
+            val cleanMsg = message.ifBlank { "Tap to view the latest update on CGpedia." }
+            val notification = NotificationCompat.Builder(context, channelId)
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setContentTitle(cleanTitle)
+                .setContentText(cleanMsg)
+                .setStyle(NotificationCompat.BigTextStyle().bigText("$cleanTitle\n$cleanMsg"))
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setDefaults(NotificationCompat.DEFAULT_ALL)
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true)
+                .build()
+
+            NotificationManagerCompat.from(context).notify(notifId, notification)
         }
     }
 

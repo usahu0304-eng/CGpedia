@@ -1925,4 +1925,34 @@ body.screenshot-restricted {
   color: var(--danger);
 }
 
+/* =========================================================================
+   Landscape Desktop Site View (1280px Wide Layout on Screen Rotation)
+   ========================================================================= */
+html.landscape-desktop-mode body {
+  min-width: 1280px;
+}
+
+html.landscape-desktop-mode .mobile-bottom-nav,
+html.landscape-desktop-mode #mobileBottomNav {
+  display: none !important;
+}
+
+html.landscape-desktop-mode #mainNavTabs {
+  display: flex !important;
+  flex-wrap: wrap;
+}
+
+html.landscape-desktop-mode .main-container,
+html.landscape-desktop-mode .hero-and-nav-shell,
+html.landscape-desktop-mode .header-inner {
+  max-width: 1240px;
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+html.landscape-desktop-mode .main-container {
+  padding-bottom: 48px !important;
+}
+
 

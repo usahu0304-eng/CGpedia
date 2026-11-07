@@ -1769,6 +1769,10 @@
     const modalRoot = document.getElementById('genericModalContainer');
     if (modalRoot) modalRoot.innerHTML = '';
     renderApp();
+    // Immediately request notification permission upon login so alerts are active
+    setTimeout(() => {
+      requestStudentNotificationPermissionImmediate();
+    }, 350);
   }
 
   function openLogoutConfirmationDialog() {
@@ -4130,10 +4134,270 @@
       }
     }
 
+    if (key === 'tests' || key === 'notifications' || key === 'stories') {
+      checkAndDispatchCloudUpdateNotifications(key, activeCloudDocs);
+    }
+
     saveState();
     applyBrandingAndSecurity();
     renderApp();
   }
+
+  const NOTIFIED_ITEMS_STORAGE_KEY = 'cgpedia_notified_items_v1';
+  const SEED_ITEM_IDS = new Set([
+    'notif_seed_1',
+    'story_seed_1',
+    'story_seed_2',
+    'test_cgpsc_pre_mock_1',
+    'test_cgvyapam_hostel_1',
+    'test_ssc_cgl_tier1_1'
+  ]);
+
+  function loadNotifiedItemsStore() {
+    try {
+      const raw = localStorage.getItem(NOTIFIED_ITEMS_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          parsed.initializedKeys = parsed.initializedKeys || {};
+          parsed.seenIds = parsed.seenIds || {};
+          return parsed;
+        }
+      }
+    } catch (_) {}
+    return { initializedKeys: {}, seenIds: {} };
+  }
+
+  function saveNotifiedItemsStore(store) {
+    try {
+      localStorage.setItem(NOTIFIED_ITEMS_STORAGE_KEY, JSON.stringify(store));
+    } catch (_) {}
+  }
+
+  function requestStudentNotificationPermissionImmediate() {
+    if (!isStudentAuthenticated()) return;
+    try {
+      if (window.AndroidBridge && typeof window.AndroidBridge.requestNotificationPermission === 'function') {
+        window.AndroidBridge.requestNotificationPermission();
+      }
+    } catch (_) {}
+    try {
+      if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission().then((perm) => {
+          if (perm === 'granted') {
+            toast('🔔 Notifications enabled for Live Tests, Current Affairs & Announcements!');
+          }
+        }).catch(() => {});
+      }
+    } catch (_) {}
+  }
+
+  function sendSystemAndAppNotification(title, message, category, notifKey, targetTab) {
+    const cleanTitle = String(title || 'CGpedia Update').trim();
+    const cleanMsg = String(message || 'Tap to view the latest update in CGpedia.').trim();
+    const cleanKey = String(notifKey || (category + '_' + Date.now()));
+
+    // 1. Native Android Notification Bridge
+    let sentViaAndroid = false;
+    try {
+      if (window.AndroidBridge && typeof window.AndroidBridge.postNotification === 'function') {
+        window.AndroidBridge.postNotification(cleanTitle, cleanMsg, String(category || 'broadcast'), cleanKey);
+        sentViaAndroid = true;
+      }
+    } catch (_) {}
+
+    // 2. Web / PWA Service Worker or Browser Notification API
+    if (!sentViaAndroid && 'Notification' in window && Notification.permission === 'granted') {
+      try {
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.ready.then((reg) => {
+            if (reg && typeof reg.showNotification === 'function') {
+              reg.showNotification(cleanTitle, {
+                body: cleanMsg,
+                icon: 'assets/icon-192.png',
+                badge: 'assets/icon-192.png',
+                tag: cleanKey,
+                data: { tab: targetTab || 'dashboard' }
+              });
+            }
+          }).catch(() => {});
+        } else {
+          new Notification(cleanTitle, {
+            body: cleanMsg,
+            icon: 'assets/icon-192.png',
+            tag: cleanKey
+          });
+        }
+      } catch (_) {}
+    }
+
+    // 3. In-App Toast Banner
+    toast(`🔔 ${cleanTitle}: ${cleanMsg.slice(0, 90)}`);
+  }
+
+  function buildNotificationPayloadForItem(key, item) {
+    if (!item || !item.id) return null;
+    if (key === 'tests') {
+      const title = '📝 नया टेस्ट उपलब्ध: ' + (item.titleHi || item.titleEn || 'New Mock Test');
+      const examLabel = item.examCode ? `[${item.examCode}] ` : '';
+      const msg = `${examLabel}${item.titleEn || item.titleHi || 'Live Test'} अब अटेम्प्ट करने के लिए उपलब्ध है।`;
+      return { title, message: msg, category: 'tests', tab: 'test-series' };
+    }
+    if (key === 'notifications') {
+      const title = '📢 ' + (item.titleHi || item.titleEn || 'CGpedia Official Update');
+      const msg = item.messageHi || item.messageEn || item.titleEn || 'नया आधिकारिक अपडेट उपलब्ध है।';
+      return { title, message: msg, category: 'broadcast', tab: 'notifications' };
+    }
+    if (key === 'stories') {
+      const title = '⚡ समसामयिकी (Current Affairs): ' + (item.titleHi || item.titleEn || 'Daily Update');
+      const msg = item.summaryHi || item.summaryEn || item.titleEn || 'नया 24-Hour Current Affairs अपडेट पढ़ें।';
+      return { title, message: msg, category: 'stories', tab: 'current-affairs' };
+    }
+    return null;
+  }
+
+  function checkAndDispatchCloudUpdateNotifications(key, docs) {
+    if (!Array.isArray(docs)) return;
+    const eligibleItems = key === 'tests'
+      ? docs.filter((d) => d && d.id && d.status === 'published')
+      : docs.filter((d) => d && d.id);
+
+    const store = loadNotifiedItemsStore();
+    const isFirstSyncForKey = !store.initializedKeys[key];
+
+    if (isFirstSyncForKey) {
+      let newestRecentItem = null;
+      let newestTs = 0;
+      const recentCutoffMs = Date.now() - (24 * 60 * 60 * 1000);
+
+      eligibleItems.forEach((item) => {
+        const compositeId = `${key}:${item.id}`;
+        store.seenIds[compositeId] = Date.now();
+        if (!SEED_ITEM_IDS.has(String(item.id))) {
+          const itemTs = Date.parse(item.updatedAtIso || item.createdAtIso || '') || 0;
+          if (itemTs >= recentCutoffMs && itemTs >= newestTs) {
+            newestTs = itemTs;
+            newestRecentItem = item;
+          }
+        }
+      });
+
+      store.initializedKeys[key] = true;
+      saveNotifiedItemsStore(store);
+
+      if (newestRecentItem && isStudentAuthenticated()) {
+        const notifInfo = buildNotificationPayloadForItem(key, newestRecentItem);
+        if (notifInfo) {
+          sendSystemAndAppNotification(
+            notifInfo.title,
+            notifInfo.message,
+            notifInfo.category,
+            `${key}_${newestRecentItem.id}`,
+            notifInfo.tab
+          );
+        }
+      }
+      return;
+    }
+
+    const newlyArrived = [];
+    eligibleItems.forEach((item) => {
+      const compositeId = `${key}:${item.id}`;
+      if (!store.seenIds[compositeId]) {
+        store.seenIds[compositeId] = Date.now();
+        if (!SEED_ITEM_IDS.has(String(item.id))) {
+          newlyArrived.push(item);
+        }
+      }
+    });
+
+    if (newlyArrived.length > 0) {
+      saveNotifiedItemsStore(store);
+      if (isStudentAuthenticated()) {
+        newlyArrived.slice(0, 3).forEach((item) => {
+          const notifInfo = buildNotificationPayloadForItem(key, item);
+          if (notifInfo) {
+            sendSystemAndAppNotification(
+              notifInfo.title,
+              notifInfo.message,
+              notifInfo.category,
+              `${key}_${item.id}`,
+              notifInfo.tab
+            );
+          }
+        });
+      }
+    }
+  }
+
+  function detectPhysicalLandscapeOrientation(explicitLandscapeFlag) {
+    if (typeof explicitLandscapeFlag === 'boolean') {
+      return explicitLandscapeFlag;
+    }
+    try {
+      if (window.AndroidBridge && typeof window.AndroidBridge.isLandscapeOrientation === 'function') {
+        return Boolean(window.AndroidBridge.isLandscapeOrientation());
+      }
+    } catch (_) {}
+    try {
+      if (window.screen && window.screen.orientation && typeof window.screen.orientation.type === 'string') {
+        return window.screen.orientation.type.indexOf('landscape') !== -1;
+      }
+    } catch (_) {}
+    if (typeof window.orientation === 'number') {
+      return Math.abs(window.orientation) === 90;
+    }
+    if (window.screen && window.screen.availWidth && window.screen.availHeight) {
+      return window.screen.availWidth > window.screen.availHeight;
+    }
+    return window.innerWidth > window.innerHeight;
+  }
+
+  function syncOrientationViewportMode(explicitLandscapeFlag) {
+    const isLandscape = detectPhysicalLandscapeOrientation(explicitLandscapeFlag);
+    const viewportMeta = document.getElementById('dynamicViewportMeta') || document.querySelector('meta[name="viewport"]');
+    const htmlEl = document.documentElement;
+
+    if (isLandscape) {
+      const rawScreenW = Math.max(
+        (window.screen && window.screen.availWidth) || 0,
+        (window.screen && window.screen.width) || 0,
+        window.outerWidth || 0
+      );
+      const scale = rawScreenW > 0 && rawScreenW < 1280
+        ? Math.max(0.35, Math.min(1.0, Number((rawScreenW / 1280).toFixed(2))))
+        : 1.0;
+      if (viewportMeta) {
+        viewportMeta.setAttribute(
+          'content',
+          `width=1280, initial-scale=${scale}, minimum-scale=0.25, maximum-scale=5.0, user-scalable=yes`
+        );
+      }
+      if (htmlEl) {
+        htmlEl.classList.add('landscape-desktop-mode');
+      }
+    } else {
+      if (viewportMeta) {
+        viewportMeta.setAttribute(
+          'content',
+          'width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes'
+        );
+      }
+      if (htmlEl) {
+        htmlEl.classList.remove('landscape-desktop-mode');
+      }
+    }
+  }
+
+  window.__onNativeOrientationChange = function (isLandscape) {
+    syncOrientationViewportMode(Boolean(isLandscape));
+  };
+
+  window.__onNativeNotificationPermissionResult = function (granted) {
+    if (granted) {
+      toast('🔔 Notifications enabled for Live Tests, Current Affairs & Announcements!');
+    }
+  };
 
   function isAnthemPublishedForStudents() {
     if (!state || !state.config || !state.config.anthemEnabled) return false;
@@ -4915,9 +5179,33 @@
 
     // Register Service Worker & force update check
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
-      navigator.serviceWorker.register('sw.js?v=6.2').then((reg) => {
+      navigator.serviceWorker.register('sw.js?v=6.3').then((reg) => {
         try { reg.update(); } catch (_) {}
       }).catch(() => {});
+    }
+
+    // Portrait (Normal Mobile Site) vs Landscape (1280px Desktop Site) Automatic Switcher
+    syncOrientationViewportMode();
+    window.addEventListener('orientationchange', () => {
+      setTimeout(() => syncOrientationViewportMode(), 80);
+      setTimeout(() => syncOrientationViewportMode(), 260);
+    });
+    window.addEventListener('resize', () => {
+      syncOrientationViewportMode();
+    });
+    if (window.screen && window.screen.orientation && typeof window.screen.orientation.addEventListener === 'function') {
+      try {
+        window.screen.orientation.addEventListener('change', () => {
+          syncOrientationViewportMode();
+        });
+      } catch (_) {}
+    }
+
+    // Request notification permission if user is already logged in
+    if (isStudentAuthenticated()) {
+      setTimeout(() => {
+        requestStudentNotificationPermissionImmediate();
+      }, 600);
     }
 
     // Connect Firebase Cloud Sync

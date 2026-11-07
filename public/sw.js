@@ -1,12 +1,12 @@
-const CACHE_NAME = 'cgpedia-platform-v16';
+const CACHE_NAME = 'cgpedia-platform-v17';
 const ASSETS = [
   '/',
   '/index.html',
-  '/styles.css?v=5.2',
-  '/firebase-sync.js?v=6.2',
-  '/exam-engine.js?v=6.2',
-  '/admin-console.js?v=6.2',
-  '/app.js?v=6.2',
+  '/styles.css?v=6.3',
+  '/firebase-sync.js?v=6.3',
+  '/exam-engine.js?v=6.3',
+  '/admin-console.js?v=6.3',
+  '/app.js?v=6.3',
   '/manifest.webmanifest',
   '/favicon.png',
   '/assets/cgpedia-logo-clean.png',
@@ -33,6 +33,24 @@ self.addEventListener('activate', (event) => {
         })
       )
     ).then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetTab = (event.notification.data && event.notification.data.tab) || 'dashboard';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if ('focus' in client) {
+          client.focus();
+          return;
+        }
+      }
+      if (self.clients.openWindow) {
+        return self.clients.openWindow('/#' + targetTab);
+      }
+    })
   );
 });
 

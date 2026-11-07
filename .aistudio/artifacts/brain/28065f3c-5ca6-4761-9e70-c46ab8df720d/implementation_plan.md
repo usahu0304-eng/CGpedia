@@ -1,35 +1,86 @@
-# Implementation Plan: Admin-to-Student Cloud Sync & Anthem Shutdown Fix
+# Screen Rotation Desktop View & Post-Login Push/Local Notifications Plan
 
-## 1. Root Cause Analysis (समस्या का मुख्य कारण)
-जाँच में यह स्पष्ट हुआ है कि आपके मुख्य डिवाइस पर किए गए बदलाव Students और दूसरे डिवाइस पर क्यों नहीं दिख रहे थे:
+This update unlocks screen rotation for installed apps, automatically switches the layout between the normal mobile site in Portrait mode and a full 1280px Desktop Site view in Landscape mode, and prompts users for notification permission immediately after login so they receive instant alerts for new Tests, Broadcast Announcements, and Current Affairs updates.
 
-1. **Cloud Sync / Firestore Rules Block (`firestore.rules` & `firebase-sync.js`)**:
-   - `firestore.rules` में `isSuperAdmin()` नियम `request.auth.token.email_verified == true` की शर्त लगा रहा था, जबकि Email/Password लॉगिन में Firebase इसे डिफ़ॉल्ट रूप से `false` रखता है। इसके अलावा जब Admin सेशन लोकल कैश से रिस्टोर होता था, तब Cloud पर डेटा सेव होने से रुक रहा था (`Cloud write deferred locally`)।
-   - आपके मुख्य डिवाइस के ब्राउज़र (`localStorage`) में जो Tests, Folders, Question Bank और Updates पहले से बने हुए हैं, उन्हें ऐप खुलते ही अपने-आप Cloud पर Push करने का ऑटो-सिंक ब्रिज सक्रिय नहीं था।
-2. **Anthem Button & Synthesized Audio Bug (`app.js`)**:
-   - `applyBrandingAndSecurity()` में जब Admin द्वारा Anthem को बंद (`anthemEnabled = false`) या डिलीट कर दिया जाता था, तब भी `#anthemToggleBtn` (`🎵`) बटन स्टूडेंट की स्क्रीन पर दिखता रहता था और उस पर क्लिक करने पर `startSynthesizedAnthem()` (5-सेकंड की सिंथेसाइज्ड धुन) बजने लगती थी।
+## User Review & Critical Decisions
 
----
+> [!IMPORTANT]
+> **Strict Scope Lock**: Only screen rotation (Portrait normal view vs. Landscape 1280px Desktop Site view) and post-login notification permissions/alerts will be updated. All other features, layouts, and data remain untouched.
 
-## 2. Proposed Changes (प्रस्तावित सुधार)
-
-### A. Real-Time Cloud Sync & Auto-Push for Existing Admin Data (`firestore.rules`, `firebase-sync.js`, `app.js`)
-- **Firestore Security Rules (`firestore.rules`)**:
-  - Admin (`usahu0304@gmail.com`) और Admin पैनल से होने वाले सभी अपडेट्स (`tests`, `exam_folders`, `question_bank`, `app_config`, `current_affairs`, `broadcast_notifications`, `upcoming_tests`, `coupons`) को बिना `email_verified` रुकावट के तुरंत सेव होने की अनुमति दी जाएगी और नए नियम `deploy_firebase` से लाइव किए जाएंगे।
-- **Automatic Local-to-Cloud Sync (`syncLocalAdminStateToCloud`)**:
-  - जैसे ही आप अपने मुख्य डिवाइस पर ऐप खोलेंगे या कोई भी बदलाव करेंगे, आपके डिवाइस में पहले से मौजूद सारा Admin डेटा (**Tests, Test Series Folders, Question Bank, App Config, Anthem Status, Current Affairs Stories, Broadcast Notifications, Upcoming Tests, Coupons**) अपने-आप Cloud Firestore पर सिंक हो जाएगा।
-- **Smart Cross-Device & Student Merge (`mergeCloudCollection`)**:
-  - जब आप दूसरे डिवाइस में अपने अकाउंट से लॉगिन करेंगे या कोई भी Student अपना ऐप खोलेगा, तो उसे तुरंत सभी उपलब्ध Tests, Folders और Admin Updates रियल-टाइम (`onSnapshot`) में दिखाई देंगे।
-  - साथ ही, मुख्य Admin डिवाइस का लोकल डेटा कभी भी खाली क्लाउड डेटा से ओवरराइट नहीं होगा, बल्कि दोनों सुरक्षित रूप से मर्ज होकर क्लाउड पर अपडेट होंगे।
-
-### B. Complete Anthem Shutdown When Disabled or Deleted (`app.js`)
-- **`applyBrandingAndSecurity()` में सुधार**:
-  - स्टूडेंट के हेडर में `🎵` (`#anthemToggleBtn`) बटन केवल तभी दिखेगा जब `isAnthemPublishedForStudents()` सत्य हो (अर्थात् Admin ने `anthemEnabled` चालू रखा हो और वैध ऑडियो पब्लिश किया हो)।
-  - जैसे ही Admin पैनल से Anthem को **Off (बंद)** या **Delete** किया जाएगा, सभी स्टूडेंट्स की स्क्रीन से `🎵` बटन तुरंत गायब (`display: none`) हो जाएगा और यदि कोई ऑडियो बज रहा है तो वह तुरंत बंद (`closeAndStopStudentAnthemPlayer()`) हो जाएगा।
-- **`toggleStudentAnthemFloatingPlayer()` में सुरक्षा**:
-  - जब Anthem बंद या डिलीट हो, तब किसी भी स्थिति में बैकअप सिंथेसाइज्ड धुन (`startSynthesizedAnthem`) नहीं बजेगी।
+- **Confirmed Decision 1 (Landscape Desktop View)**: When the phone is upright (Portrait), the app renders in normal mobile view; when rotated sideways (Landscape), the viewport automatically switches to a full **1280px wide Desktop Site view** with the top horizontal navigation bar and hidden mobile bottom bar.
+- **Confirmed Decision 2 (Post-Login Notification Triggers)**: Immediately after login, the app requests system notification permission (both Android native `POST_NOTIFICATIONS` and Web/PWA `Notification` API) and sends system notifications whenever a new **Published Test**, **Admin Broadcast Announcement**, or **Current Affairs Story** arrives.
 
 ---
 
-## 3. Scope Constraint (सीमाएं)
-- आपके निर्देशानुसार **केवल** Admin-to-Student / Cross-Device अपडेट सिंक और Anthem बंद करने की समस्या को ही ठीक किया जाएगा। ऐप के किसी भी अन्य फीचर या डिज़ाइन में कोई बदलाव नहीं किया जाएगा।
+## 1. Overview & Core Concept
+
+- **What It Does**:
+  1. **Rotation Unlock & Auto Desktop Mode**: Removes the portrait lock in the PWA manifest and configures the Android Activity/WebView so rotating the phone smoothly transitions between normal mobile view (Portrait) and a 1280px wide Desktop Site view (Landscape) without losing state or reloading the page.
+  2. **Immediate Post-Login Notification Permission & Alerts**: Requests notification permission right after user login and dispatches real system notifications (Android status bar + Web/PWA Service Worker notifications) whenever the Admin publishes a new Test, sends a Broadcast Announcement, or posts Current Affairs.
+- **Target Audience / Persona**: Students and Admin users using the installed Android app or installed PWA on mobile devices.
+- **Key Value**: Lets students comfortably view wide desktop tables, CBT layouts, and top navigation simply by rotating their phone, and ensures no student misses newly published tests or announcements.
+
+---
+
+## 2. User Experience & Visual Design
+
+- **Key User Flows**:
+  1. **Portrait to Landscape Rotation Flow**:
+     - **Upright (Portrait)**: Standard responsive mobile viewport (`width=device-width, initial-scale=1.0`) with sticky bottom navigation bar.
+     - **Rotated (Landscape)**: Automatically updates the viewport to `width=1280` (with proportional initial scale and pinch-zoom enabled), activates `.landscape-desktop-mode`, displays the full desktop top navigation bar, and hides the mobile bottom navigation bar.
+     - **Rotated Back to Portrait**: Smoothly restores the normal mobile viewport and layout without page reload.
+  2. **Post-Login Notification Flow**:
+     - As soon as a user logs in (or opens an active logged-in session where permission hasn't been granted yet), the native Android/Browser notification permission dialog is triggered.
+     - Whenever a new Published Test, Broadcast Announcement, or Current Affairs update syncs from Cloud Firestore, the user receives a system notification on their phone with the title and summary; tapping the notification opens CGpedia directly.
+- **Visual Identity & Theme**:
+  - Preserves the existing CGpedia Royal Navy (`#0F2557`) and Saffron (`#EA580C`) theme and typography without altering any existing screen designs.
+
+---
+
+## 3. Key Product Decisions & Trade-Offs
+
+- **Decision 1: Seamless Rotation Without Activity Recreation**
+  - *Chosen Approach*: Configure `android:screenOrientation="fullUser"` and `android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"` on `MainActivity` alongside `useWideViewPort = true` and `loadWithOverviewMode = true`, and change `"orientation": "any"` in `manifest.webmanifest`.
+  - *Why*: Prevents Android from destroying and reloading the WebView when rotating the device (which would interrupt active tests or forms) and allows CSS/JS to switch instantly to the 1280px Desktop layout.
+- **Decision 2: Dual Native Android Bridge + PWA Service Worker Notifications**
+  - *Chosen Approach*: Bridge `requestNotificationPermission()` and `postNotification(...)` in `MainActivity.kt` (`AndroidBridge`) using `CgpediaNotificationHelper`, while also using the standard Web `Notification` API + Service Worker `showNotification` for browser/PWA users.
+  - *Why*: Guarantees notifications work reliably both inside the installed Android APK and in mobile Chrome/Edge PWA installs.
+
+---
+
+## 4. Technical Architecture & Data Strategy *(Technical Reference)*
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                   DEVICE ROTATION & VIEWPORT MANAGER                    │
+│  • PWA Manifest: orientation = "any"                                    │
+│  • Android Activity: screenOrientation="fullUser" + configChanges       │
+│  • JS Orientation Listener:                                             │
+│     ├─ Portrait  ──► <meta viewport="width=device-width, scale=1.0">    │
+│     └─ Landscape ──► <meta viewport="width=1280"> + .landscape-desktop  │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                POST-LOGIN NOTIFICATION & ALERT PIPELINE                 │
+│  1. User Login (activateStudentAccountSession)                          │
+│     ├─ Android APK ──► AndroidBridge.requestNotificationPermission()    │
+│     └─ Web / PWA   ──► Notification.requestPermission()                 │
+│                                                                         │
+│  2. Real-Time Cloud Sync (mergeCloudCollection)                         │
+│     ├─ New Published Test (`tests`)                                     │
+│     ├─ New Broadcast Announcement (`notifications`)                     │
+│     └─ New Current Affairs Story (`stories`)                            │
+│          │                                                              │
+│          ▼                                                              │
+│     Deduplicate via `cgpedia_notified_items_v1` ──► Dispatch System     │
+│     Notification (CgpediaNotificationHelper / ServiceWorker)            │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Interactive Component & State Mapping
+- **Orientation Detection & Viewport Switching**:
+  - Listens to `window.addEventListener('orientationchange', ...)`, `window.addEventListener('resize', ...)`, and `screen.orientation`.
+  - Detects physical landscape orientation via `window.matchMedia('(orientation: landscape)')` / screen aspect ratio so that even after setting `<meta name="viewport" content="width=1280">`, returning to portrait is accurately detected via `window.screen.availWidth < window.screen.availHeight`.
+- **Notification Deduplication Store (`cgpedia_notified_items_v1`)**:
+  - Records the IDs of existing Tests, Announcements, and Current Affairs on initial baseline load, and triggers a system notification whenever any new item ID appears from Cloud Firestore.

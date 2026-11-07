@@ -1,14 +1,19 @@
 package com.example
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.ParcelFileDescriptor
 import android.util.Base64
@@ -38,7 +43,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
 import com.example.security.configureAppCheck
+import com.example.service.CgpediaNotificationHelper
 import com.google.firebase.Firebase
 import com.google.firebase.ai.ai
 import com.google.firebase.ai.type.content
@@ -57,6 +64,7 @@ import org.json.JSONObject
 class MainActivity : ComponentActivity() {
 
     private var fileUploadCallback: ValueCallback<Array<Uri>>? = null
+    var activeWebView: WebView? = null
 
     private val filePickerLauncher = registerForActivityResult(
         ActivityResultContracts.GetMultipleContents()
@@ -65,9 +73,63 @@ class MainActivity : ComponentActivity() {
         fileUploadCallback = null
     }
 
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted: Boolean ->
+        CgpediaNotificationHelper.ensureChannels(this)
+        activeWebView?.post {
+            activeWebView?.evaluateJavascript(
+                "if(window.__onNativeNotificationPermissionResult){window.__onNativeNotificationPermissionResult($granted);}",
+                null
+            )
+        }
+    }
+
+    fun requestNotificationPermissionIfNeeded() {
+        CgpediaNotificationHelper.ensureChannels(this)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val alreadyGranted = ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!alreadyGranted) {
+                runCatching {
+                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+            } else {
+                activeWebView?.post {
+                    activeWebView?.evaluateJavascript(
+                        "if(window.__onNativeNotificationPermissionResult){window.__onNativeNotificationPermissionResult(true);}",
+                        null
+                    )
+                }
+            }
+        } else {
+            activeWebView?.post {
+                activeWebView?.evaluateJavascript(
+                    "if(window.__onNativeNotificationPermissionResult){window.__onNativeNotificationPermissionResult(true);}",
+                    null
+                )
+            }
+        }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        val isLandscape = newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE
+        activeWebView?.post {
+            activeWebView?.evaluateJavascript(
+                "if(window.__onNativeOrientationChange){window.__onNativeOrientationChange($isLandscape);}",
+                null
+            )
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         configureAppCheck(this, intent)
+        CgpediaNotificationHelper.ensureChannels(this)
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_USER
         enableEdgeToEdge()
         // Default exam security flag; dynamically controlled via AndroidBridge.setSecureScreen(...)
         window.setFlags(
@@ -127,6 +189,33 @@ class CgpediaAndroidBridge(private val activity: Activity) {
                 activity.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
             }
         }
+    }
+
+    @JavascriptInterface
+    fun requestNotificationPermission() {
+        activity.runOnUiThread {
+            if (activity is MainActivity) {
+                activity.requestNotificationPermissionIfNeeded()
+            }
+        }
+    }
+
+    @JavascriptInterface
+    fun postNotification(title: String, message: String, category: String, notificationId: String) {
+        activity.runOnUiThread {
+            CgpediaNotificationHelper.notifyGenericAlert(
+                context = activity.applicationContext,
+                title = title,
+                message = message,
+                category = category,
+                notificationKey = notificationId
+            )
+        }
+    }
+
+    @JavascriptInterface
+    fun isLandscapeOrientation(): Boolean {
+        return activity.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     }
 
     @JavascriptInterface
@@ -339,6 +428,9 @@ fun CgpediaWebAppHost(
                 val bridge = CgpediaAndroidBridge(activity)
                 WebView(context).apply {
                     bridge.webViewRef = this
+                    if (activity is MainActivity) {
+                        activity.activeWebView = this
+                    }
                     settings.apply {
                         javaScriptEnabled = true
                         domStorageEnabled = true
@@ -348,6 +440,11 @@ fun CgpediaWebAppHost(
                         allowFileAccessFromFileURLs = true
                         allowUniversalAccessFromFileURLs = true
                         mediaPlaybackRequiresUserGesture = false
+                        useWideViewPort = true
+                        loadWithOverviewMode = true
+                        setSupportZoom(true)
+                        builtInZoomControls = true
+                        displayZoomControls = false
                         cacheMode = WebSettings.LOAD_NO_CACHE
                     }
 
@@ -371,6 +468,15 @@ fun CgpediaWebAppHost(
                                 return true
                             }
                             return false
+                        }
+
+                        override fun onPageFinished(view: WebView?, url: String?) {
+                            super.onPageFinished(view, url)
+                            val isLand = activity.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+                            view?.evaluateJavascript(
+                                "if(window.__onNativeOrientationChange){window.__onNativeOrientationChange($isLand);}",
+                                null
+                            )
                         }
                     }
 
