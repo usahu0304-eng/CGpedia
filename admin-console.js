@@ -536,6 +536,7 @@
                     <div style="font-size:0.8rem;color:var(--text-secondary);">${esc(t.titleEn)} — Topic: ${esc(t.topic)}</div>
                   </div>
                   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                    <button class="btn btn-outline btn-sm" data-edit-test-meta="${esc(t.id)}">⚙️ Edit Details / Price</button>
                     <button class="btn btn-outline btn-sm" data-manage-questions="${esc(t.id)}">✏️ Review / Add Questions (${(t.questions || []).length})</button>
                     <button class="btn ${t.status === 'published' ? 'btn-warning' : 'btn-success'} btn-sm" data-toggle-publish="${esc(t.id)}">
                       ${t.status === 'published' ? '⏸️ Unpublish to Draft' : '🚀 Publish Live'}
@@ -774,6 +775,17 @@
         renderAdminConsole(rootEl, state, api);
       };
 
+      bodyEl.querySelectorAll('[data-edit-test-meta]').forEach((btn) => {
+        btn.onclick = () => {
+          const tid = btn.getAttribute('data-edit-test-meta');
+          const t = (state.tests || []).find((item) => item.id === tid);
+          if (!t) return;
+          openEditTestDetailsModal(t, state, api, () => {
+            renderAdminConsole(rootEl, state, api);
+          });
+        };
+      });
+
       bodyEl.querySelectorAll('[data-toggle-publish]').forEach((btn) => {
         btn.onclick = () => {
           const tid = btn.getAttribute('data-toggle-publish');
@@ -783,10 +795,28 @@
             api.toast('⚠️ पब्लिश करने से पहले कम से कम 1 प्रश्न जोड़ें।');
             return;
           }
-          t.status = t.status === 'published' ? 'draft' : 'published';
+          if (t.status === 'published') {
+            openConfirmationDialog({
+              title: 'Unpublish Live Test?',
+              message: `क्या आप वाकई "${t.titleHi || t.titleEn}" को Live से हटाकर वापस Draft में भेजना चाहते हैं?`,
+              confirmLabel: 'Yes, Move to Draft',
+              isDanger: true,
+              onConfirm: () => {
+                t.status = 'draft';
+                t.updatedAtIso = new Date().toISOString();
+                api.saveState();
+                if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('tests', t.id, t);
+                api.toast('⏸️ Test moved back to DRAFT.');
+                renderAdminConsole(rootEl, state, api);
+              }
+            });
+            return;
+          }
+          t.status = 'published';
+          t.updatedAtIso = new Date().toISOString();
           api.saveState();
           if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('tests', t.id, t);
-          api.toast(t.status === 'published' ? '🚀 Test is now PUBLISHED LIVE for students!' : '⏸️ Test moved back to DRAFT.');
+          api.toast('🚀 Test is now PUBLISHED LIVE for students!');
           renderAdminConsole(rootEl, state, api);
         };
       });
@@ -794,11 +824,21 @@
       bodyEl.querySelectorAll('[data-delete-test]').forEach((btn) => {
         btn.onclick = () => {
           const tid = btn.getAttribute('data-delete-test');
-          state.tests = state.tests.filter((item) => item.id !== tid);
-          api.saveState();
-          if (window.CGpediaCloud) window.CGpediaCloud.deleteCloudDoc('tests', tid);
-          api.toast('🗑️ Test deleted.');
-          renderAdminConsole(rootEl, state, api);
+          const targetTest = (state.tests || []).find((item) => item.id === tid);
+          if (!targetTest) return;
+          openConfirmationDialog({
+            title: 'Confirm Test Deletion',
+            message: `क्या आप वाकई टेस्ट "${targetTest.titleHi || targetTest.titleEn}" को स्थायी रूप से डिलीट करना चाहते हैं?`,
+            confirmLabel: 'Yes, Delete Test',
+            isDanger: true,
+            onConfirm: () => {
+              state.tests = state.tests.filter((item) => item.id !== tid);
+              api.saveState();
+              if (window.CGpediaCloud) window.CGpediaCloud.deleteCloudDoc('tests', tid);
+              api.toast('🗑️ Test deleted.');
+              renderAdminConsole(rootEl, state, api);
+            }
+          });
         };
       });
 
@@ -847,11 +887,21 @@
       bodyEl.querySelectorAll('[data-del-folder]').forEach((btn) => {
         btn.onclick = () => {
           const fid = btn.getAttribute('data-del-folder');
-          state.folders = state.folders.filter((f) => f.id !== fid);
-          api.saveState();
-          if (window.CGpediaCloud) window.CGpediaCloud.deleteCloudDoc('exam_folders', fid);
-          api.toast('🗑️ Folder removed.');
-          renderAdminConsole(rootEl, state, api);
+          const targetFolder = (state.folders || []).find((f) => f.id === fid);
+          if (!targetFolder) return;
+          openConfirmationDialog({
+            title: 'Confirm Folder Deletion',
+            message: `क्या आप वाकई टेस्ट सीरीज़ फ़ोल्डर "${targetFolder.titleHi || targetFolder.titleEn}" को डिलीट करना चाहते हैं?`,
+            confirmLabel: 'Yes, Delete Folder',
+            isDanger: true,
+            onConfirm: () => {
+              state.folders = state.folders.filter((f) => f.id !== fid);
+              api.saveState();
+              if (window.CGpediaCloud) window.CGpediaCloud.deleteCloudDoc('exam_folders', fid);
+              api.toast('🗑️ Folder removed.');
+              renderAdminConsole(rootEl, state, api);
+            }
+          });
         };
       });
       return;
@@ -1248,11 +1298,19 @@
       const delQrBtn = document.getElementById('admDeleteQrCodeBtn');
       if (delQrBtn) {
         delQrBtn.onclick = () => {
-          state.config.upiQrImage = '';
-          api.saveState();
-          if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('app_config', 'global', state.config);
-          api.toast('🗑️ UPI QR Code deleted from configuration.');
-          renderAdminConsole(rootEl, state, api);
+          openConfirmationDialog({
+            title: 'Delete UPI QR Code?',
+            message: 'क्या आप वाकई वर्तमान UPI QR Code इमेज को हटाना चाहते हैं?',
+            confirmLabel: 'Yes, Delete QR Code',
+            isDanger: true,
+            onConfirm: () => {
+              state.config.upiQrImage = '';
+              api.saveState();
+              if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('app_config', 'global', state.config);
+              api.toast('🗑️ UPI QR Code deleted from configuration.');
+              renderAdminConsole(rootEl, state, api);
+            }
+          });
         };
       }
 
@@ -1386,20 +1444,38 @@
       bodyEl.querySelectorAll('[data-del-coupon]').forEach((btn) => {
         btn.onclick = () => {
           const cid = btn.getAttribute('data-del-coupon');
-          state.coupons = (state.coupons || []).filter((c) => c.id !== cid);
-          api.saveState();
-          if (window.CGpediaCloud) window.CGpediaCloud.deleteCloudDoc('coupons', cid);
-          renderAdminConsole(rootEl, state, api);
+          const cObj = (state.coupons || []).find((c) => c.id === cid);
+          openConfirmationDialog({
+            title: 'Delete Discount Coupon?',
+            message: `क्या आप वाकई कूपन "${(cObj && cObj.code) || cid}" को डिलीट करना चाहते हैं?`,
+            confirmLabel: 'Yes, Delete Coupon',
+            isDanger: true,
+            onConfirm: () => {
+              state.coupons = (state.coupons || []).filter((c) => c.id !== cid);
+              api.saveState();
+              if (window.CGpediaCloud) window.CGpediaCloud.deleteCloudDoc('coupons', cid);
+              renderAdminConsole(rootEl, state, api);
+            }
+          });
         };
       });
 
       bodyEl.querySelectorAll('[data-revoke-activation]').forEach((btn) => {
         btn.onclick = () => {
           const aid = btn.getAttribute('data-revoke-activation');
-          state.activations = state.activations.filter((a) => a.id !== aid);
-          api.saveState();
-          if (window.CGpediaCloud) window.CGpediaCloud.deleteCloudDoc('purchases', aid);
-          renderAdminConsole(rootEl, state, api);
+          const actObj = (state.activations || []).find((a) => a.id === aid);
+          openConfirmationDialog({
+            title: 'Revoke Student Package Access?',
+            message: `क्या आप वाकई "${(actObj && actObj.studentIdentifier) || 'student'}" का "${(actObj && actObj.targetTitle) || 'Package'}" एक्सेस रद्द (Revoke) करना चाहते हैं?`,
+            confirmLabel: 'Yes, Revoke Access',
+            isDanger: true,
+            onConfirm: () => {
+              state.activations = state.activations.filter((a) => a.id !== aid);
+              api.saveState();
+              if (window.CGpediaCloud) window.CGpediaCloud.deleteCloudDoc('purchases', aid);
+              renderAdminConsole(rootEl, state, api);
+            }
+          });
         };
       });
       return;
@@ -1822,14 +1898,23 @@
       });
 
       bodyEl.querySelectorAll('[data-delete-ca-story]').forEach((btn) => {
-        btn.onclick = async () => {
+        btn.onclick = () => {
           const sid = btn.getAttribute('data-delete-ca-story');
-          state.stories = (state.stories || []).filter((s) => s.id !== sid);
-          if (state.editingCaStoryId === sid) state.editingCaStoryId = null;
-          api.saveState();
-          if (window.CGpediaCloud) await window.CGpediaCloud.deleteCloudDoc('current_affairs', sid);
-          api.toast('🗑️ Current Affairs deleted.');
-          renderAdminConsole(rootEl, state, api);
+          const stObj = (state.stories || []).find((s) => s && s.id === sid);
+          openConfirmationDialog({
+            title: 'Delete Current Affairs Story?',
+            message: `क्या आप वाकई करंट अफेयर्स "${(stObj && (stObj.headlineHi || stObj.headlineEn)) || sid}" को डिलीट करना चाहते हैं?`,
+            confirmLabel: 'Yes, Delete Current Affairs',
+            isDanger: true,
+            onConfirm: async () => {
+              state.stories = (state.stories || []).filter((s) => s.id !== sid);
+              if (state.editingCaStoryId === sid) state.editingCaStoryId = null;
+              api.saveState();
+              if (window.CGpediaCloud) await window.CGpediaCloud.deleteCloudDoc('current_affairs', sid);
+              api.toast('🗑️ Current Affairs deleted.');
+              renderAdminConsole(rootEl, state, api);
+            }
+          });
         };
       });
       return;
@@ -1981,14 +2066,23 @@
       });
 
       bodyEl.querySelectorAll('[data-delete-notif]').forEach((btn) => {
-        btn.onclick = async () => {
+        btn.onclick = () => {
           const nid = btn.getAttribute('data-delete-notif');
-          state.notifications = (state.notifications || []).filter((n) => n && n.id !== nid);
-          if (state.editingNotifId === nid) state.editingNotifId = null;
-          api.saveState();
-          if (window.CGpediaCloud) await window.CGpediaCloud.deleteCloudDoc('broadcast_notifications', nid);
-          api.toast('🗑️ Announcement deleted.');
-          renderAdminConsole(rootEl, state, api);
+          const nObj = (state.notifications || []).find((n) => n && n.id === nid);
+          openConfirmationDialog({
+            title: 'Delete Announcement?',
+            message: `क्या आप वाकई घोषणा "${(nObj && (nObj.titleHi || nObj.titleEn)) || nid}" को डिलीट करना चाहते हैं?`,
+            confirmLabel: 'Yes, Delete Announcement',
+            isDanger: true,
+            onConfirm: async () => {
+              state.notifications = (state.notifications || []).filter((n) => n && n.id !== nid);
+              if (state.editingNotifId === nid) state.editingNotifId = null;
+              api.saveState();
+              if (window.CGpediaCloud) await window.CGpediaCloud.deleteCloudDoc('broadcast_notifications', nid);
+              api.toast('🗑️ Announcement deleted.');
+              renderAdminConsole(rootEl, state, api);
+            }
+          });
         };
       });
 
@@ -2303,10 +2397,19 @@
       bodyEl.querySelectorAll('[data-del-staff]').forEach((btn) => {
         btn.onclick = () => {
           const sid = btn.getAttribute('data-del-staff');
-          state.adminStaff = (state.adminStaff || []).filter((s) => s.id !== sid);
-          api.saveState();
-          if (window.CGpediaCloud) window.CGpediaCloud.deleteCloudDoc('admin_staff', sid);
-          renderAdminConsole(rootEl, state, api);
+          const stObj = (state.adminStaff || []).find((s) => s.id === sid);
+          openConfirmationDialog({
+            title: 'Remove Delegated Admin Staff?',
+            message: `क्या आप वाकई "${(stObj && stObj.email) || sid}" का एडमिन स्टाफ रोल हटाना चाहते हैं?`,
+            confirmLabel: 'Yes, Remove Staff',
+            isDanger: true,
+            onConfirm: () => {
+              state.adminStaff = (state.adminStaff || []).filter((s) => s.id !== sid);
+              api.saveState();
+              if (window.CGpediaCloud) window.CGpediaCloud.deleteCloudDoc('admin_staff', sid);
+              renderAdminConsole(rootEl, state, api);
+            }
+          });
         };
       });
 
@@ -7744,32 +7847,56 @@
   function callAndroidAiBridge(promptText, base64Image) {
     return new Promise((resolve, reject) => {
       if (
-        !window.AndroidBridge ||
-        (typeof window.AndroidBridge.analyzeQuestionsWithAi !== 'function' &&
-          typeof window.AndroidBridge.analyzeQuestionImageWithAi !== 'function')
+        window.AndroidBridge &&
+        (typeof window.AndroidBridge.analyzeQuestionsWithAi === 'function' ||
+          typeof window.AndroidBridge.analyzeQuestionImageWithAi === 'function')
       ) {
-        reject(new Error('AndroidBridge AI not available'));
+        const cbId = 'ai_qb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+        const timer = setTimeout(() => {
+          if (aiPendingCallbacks[cbId]) {
+            delete aiPendingCallbacks[cbId];
+            reject(new Error('AI timeout'));
+          }
+        }, 80000);
+        aiPendingCallbacks[cbId] = { resolve, reject, timer };
+        try {
+          if (base64Image && typeof window.AndroidBridge.analyzeQuestionImageWithAi === 'function') {
+            window.AndroidBridge.analyzeQuestionImageWithAi(base64Image, promptText, cbId);
+          } else {
+            window.AndroidBridge.analyzeQuestionsWithAi(promptText, cbId);
+          }
+        } catch (err) {
+          clearTimeout(timer);
+          delete aiPendingCallbacks[cbId];
+          reject(err);
+        }
         return;
       }
-      const cbId = 'ai_qb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
-      const timer = setTimeout(() => {
-        if (aiPendingCallbacks[cbId]) {
-          delete aiPendingCallbacks[cbId];
-          reject(new Error('AI timeout'));
-        }
-      }, 80000);
-      aiPendingCallbacks[cbId] = { resolve, reject, timer };
-      try {
-        if (base64Image && typeof window.AndroidBridge.analyzeQuestionImageWithAi === 'function') {
-          window.AndroidBridge.analyzeQuestionImageWithAi(base64Image, promptText, cbId);
-        } else {
-          window.AndroidBridge.analyzeQuestionsWithAi(promptText, cbId);
-        }
-      } catch (err) {
-        clearTimeout(timer);
-        delete aiPendingCallbacks[cbId];
-        reject(err);
+
+      // Web Browser fallback to server-side /api/gemini-generate endpoint
+      if (typeof fetch === 'function') {
+        fetch('/api/gemini-generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            promptText,
+            base64Image: base64Image || '',
+            temperature: 0.72
+          })
+        })
+          .then((res) => (res.ok ? res.json() : Promise.reject(new Error('HTTP ' + res.status))))
+          .then((data) => {
+            if (data && data.ok && data.text) {
+              resolve(String(data.text));
+            } else {
+              reject(new Error((data && data.error) || 'Gemini web proxy unavailable'));
+            }
+          })
+          .catch((err) => reject(err));
+        return;
       }
+
+      reject(new Error('AI Bridge not available'));
     });
   }
 
@@ -8605,6 +8732,138 @@ Return ONLY a JSON array of objects:
     document.getElementById('confirmDialogProceedBtn').onclick = () => {
       modalRoot.innerHTML = '';
       if (typeof onConfirm === 'function') onConfirm();
+    };
+  }
+
+  function openEditTestDetailsModal(testObj, state, api, onSaved) {
+    const modalRoot = document.getElementById('genericModalContainer');
+    if (!modalRoot || !testObj) return;
+    const catalog = getTaxonomyCatalog(state);
+    const exams = catalog.examCategories || [];
+
+    modalRoot.innerHTML = `
+      <div class="modal-backdrop">
+        <div class="modal-card" style="max-width:600px;max-height:92vh;overflow-y:auto;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;">
+            <div>
+              <span class="badge ${testObj.status === 'published' ? 'badge-free' : 'badge-draft'}">
+                ${testObj.status === 'published' ? '🟢 PUBLISHED LIVE TEST' : '📝 DRAFT TEST'}
+              </span>
+              <h2 style="font-size:1.08rem;font-weight:800;margin-top:4px;">⚙️ Edit Test Settings, Price &amp; Access</h2>
+            </div>
+            <button class="btn btn-outline btn-sm" id="closeEditTestMetaModalBtn">✕</button>
+          </div>
+
+          <div class="grid-2" style="gap:10px;">
+            <div class="form-group">
+              <label class="form-label">Test Title (Hindi) *</label>
+              <input class="form-input" id="editTestMetaTitleHi" value="${esc(testObj.titleHi || '')}" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Test Title (English)</label>
+              <input class="form-input" id="editTestMetaTitleEn" value="${esc(testObj.titleEn || testObj.titleHi || '')}" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Parent Test Series Folder</label>
+              <select class="form-select" id="editTestMetaFolderId">
+                <option value="standalone" ${(!testObj.folderId || testObj.folderId === 'standalone') ? 'selected' : ''}>Standalone / Direct Exam Test</option>
+                ${(state.folders || []).map((f) => `<option value="${esc(f.id)}" ${testObj.folderId === f.id ? 'selected' : ''}>[${esc(f.examCode || 'CGPSC')}] ${esc(f.titleHi)}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Exam Category</label>
+              <select class="form-select" id="editTestMetaExamCode">
+                ${exams.map((ex) => `<option value="${esc(ex.code)}" ${testObj.examCode === ex.code ? 'selected' : ''}>${esc(ex.icon || '📘')} ${esc(ex.nameEn)}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Access Type (FREE / PAID)</label>
+              <select class="form-select" id="editTestMetaIsPaid">
+                <option value="free" ${!testObj.isPaid ? 'selected' : ''}>🟢 FREE (निःशुल्क)</option>
+                <option value="paid" ${testObj.isPaid ? 'selected' : ''}>🔒 PAID (सशुल्क ₹)</option>
+              </select>
+            </div>
+            <div class="form-group" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+              <div>
+                <label class="form-label">Price (₹ if Paid)</label>
+                <input type="number" min="0" class="form-input" id="editTestMetaPrice" value="${Number(testObj.priceInr || 49)}" />
+              </div>
+              <div>
+                <label class="form-label">Validity (Days)</label>
+                <input type="number" min="1" class="form-input" id="editTestMetaValidity" value="${Number(testObj.validityDays || 180)}" />
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Topic / Subject Description</label>
+              <input class="form-input" id="editTestMetaTopic" value="${esc(testObj.topic || '')}" />
+            </div>
+            <div class="form-group" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+              <div>
+                <label class="form-label">Duration (m)</label>
+                <input type="number" min="5" class="form-input" id="editTestMetaDuration" value="${Number(testObj.durationMinutes || 60)}" />
+              </div>
+              <div>
+                <label class="form-label">+Marks/Q</label>
+                <input type="number" step="0.5" class="form-input" id="editTestMetaPosMarks" value="${Number(testObj.marksPerQuestion || 2)}" />
+              </div>
+              <div>
+                <label class="form-label">-Neg Marks</label>
+                <input type="number" step="0.01" class="form-input" id="editTestMetaNegMarks" value="${Number(testObj.negativeMarking != null ? testObj.negativeMarking : 0.66)}" />
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">
+            <button class="btn btn-outline" id="cancelEditTestMetaBtn">Cancel</button>
+            <button class="btn btn-primary" id="saveEditTestMetaBtn">💾 Save Test Changes &amp; Sync Live</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const closeModal = () => { modalRoot.innerHTML = ''; };
+    document.getElementById('closeEditTestMetaModalBtn').onclick = closeModal;
+    document.getElementById('cancelEditTestMetaBtn').onclick = closeModal;
+
+    document.getElementById('saveEditTestMetaBtn').onclick = async () => {
+      const titleHi = document.getElementById('editTestMetaTitleHi').value.trim();
+      const titleEn = document.getElementById('editTestMetaTitleEn').value.trim() || titleHi;
+      if (!titleHi) {
+        api.toast('⚠️ कृपया टेस्ट का शीर्षक (Title) दर्ज करें।');
+        return;
+      }
+      const isPaid = document.getElementById('editTestMetaIsPaid').value === 'paid';
+      const priceInr = isPaid ? Math.max(1, Number(document.getElementById('editTestMetaPrice').value || 49)) : 0;
+      const validityDays = Math.max(1, Number(document.getElementById('editTestMetaValidity').value || 180));
+      const folderId = document.getElementById('editTestMetaFolderId').value || 'standalone';
+      const examCode = document.getElementById('editTestMetaExamCode').value || 'CGPSC';
+      const topic = document.getElementById('editTestMetaTopic').value.trim() || titleHi;
+      const durationMinutes = Math.max(5, Number(document.getElementById('editTestMetaDuration').value || 60));
+      const marksPerQuestion = Number(document.getElementById('editTestMetaPosMarks').value || 2);
+      const negativeMarking = Number(document.getElementById('editTestMetaNegMarks').value || 0);
+
+      Object.assign(testObj, {
+        titleHi,
+        titleEn,
+        folderId,
+        examCode,
+        topic,
+        isPaid,
+        priceInr,
+        validityDays,
+        durationMinutes,
+        marksPerQuestion,
+        negativeMarking,
+        updatedAtIso: new Date().toISOString()
+      });
+
+      api.saveState();
+      if (window.CGpediaCloud && typeof window.CGpediaCloud.saveCloudDoc === 'function') {
+        await window.CGpediaCloud.saveCloudDoc('tests', testObj.id, testObj);
+      }
+      closeModal();
+      api.toast(`✅ Test "${titleHi}" updated (${isPaid ? 'PAID ₹' + priceInr : 'FREE'}) & synced to Cloud!`);
+      if (typeof onSaved === 'function') onSaved();
     };
   }
 
@@ -13682,16 +13941,226 @@ ${schemaInstruction}`;
       ];
     }
 
-    return [];
+    // Curated non-repeating hourly pool so automated updates work even when Admin is offline or on Web without AndroidBridge
+    const curatedHourlyPool = [
+      {
+        category: 'chhattisgarh',
+        headlineHi: 'छत्तीसगढ़ औद्योगिक विकास नीति 2024-30: बस्तर एवं सरगुजा में विशेष निवेश प्रोत्साहन',
+        headlineEn: 'Chhattisgarh Industrial Development Policy 2024-30: Special Investment Incentives in Bastar & Surguja',
+        summaryHi: 'राज्य सरकार ने नई औद्योगिक नीति 2024-30 के अंतर्गत अनुसूचित क्षेत्रों, बस्तर और सरगुजा संभाग में एमएसएमई, कृषि प्रसंस्करण एवं हरित उद्योग स्थापित करने पर अतिरिक्त पूंजी अनुदान तथा स्टाम्प शुल्क छूट का प्रावधान किया है।',
+        summaryEn: 'Under the Industrial Policy 2024-30, Chhattisgarh provides enhanced capital subsidies and stamp duty exemptions for MSMEs, agro-processing, and green industries in Bastar and Surguja divisions.',
+        sourceName: 'DPR Chhattisgarh'
+      },
+      {
+        category: 'chhattisgarh',
+        headlineHi: 'गुरु घासीदास-तमोर पिंगला टाइगर रिजर्व देश का 56वां बाघ अभयारण्य अधिसूचित',
+        headlineEn: 'Guru Ghasidas-Tamor Pingla Notified as India’s 56th Tiger Reserve in Chhattisgarh',
+        summaryHi: 'छत्तीसगढ़ के मनेंद्रगढ़-चिरमिरी-भरतपुर, कोरिया, सूरजपुर और बलरामपुर जिलों में विस्तृत 2,829 वर्ग किमी क्षेत्रफल वाले गुरु घासीदास-तमोर पिंगला टाइगर रिजर्व को भारत के 56वें टाइगर रिजर्व के रूप में अधिसूचित किया गया है, जो क्षेत्रफल की दृष्टि से देश का तीसरा सबसे बड़ा टाइगर रिजर्व है।',
+        summaryEn: 'Spanning 2,829 sq km across MCB, Koriya, Surajpur, and Balrampur districts, Guru Ghasidas-Tamor Pingla has been notified as India’s 56th and third-largest Tiger Reserve.',
+        sourceName: 'NTCA / DPR Chhattisgarh'
+      },
+      {
+        category: 'chhattisgarh',
+        headlineHi: 'नियद नेल्लानार योजना: बस्तर के दूरस्थ ग्रामों में 50 से अधिक मूलभूत योजनाओं का एकीकृत क्रियान्वयन',
+        headlineEn: 'Niyad Nellanar Scheme: Integrated Delivery of 50+ Basic Welfare Schemes in Remote Bastar Villages',
+        summaryHi: 'छत्तीसगढ़ शासन की नियद नेल्लानार ("आपका अच्छा गाँव") योजना के तहत बस्तर संभाग के सुरक्षा कैंपों के 5 किमी की परिधि में स्थित ग्रामों में आवास, पेयजल, सौर ऊर्जा, आयुष्मान कार्ड, राशन और सड़क सुविधा शत-प्रतिशत पहुंचाई जा रही है।',
+        summaryEn: 'Chhattisgarh’s Niyad Nellanar ("Your Good Village") initiative saturates villages within 5 km of security camps in Bastar with housing, drinking water, solar power, Ayushman cards, and road connectivity.',
+        sourceName: 'DPR Chhattisgarh'
+      },
+      {
+        category: 'national',
+        headlineHi: 'पीएम विद्यालक्ष्मी योजना: मेधावी छात्रों को उच्च शिक्षा हेतु बिना गारंटी 10 लाख रुपये तक शिक्षा ऋण',
+        headlineEn: 'PM Vidyalaxmi Scheme: Collateral-Free Education Loans up to ₹10 Lakh for Meritorious Students',
+        summaryHi: 'केंद्रीय मंत्रिमंडल द्वारा स्वीकृत पीएम विद्यालक्ष्मी योजना के अंतर्गत देश के शीर्ष 860 उच्च शिक्षण संस्थानों (NIRF रैंकिंग आधारित) में प्रवेश लेने वाले छात्रों को बिना किसी जमानत या गारंटर के शिक्षा ऋण तथा 3% ब्याज अनुदान प्रदान किया जा रहा है।',
+        summaryEn: 'Approved by the Union Cabinet, PM Vidyalaxmi provides collateral-free, guarantor-free education loans with 3% interest subvention for students admitted to top 860 NIRF-ranked institutions.',
+        sourceName: 'PIB India'
+      },
+      {
+        category: 'international',
+        headlineHi: 'इसरो (ISRO) स्पैडेक्स (SpaDeX) मिशन: अंतरिक्ष में डॉकिंग तकनीक सिद्ध करने वाला भारत चौथा देश बना',
+        headlineEn: 'ISRO SpaDeX Mission: India Becomes 4th Country to Demonstrate In-Space Autonomous Docking',
+        summaryHi: 'भारतीय अंतरिक्ष अनुसंधान संगठन (ISRO) ने PSLV-C60 द्वारा प्रक्षेपित SpaDeX (SDX01 चेज़र और SDX02 टारगेट) उपग्रहों की सफल अंतरिक्ष डॉकिंग पूर्ण की, जो भारतीय अंतरिक्ष स्टेशन और चंद्रयान-4 मिशन के लिए आधारभूत तकनीक है।',
+        summaryEn: 'ISRO successfully executed autonomous orbital docking with the SpaDeX satellites (SDX01 and SDX02) launched aboard PSLV-C60, a critical milestone for Bharatiya Antariksh Station and Chandrayaan-4.',
+        sourceName: 'ISRO / PIB'
+      },
+      {
+        category: 'chhattisgarh',
+        headlineHi: 'कृषक उन्नति योजना एवं महतारी वंदन योजना से ग्रामीण अर्थव्यवस्था को सशक्त आधार',
+        headlineEn: 'Krishak Unnati Yojana & Mahtari Vandan Yojana Strengthen Rural Economy in Chhattisgarh',
+        summaryHi: 'छत्तीसगढ़ में कृषक उन्नति योजना के अंतर्गत समर्थन मूल्य पर धान उपार्जन एवं अंतर की राशि के प्रत्यक्ष अंतरण तथा महतारी वंदन योजना के तहत विवाहित महिलाओं को प्रतिमाह ₹1,000 की डीबीटी सहायता से ग्रामीण क्रय शक्ति में उल्लेखनीय वृद्धि दर्ज की गई है।',
+        summaryEn: 'Direct benefit transfers under Krishak Unnati Yojana for paddy procurement differential and ₹1,000 monthly assistance under Mahtari Vandan Yojana have boosted rural purchasing power in Chhattisgarh.',
+        sourceName: 'DPR Chhattisgarh'
+      }
+    ];
+
+    const nonDupFallback = curatedHourlyPool.filter((item) => !isDuplicateCurrentAffair(item, existingStories));
+    return nonDupFallback.slice(0, count);
+  }
+
+  function formatCaMonthFolderTitle(monthKey) {
+    const namesEn = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const namesHi = ['जनवरी', 'फरवरी', 'मार्च', 'अप्रैल', 'मई', 'जून', 'जुलाई', 'अगस्त', 'सितंबर', 'अक्टूबर', 'नवंबर', 'दिसंबर'];
+    const parts = String(monthKey || '').split('-');
+    const yr = parts[0] || new Date().getFullYear();
+    const mIdx = Math.max(0, Math.min(11, (parseInt(parts[1], 10) || (new Date().getMonth() + 1)) - 1));
+    return {
+      topicId: `top_ca_${yr}_${String(mIdx + 1).padStart(2, '0')}`,
+      titleHi: `समसामयिकी — ${namesHi[mIdx]} ${yr}`,
+      titleEn: `Current Affairs — ${namesEn[mIdx]} ${yr} (${yr}-${String(mIdx + 1).padStart(2, '0')})`
+    };
+  }
+
+  async function saveGeneratedCaQuestionsToQuestionBank(questionsList, stateOverride, apiOverride, fallbackMonthKey) {
+    const items = Array.isArray(questionsList) ? questionsList : [];
+    if (items.length === 0) return [];
+
+    // Resolve global state & saveState even when called from student view
+    let targetState = stateOverride;
+    if (!targetState) {
+      try {
+        const raw = localStorage.getItem('cgpedia_platform_state_v4');
+        if (raw) targetState = JSON.parse(raw);
+      } catch (_) {}
+    }
+    if (!targetState) return [];
+
+    targetState.questionBank = Array.isArray(targetState.questionBank) ? targetState.questionBank : [];
+    targetState.topicMaster = Array.isArray(targetState.topicMaster) ? targetState.topicMaster : [];
+
+    const nowDate = new Date();
+    const defMonth = fallbackMonthKey || `${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, '0')}`;
+    const existingNormStems = new Set(
+      targetState.questionBank.map((q) => normalizeTextForComparison(q.questionHi || q.questionEn || ''))
+    );
+
+    const newBankDocs = [];
+    const touchedTopics = new Map();
+
+    items.forEach((q, idx) => {
+      if (!q || (!q.questionHi && !q.questionEn)) return;
+      const stemNorm = normalizeTextForComparison(q.questionHi || q.questionEn || '');
+      if (!stemNorm || existingNormStems.has(stemNorm)) return;
+      existingNormStems.add(stemNorm);
+
+      const mKey = String(q.monthKey || defMonth).trim();
+      const yKey = mKey.split('-')[0] || String(nowDate.getFullYear());
+      const folderMeta = formatCaMonthFolderTitle(mKey);
+      touchedTopics.set(folderMeta.topicId, folderMeta);
+
+      const optsHi = Array.isArray(q.optionsHi) && q.optionsHi.length === 4 ? q.optionsHi : ['विकल्प A', 'विकल्प B', 'विकल्प C', 'विकल्प D'];
+      const optsEn = Array.isArray(q.optionsEn) && q.optionsEn.length === 4 ? q.optionsEn : optsHi;
+      const corrIdx = Math.max(0, Math.min(3, Number(q.correctOptionIndex != null ? q.correctOptionIndex : (q.correctIndex || 0))));
+      const nowIso = new Date().toISOString();
+      const qId = q.id && String(q.id).startsWith('qb_ca_')
+        ? q.id
+        : `qb_ca_${mKey.replace('-', '')}_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 6)}`;
+
+      const bankRecord = {
+        id: qId,
+        questionId: qId,
+        examCode: 'ALL',
+        examIds: ['ALL', 'CGPSC', 'CGVYAPAM', 'UPSC', 'SSC'],
+        subjectId: 'sub_current_affairs',
+        subjectTag: 'Current Affairs',
+        topicId: folderMeta.topicId,
+        topic: folderMeta.titleEn,
+        topicHi: folderMeta.titleHi,
+        subtopicId: `subtop_ca_${mKey.replace('-', '_')}`,
+        subtopic: mKey,
+        monthKey: mKey,
+        yearKey: yKey,
+        difficulty: 'Moderate',
+        difficultyLevel: 'Moderate',
+        languageAvailability: 'bilingual',
+        questionHi: String(q.questionHi || q.questionEn || ''),
+        questionEn: String(q.questionEn || q.questionHi || ''),
+        optionsHi: optsHi,
+        optionsEn: optsEn,
+        optA_Hi: optsHi[0],
+        optB_Hi: optsHi[1],
+        optC_Hi: optsHi[2],
+        optD_Hi: optsHi[3],
+        optA_En: optsEn[0],
+        optB_En: optsEn[1],
+        optC_En: optsEn[2],
+        optD_En: optsEn[3],
+        correctIndex: corrIdx,
+        correctOptionIndex: corrIdx,
+        explanationHi: String(q.explanationHi || q.explanationEn || ''),
+        explanationEn: String(q.explanationEn || q.explanationHi || ''),
+        status: 'verified',
+        verificationStatus: 'verified',
+        verified: true,
+        adminVerified: true,
+        needsCategorisation: false,
+        isDeleted: false,
+        sourceTag: 'Current Affairs Quiz Maker',
+        createdAtIso: nowIso,
+        updatedAtIso: nowIso
+      };
+
+      targetState.questionBank.unshift(bankRecord);
+      newBankDocs.push(bankRecord);
+    });
+
+    // Ensure Month-wise Topic Folders exist in topicMaster under sub_current_affairs
+    const newTopicDocs = [];
+    touchedTopics.forEach((meta) => {
+      const exists = targetState.topicMaster.some((t) => t && t.topicId === meta.topicId);
+      if (!exists) {
+        const topDoc = {
+          id: meta.topicId,
+          topicId: meta.topicId,
+          subjectId: 'sub_current_affairs',
+          titleEn: meta.titleEn,
+          titleHi: meta.titleHi,
+          active: true,
+          updatedAtIso: new Date().toISOString()
+        };
+        targetState.topicMaster.push(topDoc);
+        newTopicDocs.push(topDoc);
+      }
+    });
+
+    if (newBankDocs.length > 0) {
+      if (apiOverride && typeof apiOverride.saveState === 'function') {
+        apiOverride.saveState();
+      } else if (window.CGpediaApp && typeof window.CGpediaApp.saveState === 'function') {
+        window.CGpediaApp.saveState();
+      }
+      if (window.CGpediaCloud) {
+        try {
+          if (typeof window.CGpediaCloud.batchSaveCloudDocs === 'function') {
+            await window.CGpediaCloud.batchSaveCloudDocs('question_bank', newBankDocs);
+            if (newTopicDocs.length > 0) {
+              await window.CGpediaCloud.batchSaveCloudDocs('topics', newTopicDocs);
+            }
+          } else if (typeof window.CGpediaCloud.saveCloudDoc === 'function') {
+            for (const doc of newBankDocs) {
+              await window.CGpediaCloud.saveCloudDoc('question_bank', doc.id, doc);
+            }
+          }
+        } catch (_) {}
+      }
+    }
+
+    return newBankDocs;
   }
 
   async function generateCurrentAffairsQuizQuestionsWithAi(storiesListOrOpts, requestedCount, scopeLabel) {
     let rawStories = storiesListOrOpts;
     let reqCount = requestedCount;
     let resolvedScopeLabel = scopeLabel;
+    let targetMonthKey = new Date().toISOString().slice(0, 7);
+    let stateRef = null;
+    let apiRef = null;
+
     if (storiesListOrOpts && typeof storiesListOrOpts === 'object' && !Array.isArray(storiesListOrOpts)) {
       rawStories = storiesListOrOpts.stories || [];
       reqCount = storiesListOrOpts.questionCount || requestedCount || 10;
+      targetMonthKey = storiesListOrOpts.monthKey || targetMonthKey;
+      stateRef = storiesListOrOpts.stateRef || null;
+      apiRef = storiesListOrOpts.apiRef || null;
       const stype = storiesListOrOpts.scopeType || 'recent';
       resolvedScopeLabel = stype === 'monthly'
         ? `Monthly Current Affairs (${storiesListOrOpts.monthKey || ''})`
@@ -13699,24 +14168,55 @@ ${schemaInstruction}`;
           ? `Yearly Current Affairs (${storiesListOrOpts.yearKey || ''})`
           : 'Recent Current Affairs';
     }
+
     const stories = Array.isArray(rawStories) ? rawStories.filter((s) => s && (s.headlineHi || s.headlineEn || s.titleHi || s.titleEn)) : [];
     const count = Math.max(1, Math.min(100, Number(reqCount || 10)));
     if (stories.length === 0) return [];
 
-    const contextDigest = stories.slice(0, 40).map((s, idx) =>
-      `[${idx + 1}] Category: ${s.category || 'Current Affairs'} | Month: ${s.monthKey || ''}\nHeadline (HI): ${s.headlineHi || s.titleHi || ''}\nHeadline (EN): ${s.headlineEn || s.titleEn || ''}\nDetails (HI): ${s.summaryHi || ''}\nDetails (EN): ${s.summaryEn || s.summaryHi || ''}`
+    // Gather existing Current Affairs question stems so every quiz attempt creates brand-new questions
+    let existingCaQuestions = [];
+    if (stateRef && Array.isArray(stateRef.questionBank)) {
+      existingCaQuestions = stateRef.questionBank.filter((q) => q && q.subjectTag === 'Current Affairs');
+    } else {
+      try {
+        const raw = localStorage.getItem('cgpedia_platform_state_v4');
+        if (raw) {
+          const parsedState = JSON.parse(raw);
+          existingCaQuestions = (parsedState.questionBank || []).filter((q) => q && q.subjectTag === 'Current Affairs');
+        }
+      } catch (_) {}
+    }
+
+    const recentQuestionStems = existingCaQuestions
+      .slice(0, 35)
+      .map((q) => `- ${q.questionHi || q.questionEn}`)
+      .join('\n');
+
+    const attemptSeed = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const shuffledStories = stories.slice().sort(() => Math.random() - 0.5);
+
+    const contextDigest = shuffledStories.slice(0, 40).map((s, idx) =>
+      `[${idx + 1}] Category: ${s.category || 'Current Affairs'} | Month: ${s.monthKey || targetMonthKey}\nHeadline (HI): ${s.headlineHi || s.titleHi || ''}\nHeadline (EN): ${s.headlineEn || s.titleEn || ''}\nDetails (HI): ${s.summaryHi || ''}\nDetails (EN): ${s.summaryEn || s.summaryHi || ''}`
     ).join('\n\n');
 
     const promptText = `You are a Senior Competitive Exam Question Paper Setter for CGPSC, CG Vyapam, UPSC, and SSC.
-Generate ${count} high-quality Bilingual (Hindi Devanagari + English) Multiple-Choice Questions (MCQs) STRICTLY based on the following Current Affairs updates (${resolvedScopeLabel || 'Recent Current Affairs'}):
+Attempt Variation Seed: ${attemptSeed}
+Generate ${count} BRAND-NEW, freshly framed, professional Bilingual (Hindi Devanagari + English) Multiple-Choice Questions (MCQs) STRICTLY based on the following Current Affairs updates (${resolvedScopeLabel || 'Recent Current Affairs'}):
 
 ${contextDigest}
+
+CRITICAL INSTRUCTIONS FOR PROFESSIONAL & FRESH QUESTIONS EVERY ATTEMPT:
+1. Frame questions from diverse competitive exam angles: Statement-based (कथन-आधारित), Scheme Objectives & Provisions, Nodal Ministry/District/Agency, Key Data/Rankings, and Analytical Fact-Checking.
+2. NEVER repeat or reuse any of these previously generated question stems:
+${recentQuestionStems || '(None yet)'}
+3. Include the "monthKey" (YYYY-MM) for each question matching the source Current Affairs update.
 
 Return ONLY a valid JSON array of ${count} question objects with this exact schema:
 [
   {
-    "questionHi": "औपचारिक हिन्दी में प्रश्न...",
-    "questionEn": "Clear English question...",
+    "monthKey": "${targetMonthKey}",
+    "questionHi": "औपचारिक हिन्दी में नया परीक्षा-स्तरीय प्रश्न...",
+    "questionEn": "Clear, newly framed English exam question...",
     "optionsHi": ["विकल्प A", "विकल्प B", "विकल्प C", "विकल्प D"],
     "optionsEn": ["Option A", "Option B", "Option C", "Option D"],
     "correctOptionIndex": 0,
@@ -13730,14 +14230,17 @@ Return ONLY a valid JSON array of ${count} question objects with this exact sche
       const resJson = await callAndroidAiBridge(promptText);
       const parsed = parseAiJsonArraySafely(resJson);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed.slice(0, count).map((q, idx) => {
+        const aiQuestions = parsed.slice(0, count).map((q, idx) => {
           const optsHi = Array.isArray(q.optionsHi) && q.optionsHi.length === 4 ? q.optionsHi : ['विकल्प A', 'विकल्प B', 'विकल्प C', 'विकल्प D'];
           const optsEn = Array.isArray(q.optionsEn) && q.optionsEn.length === 4 ? q.optionsEn : optsHi;
           const corr = Math.max(0, Math.min(3, Number(q.correctOptionIndex != null ? q.correctOptionIndex : 0)));
+          const matchedStory = shuffledStories[idx % shuffledStories.length] || {};
+          const qMonthKey = String(q.monthKey || matchedStory.monthKey || targetMonthKey).trim();
           return {
-            id: 'ca_q_' + Date.now() + '_' + idx,
+            id: `qb_ca_${qMonthKey.replace('-', '')}_${Date.now()}_${idx}`,
+            monthKey: qMonthKey,
             subjectTag: 'Current Affairs',
-            topic: scopeLabel || 'Current Affairs',
+            topic: resolvedScopeLabel || 'Current Affairs',
             questionHi: String(q.questionHi || q.questionEn || ''),
             questionEn: String(q.questionEn || q.questionHi || ''),
             optionsHi: optsHi,
@@ -13748,6 +14251,7 @@ Return ONLY a valid JSON array of ${count} question objects with this exact sche
             optD_Hi: optsHi[3],
             optA_En: optsEn[0],
             optB_En: optsEn[1],
+            optB_En_2: optsEn[1],
             optC_En: optsEn[2],
             optD_En: optsEn[3],
             correctIndex: corr,
@@ -13756,118 +14260,170 @@ Return ONLY a valid JSON array of ${count} question objects with this exact sche
             explanationEn: String(q.explanationEn || q.explanationHi || '')
           };
         });
+        await saveGeneratedCaQuestionsToQuestionBank(aiQuestions, stateRef, apiRef, targetMonthKey);
+        return aiQuestions;
       }
     } catch (_) {}
 
-    // Grounded deterministic builder strictly from the selected Current Affairs stories
+    // Dynamic Multi-Angle Non-Repeating Question Synthesizer (rotates across 6 distinct exam templates per attempt)
     const built = [];
+    const attemptOffset = Math.floor(Math.random() * 1000);
     const catLabelsHi = {
-      chhattisgarh: 'छत्तीसगढ़ राज्य समसामयिकी (Chhattisgarh State Current Affairs)',
-      national: 'राष्ट्रीय समसामयिकी एवं नीतियां (National Current Affairs)',
-      international: 'अंतर्राष्ट्रीय एवं विज्ञान-प्रौद्योगिकी (International & Science)'
+      chhattisgarh: 'छत्तीसगढ़ राज्य समसामयिकी एवं शासन नीति (Chhattisgarh State Current Affairs)',
+      national: 'राष्ट्रीय समसामयिकी एवं केंद्रीय योजनाएं (National Current Affairs)',
+      international: 'अंतर्राष्ट्रीय संबंध, विज्ञान एवं अंतरिक्ष प्रौद्योगिकी (International & Science)'
     };
     const catLabelsEn = {
-      chhattisgarh: 'Chhattisgarh State Current Affairs',
-      national: 'National Current Affairs & Policies',
-      international: 'International Relations & Science-Tech'
+      chhattisgarh: 'Chhattisgarh State Current Affairs & Governance',
+      national: 'National Current Affairs & Union Initiatives',
+      international: 'International Relations, Science & Space Technology'
     };
 
     for (let i = 0; i < count; i++) {
-      const st = stories[i % stories.length];
-      const other1 = stories[(i + 1) % stories.length];
-      const other2 = stories[(i + 2) % stories.length];
-      const other3 = stories[(i + 3) % stories.length];
-      const variant = i % 2;
+      const st = shuffledStories[i % shuffledStories.length];
+      const other1 = shuffledStories[(i + 1) % shuffledStories.length] || st;
+      const other2 = shuffledStories[(i + 2) % shuffledStories.length] || st;
+      const other3 = shuffledStories[(i + 3) % shuffledStories.length] || st;
+      const stMonth = String(st.monthKey || targetMonthKey).trim();
+      const headHi = st.headlineHi || st.titleHi || 'समसामयिकी अपडेट';
+      const headEn = st.headlineEn || st.titleEn || headHi;
+      const sumHi = st.summaryHi || headHi;
+      const sumEn = st.summaryEn || sumHi;
+      const srcName = st.sourceName || 'PIB / DPR Chhattisgarh';
+      const templateIdx = (i + attemptOffset) % 5;
+      const corrSlot = (i + attemptOffset) % 4;
 
-      if (variant === 0 || stories.length < 4) {
+      let qHi = '';
+      let qEn = '';
+      let corrHi = '';
+      let corrEn = '';
+      let distHi = [];
+      let distEn = [];
+
+      if (templateIdx === 0) {
+        qHi = `समसामयिकी (${stMonth}) के संदर्भ में निम्नलिखित कथनों पर विचार कीजिए:\nविषय: "${headHi}"\nउपरोक्त विषय के संबंध में कौन-सा मुख्य तथ्य सही है?`;
+        qEn = `With reference to Current Affairs (${stMonth}) regarding "${headEn}", which of the following key statements is correct?`;
+        corrHi = sumHi.slice(0, 175);
+        corrEn = sumEn.slice(0, 175);
+        distHi = [
+          other1 !== st && other1.summaryHi ? other1.summaryHi.slice(0, 165) : 'यह प्रावधान केवल मेट्रो शहरों के निजी संस्थानों तक सीमित है',
+          other2 !== st && other2.summaryHi ? other2.summaryHi.slice(0, 165) : 'इसे पूर्णतः समाप्त कर दिया गया है और कोई बजट आवंटित नहीं है',
+          'उपर्युक्त में से कोई भी कथन सत्य नहीं है'
+        ];
+        distEn = [
+          other1 !== st && other1.summaryEn ? other1.summaryEn.slice(0, 165) : 'This provision is restricted exclusively to private metro corporations',
+          other2 !== st && other2.summaryEn ? other2.summaryEn.slice(0, 165) : 'It has been completely discontinued without budgetary allocation',
+          'None of the statements above is correct'
+        ];
+      } else if (templateIdx === 1) {
+        qHi = `हाल ही में चर्चा में रहे विवरण — "${sumHi.slice(0, 160)}" — का संबंध निम्नलिखित में से किस प्रमुख समसामयिकी शीर्षक से है?`;
+        qEn = `Which of the following recent Current Affairs developments corresponds to the statement — "${sumEn.slice(0, 160)}"?`;
+        corrHi = headHi;
+        corrEn = headEn;
+        distHi = [
+          other1 !== st ? (other1.headlineHi || 'राष्ट्रीय डिजिटल लॉजिस्टिक्स सुधार मिशन') : 'राष्ट्रीय डिजिटल लॉजिस्टिक्स सुधार मिशन',
+          other2 !== st ? (other2.headlineHi || 'अंतर्राष्ट्रीय समुद्री व्यापार समझौता') : 'अंतर्राष्ट्रीय समुद्री व्यापार समझौता',
+          other3 !== st ? (other3.headlineHi || 'केंद्रीय कराधान संशोधन विधेयक') : 'केंद्रीय कराधान संशोधन विधेयक'
+        ];
+        distEn = [
+          other1 !== st ? (other1.headlineEn || 'National Digital Logistics Reform Mission') : 'National Digital Logistics Reform Mission',
+          other2 !== st ? (other2.headlineEn || 'International Maritime Trade Pact') : 'International Maritime Trade Pact',
+          other3 !== st ? (other3.headlineEn || 'Central Taxation Amendment Bill') : 'Central Taxation Amendment Bill'
+        ];
+      } else if (templateIdx === 2) {
         const correctCat = ['chhattisgarh', 'national', 'international'].includes(st.category) ? st.category : 'chhattisgarh';
-        const optsHi = [
-          catLabelsHi.chhattisgarh,
-          catLabelsHi.national,
-          catLabelsHi.international,
+        qHi = `परीक्षा उपयोगी समसामयिकी विषय "${headHi}" (${srcName}) को मुख्य रूप से किस परीक्षा खंड के अंतर्गत वर्गीकृत किया जाता है और इसका मुख्य सार क्या है?`;
+        qEn = `Under which primary examination segment is "${headEn}" (${srcName}) classified, and what is its core focus?`;
+        corrHi = `${catLabelsHi[correctCat]} — ${sumHi.slice(0, 110)}`;
+        corrEn = `${catLabelsEn[correctCat]} — ${sumEn.slice(0, 110)}`;
+        distHi = [
+          'प्राचीन भारतीय स्थापत्य एवं पुरातत्व सर्वेक्षण अभिलेख',
+          'मध्यकालीन राजस्व प्रशासन एवं सैन्य संगठन प्रणाली',
+          'केवल विदेशी निजी बैंकों के आंतरिक ऑडिट नियम'
+        ];
+        distEn = [
+          'Ancient Indian Architecture & Archaeological Survey Records',
+          'Medieval Revenue Administration & Military Organization',
+          'Internal Audit Rules of Foreign Private Banks Only'
+        ];
+      } else if (templateIdx === 3) {
+        qHi = `कथन-आधारित प्रश्न (${stMonth}):\nकथन-I: "${headHi}" हालिया समसामयिकी का एक महत्वपूर्ण विषय है।\nकथन-II: ${sumHi.slice(0, 150)}\nसही विकल्प चुनिए:`;
+        qEn = `Statement-Based Question (${stMonth}):\nStatement-I: "${headEn}" is a key recent Current Affairs development.\nStatement-II: ${sumEn.slice(0, 150)}\nSelect the correct option:`;
+        corrHi = 'कथन-I और कथन-II दोनों सही हैं तथा कथन-II, कथन-I का सही संदर्भ प्रस्तुत करता है';
+        corrEn = 'Both Statement-I and Statement-II are correct and Statement-II accurately explains Statement-I';
+        distHi = [
+          'कथन-I सही है किंतु कथन-II पूर्णतः असत्य है',
+          'कथन-I असत्य है किंतु कथन-II सही है',
+          'कथन-I और कथन-II दोनों असत्य हैं'
+        ];
+        distEn = [
+          'Statement-I is correct but Statement-II is completely false',
+          'Statement-I is false but Statement-II is correct',
+          'Both Statement-I and Statement-II are false'
+        ];
+      } else {
+        qHi = `[अभ्यास सेट #${(attemptOffset % 90) + 10}] "${headHi}" के मुख्य प्रावधानों/तथ्यों के संबंध में सत्य विकल्प की पहचान कीजिए:`;
+        qEn = `[Practice Set #${(attemptOffset % 90) + 10}] Identify the accurate fact regarding the provisions/highlights of "${headEn}":`;
+        corrHi = `${sumHi.slice(0, 165)} (स्रोत: ${srcName})`;
+        corrEn = `${sumEn.slice(0, 165)} (Source: ${srcName})`;
+        distHi = [
+          other1 !== st && other1.summaryHi ? other1.summaryHi.slice(0, 150) : 'इसमें किसी भी प्रकार की सरकारी भागीदारी शामिल नहीं है',
+          other2 !== st && other2.summaryHi ? other2.summaryHi.slice(0, 150) : 'यह केवल वर्ष 1991 से पूर्व की योजनाओं पर लागू होता है',
           'उपरोक्त में से कोई नहीं'
         ];
-        const optsEn = [
-          catLabelsEn.chhattisgarh,
-          catLabelsEn.national,
-          catLabelsEn.international,
+        distEn = [
+          other1 !== st && other1.summaryEn ? other1.summaryEn.slice(0, 150) : 'It involves zero governmental or institutional participation',
+          other2 !== st && other2.summaryEn ? other2.summaryEn.slice(0, 150) : 'It applies only to schemes enacted prior to 1991',
           'None of the above'
         ];
-        const corrIdx = correctCat === 'chhattisgarh' ? 0 : (correctCat === 'national' ? 1 : 2);
-        built.push({
-          id: 'ca_q_' + Date.now() + '_' + i,
-          subjectTag: 'Current Affairs',
-          topic: scopeLabel || 'Current Affairs',
-          questionHi: `हालिया समसामयिकी में चर्चित "${st.headlineHi}" मुख्य रूप से किस श्रेणी और विवरण से संबंधित है?\nसंदर्भ: ${st.summaryHi}`,
-          questionEn: `With reference to recent Current Affairs, "${st.headlineEn || st.headlineHi}" primarily pertains to which category?\nContext: ${st.summaryEn || st.summaryHi}`,
-          optionsHi: optsHi,
-          optionsEn: optsEn,
-          optA_Hi: optsHi[0],
-          optB_Hi: optsHi[1],
-          optC_Hi: optsHi[2],
-          optD_Hi: optsHi[3],
-          optA_En: optsEn[0],
-          optB_En: optsEn[1],
-          optC_En: optsEn[2],
-          optD_En: optsEn[3],
-          correctIndex: corrIdx,
-          correctOptionIndex: corrIdx,
-          explanationHi: `${st.headlineHi}: ${st.summaryHi} (स्रोत: ${st.sourceName || 'PIB / DPR'})`,
-          explanationEn: `${st.headlineEn || st.headlineHi}: ${st.summaryEn || st.summaryHi} (Source: ${st.sourceName || 'PIB / DPR'})`
-        });
-      } else {
-        const corrIdx = i % 4;
-        const distractorsHi = [
-          other1.headlineHi,
-          other2.headlineHi,
-          other3.headlineHi
-        ];
-        const distractorsEn = [
-          other1.headlineEn || other1.headlineHi,
-          other2.headlineEn || other2.headlineHi,
-          other3.headlineEn || other3.headlineHi
-        ];
-        const optsHi = [];
-        const optsEn = [];
-        let dPtr = 0;
-        for (let slot = 0; slot < 4; slot++) {
-          if (slot === corrIdx) {
-            optsHi.push(st.headlineHi);
-            optsEn.push(st.headlineEn || st.headlineHi);
-          } else {
-            optsHi.push(distractorsHi[dPtr] || `विकल्प ${slot + 1}`);
-            optsEn.push(distractorsEn[dPtr] || `Option ${slot + 1}`);
-            dPtr += 1;
-          }
-        }
-        built.push({
-          id: 'ca_q_' + Date.now() + '_' + i,
-          subjectTag: 'Current Affairs',
-          topic: scopeLabel || 'Current Affairs',
-          questionHi: `निम्नलिखित में से कौन-सा समसामयिकी विषय इस तथ्य से संबंधित है — "${st.summaryHi}"?`,
-          questionEn: `Which of the following Current Affairs headlines corresponds to the key fact — "${st.summaryEn || st.summaryHi}"?`,
-          optionsHi: optsHi,
-          optionsEn: optsEn,
-          optA_Hi: optsHi[0],
-          optB_Hi: optsHi[1],
-          optC_Hi: optsHi[2],
-          optD_Hi: optsHi[3],
-          optA_En: optsEn[0],
-          optB_En: optsEn[1],
-          optC_En: optsEn[2],
-          optD_En: optsEn[3],
-          correctIndex: corrIdx,
-          correctOptionIndex: corrIdx,
-          explanationHi: `सही उत्तर: ${st.headlineHi} — ${st.summaryHi}`,
-          explanationEn: `Correct Answer: ${st.headlineEn || st.headlineHi} — ${st.summaryEn || st.summaryHi}`
-        });
       }
+
+      const optsHi = [];
+      const optsEn = [];
+      let dIdx = 0;
+      for (let sIdx = 0; sIdx < 4; sIdx++) {
+        if (sIdx === corrSlot) {
+          optsHi.push(corrHi);
+          optsEn.push(corrEn);
+        } else {
+          optsHi.push(distHi[dIdx] || `विकल्प ${sIdx + 1}`);
+          optsEn.push(distEn[dIdx] || `Option ${sIdx + 1}`);
+          dIdx += 1;
+        }
+      }
+
+      built.push({
+        id: `qb_ca_${stMonth.replace('-', '')}_${Date.now()}_${i}`,
+        monthKey: stMonth,
+        subjectTag: 'Current Affairs',
+        topic: resolvedScopeLabel || 'Current Affairs',
+        questionHi: qHi,
+        questionEn: qEn,
+        optionsHi: optsHi,
+        optionsEn: optsEn,
+        optA_Hi: optsHi[0],
+        optB_Hi: optsHi[1],
+        optC_Hi: optsHi[2],
+        optD_Hi: optsHi[3],
+        optA_En: optsEn[0],
+        optB_En: optsEn[1],
+        optC_En: optsEn[2],
+        optD_En: optsEn[3],
+        correctIndex: corrSlot,
+        correctOptionIndex: corrSlot,
+        explanationHi: `${headHi} (${stMonth}): ${sumHi} (स्रोत: ${srcName})`,
+        explanationEn: `${headEn} (${stMonth}): ${sumEn} (Source: ${srcName})`
+      });
     }
+
+    await saveGeneratedCaQuestionsToQuestionBank(built, stateRef, apiRef, targetMonthKey);
     return built;
   }
 
   window.CGpediaAdmin = {
     renderAdminConsole,
+    openConfirmationDialog,
+    openEditTestDetailsModal,
     parseRawImportFile,
     parsePdfOcrAndMatchAnswerKey,
     parseAnswerKeyMap,
@@ -13880,6 +14436,7 @@ Return ONLY a valid JSON array of ${count} question objects with this exact sche
     isDuplicateCurrentAffair,
     enrichAndDeduplicateCurrentAffairsItems,
     generateCurrentAffairsWithAi,
-    generateCurrentAffairsQuizQuestionsWithAi
+    generateCurrentAffairsQuizQuestionsWithAi,
+    saveGeneratedCaQuestionsToQuestionBank
   };
 })();

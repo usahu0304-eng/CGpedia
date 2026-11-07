@@ -367,7 +367,8 @@ class CgpediaAndroidBridge(private val activity: Activity) {
 
     private suspend fun generateWithModelFallback(
         inputContent: com.google.firebase.ai.type.Content,
-        timeoutMs: Long
+        timeoutMs: Long,
+        tempValue: Float = 0.45f
     ): String {
         val candidateModels = listOf("gemini-3.8-flash", "gemini-3.5-flash-lite")
         var lastError: Exception? = null
@@ -377,7 +378,7 @@ class CgpediaAndroidBridge(private val activity: Activity) {
                     modelName = modelId,
                     generationConfig = generationConfig {
                         responseMimeType = "application/json"
-                        temperature = 0.1f
+                        temperature = tempValue
                     }
                 )
                 val response = withTimeout(timeoutMs) {

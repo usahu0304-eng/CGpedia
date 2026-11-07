@@ -312,7 +312,13 @@
     return String((state && state.student && state.student.uid) || '').trim();
   }
 
-  function saveState() {
+  let saveStateTimerId = null;
+
+  function flushSaveStateNow() {
+    if (saveStateTimerId) {
+      clearTimeout(saveStateTimerId);
+      saveStateTimerId = null;
+    }
     try {
       if (!isLoggedOut() && state.student && state.student.uid) {
         saveStudentWorkspaceSnapshot(state.student.uid);
@@ -322,6 +328,124 @@
       }
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch (_) {}
+  }
+
+  function saveState(immediate) {
+    if (immediate === true) {
+      flushSaveStateNow();
+      return;
+    }
+    if (saveStateTimerId) {
+      clearTimeout(saveStateTimerId);
+    }
+    saveStateTimerId = setTimeout(() => {
+      flushSaveStateNow();
+    }, 120);
+  }
+
+  window.addEventListener('pagehide', flushSaveStateNow);
+  window.addEventListener('beforeunload', flushSaveStateNow);
+
+  const READ_NOTIF_STORAGE_KEY = 'cgpedia_read_notif_ids_v1';
+
+  function getReadNotificationIdsSet() {
+    const set = new Set();
+    try {
+      const raw = localStorage.getItem(READ_NOTIF_STORAGE_KEY);
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) {
+          arr.forEach((id) => {
+            if (id) set.add(String(id));
+          });
+        }
+      }
+    } catch (_) {}
+    if (state && Array.isArray(state.readNotificationIds)) {
+      state.readNotificationIds.forEach((id) => {
+        if (id) set.add(String(id));
+      });
+    }
+    return set;
+  }
+
+  function markAllCurrentNotificationsAsRead() {
+    const notifs = (state && Array.isArray(state.notifications)) ? state.notifications : [];
+    if (notifs.length === 0) return;
+    const set = getReadNotificationIdsSet();
+    let changed = false;
+    notifs.forEach((n) => {
+      if (n && n.id && !set.has(String(n.id))) {
+        set.add(String(n.id));
+        changed = true;
+      }
+    });
+    if (changed) {
+      const arr = Array.from(set).slice(-500);
+      state.readNotificationIds = arr;
+      try {
+        localStorage.setItem(READ_NOTIF_STORAGE_KEY, JSON.stringify(arr));
+      } catch (_) {}
+    }
+    const notifBadge = document.getElementById('notifBadgeCount');
+    if (notifBadge) {
+      notifBadge.textContent = '0';
+      notifBadge.style.display = 'none';
+    }
+  }
+
+  function getUnreadNotificationCount() {
+    const notifs = (state && Array.isArray(state.notifications)) ? state.notifications : [];
+    if (notifs.length === 0) return 0;
+    const readSet = getReadNotificationIdsSet();
+    return notifs.filter((n) => n && n.id && !readSet.has(String(n.id))).length;
+  }
+
+  function confirmUserAction(options, onConfirmCallback) {
+    if (window.CGpediaAdmin && typeof window.CGpediaAdmin.openConfirmationDialog === 'function') {
+      window.CGpediaAdmin.openConfirmationDialog(options, onConfirmCallback);
+      return;
+    }
+    const opts = options || {};
+    const modalRoot = document.getElementById('genericModalContainer');
+    if (!modalRoot) {
+      if (typeof onConfirmCallback === 'function') onConfirmCallback();
+      return;
+    }
+    const title = opts.title || 'Confirm Action / पुष्टि करें';
+    const message = opts.message || 'क्या आप वाकई यह कार्रवाई करना चाहते हैं? (Are you sure you want to proceed?)';
+    const confirmLabel = opts.confirmText || 'Yes, Confirm';
+    const cancelLabel = opts.cancelText || 'Cancel';
+    const icon = opts.icon || '⚠️';
+    modalRoot.innerHTML = `
+      <div class="modal-backdrop" id="appUserConfirmBackdrop" role="dialog" aria-modal="true" style="z-index:9999;">
+        <div class="modal-card" style="max-width:420px;width:100%;text-align:center;padding:24px 22px;margin:auto;">
+          <div style="width:52px;height:52px;border-radius:50%;background:var(--danger-soft);color:var(--danger);display:flex;align-items:center;justify-content:center;font-size:1.45rem;margin:0 auto 12px;">
+            ${icon}
+          </div>
+          <h2 style="font-size:1.12rem;font-weight:800;color:var(--text);margin-bottom:8px;">${esc(title)}</h2>
+          <p style="font-size:0.88rem;color:var(--text-secondary);line-height:1.55;margin-bottom:20px;">${esc(message)}</p>
+          <div style="display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;">
+            <button type="button" class="btn btn-outline" id="appUserConfirmCancelBtn" style="flex:1;min-width:120px;">${esc(cancelLabel)}</button>
+            <button type="button" class="btn btn-danger" id="appUserConfirmOkBtn" style="flex:1;min-width:130px;">${esc(confirmLabel)}</button>
+          </div>
+        </div>
+      </div>
+    `;
+    const cancelBtn = document.getElementById('appUserConfirmCancelBtn');
+    const okBtn = document.getElementById('appUserConfirmOkBtn');
+    if (cancelBtn) {
+      cancelBtn.onclick = () => { modalRoot.innerHTML = ''; };
+    }
+    if (okBtn) {
+      okBtn.onclick = async () => {
+        okBtn.disabled = true;
+        modalRoot.innerHTML = '';
+        if (typeof onConfirmCallback === 'function') {
+          await onConfirmCallback();
+        }
+      };
+    }
   }
 
   function toast(msg) {
@@ -435,11 +559,14 @@
       syncStudentAnthemPlayerMeta();
     }
 
+    if (state.activeTab === 'notifications') {
+      markAllCurrentNotificationsAsRead();
+    }
     const notifBadge = document.getElementById('notifBadgeCount');
     if (notifBadge) {
-      const count = (state.notifications || []).length;
-      notifBadge.textContent = String(count);
-      notifBadge.style.display = count > 0 ? 'inline-block' : 'none';
+      const unreadCount = getUnreadNotificationCount();
+      notifBadge.textContent = String(unreadCount);
+      notifBadge.style.display = unreadCount > 0 ? 'inline-block' : 'none';
     }
 
     if (settingsDrawerOpen && authenticated) {
@@ -691,7 +818,10 @@
       <div class="card">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px;">
           <h2 style="font-size:0.98rem;font-weight:800;">⚡ Daily Current Affairs Stories &amp; Instant Quiz</h2>
-          <button class="btn btn-primary btn-sm" id="homeLaunchDailyCaQuizBtn">🎯 Attempt Current Affairs Quiz</button>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            ${isCurrentUserAdmin() ? `<button class="btn btn-outline btn-sm" id="homeAdminPostStoryBtn">➕ Post Story</button>` : ''}
+            <button class="btn btn-primary btn-sm" id="homeLaunchDailyCaQuizBtn">🎯 Attempt Current Affairs Quiz</button>
+          </div>
         </div>
         ${activeStories.length === 0 ? `
           <div style="font-size:0.83rem;color:var(--text-muted);padding:6px 0;">
@@ -876,10 +1006,25 @@
       }
       if (discardBtn) {
         discardBtn.onclick = () => {
-          window.CGpediaCBT.clearSavedSession();
-          renderApp();
+          confirmUserAction({
+            title: 'Discard Saved Exam Session?',
+            message: `क्या आप वाकई "${savedCbtSession.testTitleHi || 'In-Progress Exam'}" के सेव किए गए सेशन को हटाना चाहते हैं? (Your saved progress for this incomplete attempt will be discarded.)`,
+            confirmText: '🗑️ Yes, Discard',
+            cancelText: 'Keep Session'
+          }, () => {
+            window.CGpediaCBT.clearSavedSession();
+            renderApp();
+            toast('🗑️ In-progress exam session discarded.');
+          });
         };
       }
+    }
+
+    const adminPostStoryBtn = document.getElementById('homeAdminPostStoryBtn');
+    if (adminPostStoryBtn) {
+      adminPostStoryBtn.onclick = () => {
+        openQuickAdminPostStoryModal();
+      };
     }
 
     document.querySelectorAll('[data-exam-chip]').forEach((chip) => {
@@ -1606,22 +1751,29 @@
 
     root.innerHTML = `
       <!-- Top Story Strip for Today's Stories -->
-      ${recent24hStories.length > 0 ? `
+      ${(recent24hStories.length > 0 || isCurrentUserAdmin()) ? `
         <div class="card" style="margin-bottom:14px;">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px;">
             <h2 style="font-size:0.96rem;font-weight:800;">📱 समसामयिकी स्टोरीज़ / Latest Current Affairs Stories</h2>
-            <span style="font-size:0.75rem;color:var(--text-secondary);">Tap any circle to view full story</span>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+              <span style="font-size:0.75rem;color:var(--text-secondary);">Tap any circle to view full story</span>
+              ${isCurrentUserAdmin() ? `<button class="btn btn-outline btn-sm" id="caAdminPostStoryBtn">➕ Post Story</button>` : ''}
+            </div>
           </div>
-          <div class="stories-strip">
-            ${recent24hStories.map((st, idx) => `
-              <div class="story-item" data-ca-open-story="${idx}">
-                <div class="story-ring" style="background:linear-gradient(45deg,#f09433 0%,#e6683c 25%,#dc2743 50%,#cc2366 75%,#bc1888 100%);padding:2.5px;">
-                  <div class="story-ring-inner">${st.category === 'chhattisgarh' ? '🌾' : st.category === 'national' ? '🇮🇳' : '🌍'}</div>
+          ${recent24hStories.length === 0 ? `
+            <div style="font-size:0.82rem;color:var(--text-muted);padding:4px 0;">अभी कोई सक्रिय स्टोरी नहीं है। नया करंट अफेयर्स स्टोरी पोस्ट करने के लिए <strong>➕ Post Story</strong> पर क्लिक करें।</div>
+          ` : `
+            <div class="stories-strip">
+              ${recent24hStories.map((st, idx) => `
+                <div class="story-item" data-ca-open-story="${idx}">
+                  <div class="story-ring" style="background:linear-gradient(45deg,#f09433 0%,#e6683c 25%,#dc2743 50%,#cc2366 75%,#bc1888 100%);padding:2.5px;">
+                    <div class="story-ring-inner">${st.category === 'chhattisgarh' ? '🌾' : st.category === 'national' ? '🇮🇳' : '🌍'}</div>
+                  </div>
+                  <span class="story-caption">${esc(st.headlineHi || st.titleHi)}</span>
                 </div>
-                <span class="story-caption">${esc(st.headlineHi || st.titleHi)}</span>
-              </div>
-            `).join('')}
-          </div>
+              `).join('')}
+            </div>
+          `}
         </div>
       ` : ''}
 
@@ -1766,6 +1918,13 @@
       };
     });
 
+    const caAdminPostBtn = document.getElementById('caAdminPostStoryBtn');
+    if (caAdminPostBtn) {
+      caAdminPostBtn.onclick = () => {
+        openQuickAdminPostStoryModal();
+      };
+    }
+
     // Bind Monthly Story Card reader
     root.querySelectorAll('[data-open-monthly-story]').forEach((el) => {
       el.onclick = () => {
@@ -1892,6 +2051,7 @@
   // 7. Notifications & Private Student Doubt/Support Desk
   // =========================================================================
   function renderNotificationsAndSupport(root) {
+    markAllCurrentNotificationsAsRead();
     const myQueries = (state.queries || []).filter((q) => q.studentEmail === state.student.email || q.userId === state.student.uid);
 
     root.innerHTML = `
@@ -2523,10 +2683,18 @@
     containerEl.querySelectorAll('[data-remove-saved-acc]').forEach((btn) => {
       btn.onclick = () => {
         const rmUid = btn.getAttribute('data-remove-saved-acc');
-        const nextList = loadAccountRegistry().filter((a) => a.uid !== rmUid);
-        saveAccountRegistry(nextList);
-        renderStudentAuthPortal(containerEl, isModalOverlay);
-        toast('🗑️ Removed account shortcut from device list.');
+        const targetAcc = loadAccountRegistry().find((a) => a.uid === rmUid);
+        confirmUserAction({
+          title: 'Remove Saved Account Shortcut?',
+          message: `क्या आप इस डिवाइस की त्वरित लॉगिन सूची से "${(targetAcc && (targetAcc.email || targetAcc.name)) || 'this account'}" को हटाना चाहते हैं?`,
+          confirmText: '🗑️ Yes, Remove',
+          cancelText: 'Cancel'
+        }, () => {
+          const nextList = loadAccountRegistry().filter((a) => a.uid !== rmUid);
+          saveAccountRegistry(nextList);
+          renderStudentAuthPortal(containerEl, isModalOverlay);
+          toast('🗑️ Removed account shortcut from device list.');
+        });
       };
     });
 
@@ -4194,7 +4362,9 @@
           scopeType,
           monthKey,
           yearKey,
-          questionCount
+          questionCount,
+          stateRef: state,
+          apiRef: publicApi
         });
       }
     } catch (_) {}
@@ -4205,38 +4375,49 @@
     }
 
     if (!Array.isArray(generatedQs) || generatedQs.length === 0) {
-      // Build directly from the recent/selected stories if offline or fallback needed
+      // Build fresh randomized questions from selected stories if offline or fallback needed
       if (targetStories.length > 0) {
+        const shuffledStories = targetStories.slice().sort(() => Math.random() - 0.5);
         generatedQs = [];
         for (let i = 0; i < questionCount; i++) {
-          const st = targetStories[i % targetStories.length];
-          const other1 = targetStories[(i + 1) % targetStories.length];
-          const other2 = targetStories[(i + 2) % targetStories.length];
+          const st = shuffledStories[i % shuffledStories.length];
+          const other1 = shuffledStories[(i + 1) % shuffledStories.length];
+          const other2 = shuffledStories[(i + 2) % shuffledStories.length];
           const headHi = st.headlineHi || st.titleHi || 'समसामयिकी अपडेट';
           const headEn = st.headlineEn || st.titleEn || 'Current Affairs Update';
           const sumHi = st.summaryHi || headHi;
           const sumEn = st.summaryEn || headEn;
+          const correctPos = i % 4;
+          const distractorsHi = [
+            (other1 && other1 !== st && other1.summaryHi) ? other1.summaryHi.slice(0, 150) : 'यह योजना केवल निजी औद्योगिक इकाइयों के लिए सीमित है',
+            (other2 && other2 !== st && other2.summaryHi) ? other2.summaryHi.slice(0, 150) : 'इसे वर्ष 2014 में समाप्त कर दिया गया था',
+            'उपर्युक्त में से कोई नहीं'
+          ];
+          const distractorsEn = [
+            (other1 && other1 !== st && other1.summaryEn) ? other1.summaryEn.slice(0, 150) : 'This initiative is restricted exclusively to private corporations',
+            (other2 && other2 !== st && other2.summaryEn) ? other2.summaryEn.slice(0, 150) : 'It was discontinued in 2014',
+            'None of the above'
+          ];
+          const optsHi = [...distractorsHi];
+          const optsEn = [...distractorsEn];
+          optsHi.splice(correctPos, 0, sumHi.slice(0, 150));
+          optsEn.splice(correctPos, 0, sumEn.slice(0, 150));
           generatedQs.push({
             id: `ca_story_q_${Date.now()}_${i}`,
+            subjectId: 'sub_current_affairs',
             subjectTag: 'Current Affairs',
+            monthKey: st.monthKey || monthKey,
             questionHi: `हालिया समसामयिकी के संदर्भ में "${headHi}" के विषय में कौन-सा कथन सही है?`,
             questionEn: `With reference to recent current affairs regarding "${headEn}", which statement is correct?`,
-            optionsHi: [
-              sumHi.slice(0, 150),
-              (other1 && other1 !== st && other1.summaryHi) ? other1.summaryHi.slice(0, 150) : 'यह योजना केवल निजी औद्योगिक इकाइयों के लिए सीमित है',
-              (other2 && other2 !== st && other2.summaryHi) ? other2.summaryHi.slice(0, 150) : 'इसे वर्ष 2014 में समाप्त कर दिया गया था',
-              'उपर्युक्त में से कोई नहीं'
-            ],
-            optionsEn: [
-              sumEn.slice(0, 150),
-              (other1 && other1 !== st && other1.summaryEn) ? other1.summaryEn.slice(0, 150) : 'This initiative is restricted exclusively to private corporations',
-              (other2 && other2 !== st && other2.summaryEn) ? other2.summaryEn.slice(0, 150) : 'It was discontinued in 2014',
-              'None of the above'
-            ],
-            correctOptionIndex: 0,
+            optionsHi: optsHi.slice(0, 4),
+            optionsEn: optsEn.slice(0, 4),
+            correctOptionIndex: correctPos,
             explanationHi: `${headHi}: ${sumHi}`,
             explanationEn: `${headEn}: ${sumEn}`
           });
+        }
+        if (window.CGpediaAdmin && typeof window.CGpediaAdmin.saveGeneratedCaQuestionsToQuestionBank === 'function') {
+          window.CGpediaAdmin.saveGeneratedCaQuestionsToQuestionBank(generatedQs, state, publicApi, monthKey).catch(() => {});
         }
       } else {
         generatedQs = generateHighYieldBilingualQuestions('daily_ca_' + Date.now(), 'Current Affairs & Chhattisgarh GS', questionCount, '');
@@ -4326,6 +4507,7 @@
         : storyObj.category === 'national'
           ? 'National Current Affairs'
           : 'International & Economy';
+      const adminUser = isCurrentUserAdmin();
 
       storyRoot.innerHTML = `
         <div class="modal-backdrop" id="instaStoryBackdrop" style="background:rgba(4,9,24,0.92);padding:10px;">
@@ -4344,26 +4526,29 @@
                 }).join('')}
               </div>
 
-              <!-- Story Author / Category Header -->
+              <!-- Story Author / Category Header + Admin Post/Delete Controls -->
               <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-                <div style="display:flex;align-items:center;gap:9px;">
-                  <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(45deg,#f09433,#dc2743,#bc1888);padding:2px;display:flex;align-items:center;justify-content:center;">
+                <div style="display:flex;align-items:center;gap:9px;min-width:0;">
+                  <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(45deg,#f09433,#dc2743,#bc1888);padding:2px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
                     <div style="width:100%;height:100%;border-radius:50%;background:#0F2557;display:flex;align-items:center;justify-content:center;font-size:1.05rem;">${catIcon}</div>
                   </div>
-                  <div>
-                    <div style="font-size:0.84rem;font-weight:800;line-height:1.2;">${esc(catName)}</div>
+                  <div style="min-width:0;">
+                    <div style="font-size:0.84rem;font-weight:800;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(catName)}</div>
                     <div style="font-size:0.7rem;color:#BFDBFE;">${esc(formatRelativeTime(storyObj))} • ${currentIndex + 1}/${storiesList.length}</div>
                   </div>
                 </div>
-                <div style="display:flex;align-items:center;gap:6px;">
-                  <button class="btn btn-header-chip" id="instaStoryPauseBtn" style="padding:4px 9px;font-size:0.75rem;">${isPaused ? '▶' : '⏸'}</button>
-                  <button class="btn btn-header-chip" id="closeStoryModalBtn" style="padding:4px 10px;font-size:0.82rem;">✕</button>
+                <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+                  ${adminUser ? `
+                    <button type="button" class="btn btn-header-chip" id="instaAdminPostStoryBtn" title="Post New Story" style="padding:4px 9px;font-size:0.74rem;background:rgba(37,99,235,0.85);color:#fff;">➕ Post</button>
+                    <button type="button" class="btn btn-header-chip" id="instaAdminDeleteStoryBtn" title="Delete This Story" style="padding:4px 9px;font-size:0.74rem;background:rgba(220,38,38,0.88);color:#fff;">🗑️ Delete</button>
+                  ` : ''}
+                  <button type="button" class="btn btn-header-chip" id="closeStoryModalBtn" style="padding:4px 10px;font-size:0.82rem;">✕</button>
                 </div>
               </div>
             </div>
 
-            <!-- Story Body with Left/Right Tap Navigation Zones -->
-            <div id="instaStoryContentArea" style="flex:1;padding:18px 22px;display:flex;flex-direction:column;justify-content:center;position:relative;overflow-y:auto;">
+            <!-- Story Body with Pure Instagram Gesture Navigation (Tap Left = Prev, Tap Right = Next, Hold = Pause) -->
+            <div id="instaStoryContentArea" style="flex:1;padding:18px 22px;display:flex;flex-direction:column;justify-content:center;position:relative;overflow-y:auto;cursor:pointer;">
               <div style="margin-bottom:10px;">
                 <span class="badge" style="background:rgba(234,88,12,0.92);color:#fff;font-size:0.7rem;padding:4px 10px;border-radius:99px;">
                   ⚡ ${esc((storyObj.category || 'Current Affairs').toUpperCase())}
@@ -4387,12 +4572,9 @@
               </div>
             </div>
 
-            <!-- Story Footer Navigation & Instant Quiz Action -->
+            <!-- Story Footer Instant Quiz Action Only (No Prev/Next/Pause Buttons) -->
             <div style="padding:12px 16px 16px 16px;background:rgba(6,13,34,0.65);border-top:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:space-between;gap:8px;z-index:4;">
-              <div style="display:flex;align-items:center;gap:6px;">
-                <button class="btn btn-header-chip" id="instaStoryPrevBtn" ${currentIndex === 0 ? 'disabled style="opacity:0.4;"' : ''}>⬅️ Prev</button>
-                <button class="btn btn-header-chip" id="instaStoryNextBtn">${currentIndex < storiesList.length - 1 ? 'Next ➡️' : 'Done ✓'}</button>
-              </div>
+              <span style="font-size:0.72rem;color:#93C5FD;">Tap left/right to navigate • Hold to pause</span>
               <button class="btn btn-warning btn-sm" id="storyTakeQuizBtn" style="font-weight:800;">🎯 Take Instant Quiz</button>
             </div>
           </div>
@@ -4402,57 +4584,83 @@
       const closeBtn = document.getElementById('closeStoryModalBtn');
       if (closeBtn) closeBtn.onclick = closeViewer;
 
-      const pauseBtn = document.getElementById('instaStoryPauseBtn');
-      if (pauseBtn) {
-        pauseBtn.onclick = (e) => {
+      const postBtn = document.getElementById('instaAdminPostStoryBtn');
+      if (postBtn && adminUser) {
+        postBtn.onclick = (e) => {
           e.stopPropagation();
-          isPaused = !isPaused;
-          pauseBtn.textContent = isPaused ? '▶' : '⏸';
+          closeViewer();
+          openQuickAdminPostStoryModal();
         };
       }
 
-      const prevBtn = document.getElementById('instaStoryPrevBtn');
-      if (prevBtn) {
-        prevBtn.onclick = (e) => {
+      const delBtn = document.getElementById('instaAdminDeleteStoryBtn');
+      if (delBtn && adminUser) {
+        delBtn.onclick = (e) => {
           e.stopPropagation();
-          if (currentIndex > 0) {
-            currentIndex -= 1;
-            progressPct = 0;
-            renderCurrentStorySlide();
-          }
-        };
-      }
-
-      const nextBtn = document.getElementById('instaStoryNextBtn');
-      if (nextBtn) {
-        nextBtn.onclick = (e) => {
-          e.stopPropagation();
-          if (currentIndex < storiesList.length - 1) {
-            currentIndex += 1;
-            progressPct = 0;
-            renderCurrentStorySlide();
-          } else {
-            closeViewer();
-          }
+          isPaused = true;
+          confirmUserAction({
+            title: 'Delete Current Affairs Story?',
+            message: `क्या आप वाकई इस करंट अफेयर्स स्टोरी ("${storyObj.headlineHi || storyObj.titleHi || storyObj.id}") को हटाना चाहते हैं?`,
+            confirmText: '🗑️ Yes, Delete Story',
+            cancelText: 'Cancel'
+          }, async () => {
+            const delId = storyObj.id;
+            state.stories = (state.stories || []).filter((s) => s.id !== delId);
+            const idxInViewer = storiesList.findIndex((s) => s.id === delId);
+            if (idxInViewer !== -1) storiesList.splice(idxInViewer, 1);
+            saveState(true);
+            if (window.CGpediaCloud && typeof window.CGpediaCloud.deleteCloudDoc === 'function') {
+              await window.CGpediaCloud.deleteCloudDoc('current_affairs', delId);
+            }
+            toast('🗑️ Current Affairs Story deleted.');
+            renderApp();
+            if (storiesList.length === 0) {
+              closeViewer();
+            } else {
+              currentIndex = Math.min(currentIndex, storiesList.length - 1);
+              progressPct = 0;
+              isPaused = false;
+              renderCurrentStorySlide();
+            }
+          });
         };
       }
 
       const contentArea = document.getElementById('instaStoryContentArea');
       if (contentArea) {
-        contentArea.onmousedown = () => { isPaused = true; };
-        contentArea.onmouseup = () => { isPaused = false; };
-        contentArea.ontouchstart = () => { isPaused = true; };
-        contentArea.ontouchend = () => { isPaused = false; };
+        let holdStartMs = 0;
+        contentArea.onmousedown = () => {
+          holdStartMs = Date.now();
+          isPaused = true;
+        };
+        contentArea.onmouseup = () => {
+          isPaused = false;
+        };
+        contentArea.onmouseleave = () => {
+          isPaused = false;
+        };
+        contentArea.ontouchstart = () => {
+          holdStartMs = Date.now();
+          isPaused = true;
+        };
+        contentArea.ontouchend = () => {
+          isPaused = false;
+        };
         contentArea.onclick = (e) => {
+          if (holdStartMs && (Date.now() - holdStartMs) > 280) {
+            holdStartMs = 0;
+            return;
+          }
+          holdStartMs = 0;
           const rect = contentArea.getBoundingClientRect();
           const clickX = e.clientX - rect.left;
-          if (clickX < rect.width * 0.33) {
+          if (clickX < rect.width * 0.35) {
             if (currentIndex > 0) {
               currentIndex -= 1;
               progressPct = 0;
               renderCurrentStorySlide();
             }
-          } else if (clickX > rect.width * 0.67) {
+          } else {
             if (currentIndex < storiesList.length - 1) {
               currentIndex += 1;
               progressPct = 0;
@@ -4493,6 +4701,105 @@
         }
       }
     }, TICK_MS);
+  }
+
+  function openQuickAdminPostStoryModal() {
+    if (!isCurrentUserAdmin()) return;
+    const modalRoot = document.getElementById('genericModalContainer');
+    if (!modalRoot) return;
+    modalRoot.innerHTML = `
+      <div class="modal-backdrop" id="quickAdminStoryModalBackdrop">
+        <div class="modal-card" style="max-width:560px;width:100%;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;">
+            <div>
+              <span class="badge badge-exam">🛡️ ADMIN STORY PUBLISHER</span>
+              <h2 style="font-size:1.1rem;font-weight:800;margin-top:4px;">➕ Post Current Affairs Story</h2>
+            </div>
+            <button type="button" class="btn btn-outline btn-sm" id="closeQuickAdminStoryModalBtn">✕</button>
+          </div>
+
+          <div style="padding:10px 12px;border-radius:10px;background:var(--secondary-soft);margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+            <span style="font-size:0.78rem;color:var(--text);">Want to generate stories from Topic, News Text, or PDF/Image with Gemini AI?</span>
+            <button type="button" class="btn btn-navy btn-sm" id="openFullAiCaStudioBtn">⚡ Open AI Current Affairs Studio</button>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Category</label>
+            <select class="form-select" id="quickStoryCatInput">
+              <option value="chhattisgarh">🌾 Chhattisgarh Current Affairs</option>
+              <option value="national">🇮🇳 National (PIB &amp; India)</option>
+              <option value="international">🌍 International, Economy &amp; Science</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Headline (Hindi) *</label>
+            <input class="form-input" id="quickStoryHeadlineHi" placeholder="उदा. छत्तीसगढ़ आर्थिक सर्वेक्षण 2025-26 के प्रमुख बिंदु" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Headline (English)</label>
+            <input class="form-input" id="quickStoryHeadlineEn" placeholder="e.g. Key Highlights of Chhattisgarh Economic Survey 2025-26" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Key Exam Points / Summary (Hindi) *</label>
+            <textarea class="form-textarea" id="quickStorySummaryHi" rows="3" placeholder="परीक्षा उपयोगी मुख्य तथ्य यहाँ लिखें..."></textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Key Exam Points / Summary (English)</label>
+            <textarea class="form-textarea" id="quickStorySummaryEn" rows="2" placeholder="Exam-relevant key facts in English..."></textarea>
+          </div>
+
+          <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:14px;">
+            <button type="button" class="btn btn-outline" id="cancelQuickAdminStoryBtn">Cancel</button>
+            <button type="button" class="btn btn-primary" id="publishQuickAdminStoryBtn">🚀 Publish Story Now</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const closeModal = () => { modalRoot.innerHTML = ''; };
+    document.getElementById('closeQuickAdminStoryModalBtn').onclick = closeModal;
+    document.getElementById('cancelQuickAdminStoryBtn').onclick = closeModal;
+    document.getElementById('openFullAiCaStudioBtn').onclick = () => {
+      closeModal();
+      navigateToTab('admin', 'stories');
+    };
+    document.getElementById('publishQuickAdminStoryBtn').onclick = async () => {
+      const cat = document.getElementById('quickStoryCatInput').value || 'chhattisgarh';
+      const headHi = (document.getElementById('quickStoryHeadlineHi').value || '').trim();
+      const headEn = (document.getElementById('quickStoryHeadlineEn').value || '').trim() || headHi;
+      const sumHi = (document.getElementById('quickStorySummaryHi').value || '').trim();
+      const sumEn = (document.getElementById('quickStorySummaryEn').value || '').trim() || sumHi;
+      if (!headHi || !sumHi) {
+        toast('⚠️ कृपया स्टोरी का शीर्षक (Headline) और मुख्य बिंदु (Summary) दर्ज करें।');
+        return;
+      }
+      const now = new Date();
+      const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const newStory = {
+        id: 'story_' + Date.now(),
+        category: cat,
+        titleHi: headHi,
+        titleEn: headEn,
+        headlineHi: headHi,
+        headlineEn: headEn,
+        summaryHi: sumHi,
+        summaryEn: sumEn,
+        sourceName: 'Official Admin Desk',
+        createdAtIso: now.toISOString(),
+        createdAtMs: now.getTime(),
+        expiresAtMs: now.getTime() + 86400000,
+        monthKey,
+        yearKey: String(now.getFullYear())
+      };
+      state.stories = [newStory, ...(state.stories || [])];
+      saveState(true);
+      if (window.CGpediaCloud && typeof window.CGpediaCloud.saveCloudDoc === 'function') {
+        await window.CGpediaCloud.saveCloudDoc('current_affairs', newStory.id, newStory);
+      }
+      closeModal();
+      renderApp();
+      toast('✅ Current Affairs Story published live!');
+    };
   }
 
   function bindTestCardButtons(containerEl) {
@@ -4805,7 +5112,40 @@
 
     saveState();
     applyBrandingAndSecurity();
-    renderApp();
+    scheduleCloudRenderApp();
+  }
+
+  let cloudRenderScheduled = false;
+  let cloudRenderTimerId = null;
+
+  function scheduleCloudRenderApp() {
+    if (cloudRenderTimerId) {
+      clearTimeout(cloudRenderTimerId);
+    }
+    cloudRenderTimerId = setTimeout(() => {
+      cloudRenderTimerId = null;
+      if (cloudRenderScheduled) return;
+      cloudRenderScheduled = true;
+      const runRender = () => {
+        cloudRenderScheduled = false;
+        // Avoid wiping out an active text input/textarea while user is typing
+        const activeEl = document.activeElement;
+        const appRoot = document.getElementById('appRoot');
+        if (activeEl && appRoot && appRoot.contains(activeEl)) {
+          const tag = String(activeEl.tagName || '').toUpperCase();
+          if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+            applyBrandingAndSecurity();
+            return;
+          }
+        }
+        renderApp();
+      };
+      if (typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(runRender);
+      } else {
+        runRender();
+      }
+    }, 90);
   }
 
   const NOTIFIED_ITEMS_STORAGE_KEY = 'cgpedia_notified_items_v1';
@@ -5844,7 +6184,7 @@
 
     // Register Service Worker & force update check
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
-      navigator.serviceWorker.register('sw.js?v=6.5').then((reg) => {
+      navigator.serviceWorker.register('sw.js?v=6.6').then((reg) => {
         try { reg.update(); } catch (_) {}
       }).catch(() => {});
     }

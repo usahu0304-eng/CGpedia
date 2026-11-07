@@ -115,19 +115,19 @@ service cloud.firestore {
 
     match /subjects/{subjectId} {
       allow get, list: if true;
-      allow create, update: if isAdmin();
+      allow create, update: if isAdmin() || isSignedIn();
       allow delete: if true;
     }
 
     match /topics/{topicId} {
       allow get, list: if true;
-      allow create, update: if isAdmin();
+      allow create, update: if isAdmin() || isSignedIn();
       allow delete: if true;
     }
 
     match /subtopics/{subtopicId} {
       allow get, list: if true;
-      allow create, update: if isAdmin();
+      allow create, update: if isAdmin() || isSignedIn();
       allow delete: if true;
     }
 
@@ -145,7 +145,7 @@ service cloud.firestore {
 
     match /subject_folders/{folderId} {
       allow get, list: if true;
-      allow create, update: if isAdmin();
+      allow create, update: if isAdmin() || isSignedIn();
       allow delete: if true;
     }
 
@@ -172,7 +172,7 @@ service cloud.firestore {
 
     match /question_bank/{questionId} {
       allow get, list: if true;
-      allow create, update: if isAdmin();
+      allow create, update: if isAdmin() || isSignedIn();
       allow delete: if true;
     }
 
