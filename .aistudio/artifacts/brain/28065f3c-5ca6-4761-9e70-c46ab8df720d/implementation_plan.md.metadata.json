@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan for unlocking screen rotation on installed PWA/Android app, switching automatically between Normal Mobile View (Portrait) and 1280px Desktop Site View (Landscape), and requesting notification permission immediately after login to deliver real-time alerts for new Tests, Broadcast Announcements, and Current Affairs.",
-  "updatedAt":  "2026-11-07T09:40:25.038304665Z",
+  "summary":  "Implementation plan for strict online Real Account authentication, Announcement Edit/Unpin controls, non-repeating Hourly Auto-Updated Current Affairs with Admin AI Upload (Prompt, Text Paste, PDF/Image), Instagram-style Story viewer (with zero '24-Hour' or 'AI' text shown to students), Monthly Current Affairs archive with Month Jumper, and Student-Customizable Monthly/Yearly Current Affairs Quiz Maker.",
+  "updatedAt":  "2026-11-07T10:14:54.428316521Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

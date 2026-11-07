@@ -73,7 +73,7 @@ class CgpediaAiService {
 
     private val structuredQuestionModel by lazy {
         Firebase.ai(backend = GenerativeBackend.googleAI()).generativeModel(
-            modelName = "gemini-3-flash-preview",
+            modelName = "gemini-3.8-flash",
             generationConfig = generationConfig {
                 responseMimeType = "application/json"
                 responseSchema = questionListSchema
@@ -83,14 +83,14 @@ class CgpediaAiService {
 
     private val groundedSearchModel by lazy {
         Firebase.ai(backend = GenerativeBackend.googleAI()).generativeModel(
-            modelName = "gemini-3-flash-preview",
+            modelName = "gemini-3.8-flash",
             tools = listOf(Tool.googleSearch())
         )
     }
 
     private val structuredCurrentAffairsModel by lazy {
         Firebase.ai(backend = GenerativeBackend.googleAI()).generativeModel(
-            modelName = "gemini-3-flash-preview",
+            modelName = "gemini-3.8-flash",
             generationConfig = generationConfig {
                 responseMimeType = "application/json"
                 responseSchema = currentAffairsSchema

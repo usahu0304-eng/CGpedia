@@ -1406,79 +1406,484 @@
     }
 
     if (activeSection === 'stories') {
+      state.admCaUploadTab = state.admCaUploadTab || 'prompt';
+      const activeCaTab = state.admCaUploadTab;
+      const nowDate = new Date();
+      const defaultMonthKey = `${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, '0')}`;
+      const editingStory = state.editingCaStoryId
+        ? (state.stories || []).find((s) => s && s.id === state.editingCaStoryId)
+        : null;
+
       bodyEl.innerHTML = `
+        <!-- AI Current Affairs Uploader (Prompt / Paste Text / PDF & Image File) -->
+        <div class="card" style="border:1.5px solid var(--secondary);background:linear-gradient(180deg, var(--surface) 0%, var(--surface-alt) 100%);">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+            <div>
+              <span class="badge badge-exam">✨ AI CURRENT AFFAIRS ENGINE</span>
+              <h3 style="font-size:1.04rem;font-weight:800;margin-top:4px;">AI Current Affairs Uploader &amp; Hourly Auto-Sync</h3>
+              <p style="font-size:0.78rem;color:var(--text-secondary);">Non-repeating Bilingual (Hindi + English) Current Affairs from Prompt, Pasted News, or PDF/Image files</p>
+            </div>
+            <button type="button" class="btn btn-outline btn-sm" id="admTriggerHourlyCaNowBtn">🔄 Auto-Fetch Latest Hourly Current Affairs</button>
+          </div>
+
+          <div class="chip-row" style="margin-bottom:12px;">
+            <button type="button" class="filter-chip ${activeCaTab === 'prompt' ? 'active' : ''}" data-adm-ca-tab="prompt">✨ Topic / Prompt</button>
+            <button type="button" class="filter-chip ${activeCaTab === 'paste' ? 'active' : ''}" data-adm-ca-tab="paste">📋 Copy-Paste News / Paragraph</button>
+            <button type="button" class="filter-chip ${activeCaTab === 'file' ? 'active' : ''}" data-adm-ca-tab="file">📄 PDF / Image File Upload</button>
+          </div>
+
+          <div class="grid-3" style="margin-bottom:10px;">
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">Category</label>
+              <select class="form-select" id="admAiCaCategory">
+                <option value="ALL">🌟 Auto-Detect (CG + National + International)</option>
+                <option value="chhattisgarh">🌾 छत्तीसगढ़ समसामयिकी (Chhattisgarh)</option>
+                <option value="national">🇮🇳 राष्ट्रीय समसामयिकी (National)</option>
+                <option value="international">🌍 अंतर्राष्ट्रीय एवं विज्ञान (International &amp; Sci)</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">Target Month Archive</label>
+              <input type="month" class="form-input" id="admAiCaMonth" value="${esc(defaultMonthKey)}" />
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">Source Tag</label>
+              <input class="form-input" id="admAiCaSource" value="PIB / DPR Chhattisgarh" />
+            </div>
+          </div>
+
+          ${activeCaTab === 'prompt' ? `
+            <div class="grid-2" style="margin-bottom:10px;">
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label">Topic / Event / Date Prompt</label>
+                <input class="form-input" id="admAiCaPromptInput" placeholder="e.g., Chhattisgarh Budget 2026 schemes, National awards, ISRO missions..." />
+              </div>
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label">Number of Updates to Generate</label>
+                <select class="form-select" id="admAiCaPromptCount">
+                  <option value="3">3 Current Affairs Updates</option>
+                  <option value="5" selected>5 Current Affairs Updates</option>
+                  <option value="8">8 Current Affairs Updates</option>
+                  <option value="10">10 Current Affairs Updates</option>
+                </select>
+              </div>
+            </div>
+            <button type="button" class="btn btn-primary" id="admRunAiCaPromptBtn">✨ Generate &amp; Publish Current Affairs</button>
+          ` : ''}
+
+          ${activeCaTab === 'paste' ? `
+            <div class="form-group">
+              <label class="form-label">Paste Unlimited News Article / Press Release / Notes (Hindi or English)</label>
+              <textarea class="form-textarea" id="admAiCaPasteText" rows="5" placeholder="यहाँ कोई भी समाचार, पीआईबी विज्ञप्ति, जनसंपर्क नोट्स या पैराग्राफ कॉपी-पेस्ट करें (Unlimited length)..."></textarea>
+            </div>
+            <button type="button" class="btn btn-primary" id="admRunAiCaPasteBtn">📋 Extract &amp; Publish Current Affairs from Text</button>
+          ` : ''}
+
+          ${activeCaTab === 'file' ? `
+            <div class="form-group">
+              <label class="form-label">Select Newspaper Clipping Image, Magazine PDF, or Text Document (.pdf, .png, .jpg, .webp, .txt)</label>
+              <input type="file" class="form-input" id="admAiCaFileInput" accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.csv,.json" />
+            </div>
+            <button type="button" class="btn btn-primary" id="admRunAiCaFileBtn">📄 Scan File &amp; Publish Current Affairs</button>
+          ` : ''}
+
+          <div id="admAiCaStatusBox" style="display:none;margin-top:10px;padding:10px 12px;border-radius:8px;background:var(--secondary-soft);font-size:0.82rem;font-weight:600;color:var(--secondary);"></div>
+        </div>
+
+        <!-- Manual Create / Edit Current Affairs Form -->
         <div class="card">
-          <h3 style="font-size:1rem;font-weight:800;margin-bottom:10px;">⚡ Publish 24-Hour Current Affairs Story &amp; Daily Quiz</h3>
-          <div class="grid-2">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+            <h3 style="font-size:1rem;font-weight:800;">
+              ${editingStory ? '✏️ Edit Current Affairs Update' : '⚡ Manual Current Affairs Entry'}
+            </h3>
+            ${editingStory ? `<button type="button" class="btn btn-outline btn-sm" id="admCancelEditCaBtn">✕ Cancel Edit</button>` : ''}
+          </div>
+          <div class="grid-3">
             <div class="form-group">
               <label class="form-label">Category</label>
               <select class="form-select" id="admCaCategory">
-                <option value="chhattisgarh">छत्तीसगढ़ समसामयिकी (Chhattisgarh)</option>
-                <option value="national">राष्ट्रीय समसामयिकी (National)</option>
-                <option value="international">अंतर्राष्ट्रीय एवं विज्ञान (International &amp; Sci)</option>
+                <option value="chhattisgarh" ${editingStory && editingStory.category === 'chhattisgarh' ? 'selected' : ''}>छत्तीसगढ़ समसामयिकी (Chhattisgarh)</option>
+                <option value="national" ${editingStory && editingStory.category === 'national' ? 'selected' : ''}>राष्ट्रीय समसामयिकी (National)</option>
+                <option value="international" ${editingStory && editingStory.category === 'international' ? 'selected' : ''}>अंतर्राष्ट्रीय एवं विज्ञान (International &amp; Sci)</option>
               </select>
             </div>
             <div class="form-group">
-              <label class="form-label">Source Name</label>
-              <input class="form-input" id="admCaSource" value="PIB / DPR Chhattisgarh" />
+              <label class="form-label">Month Archive</label>
+              <input type="month" class="form-input" id="admCaMonthKey" value="${esc((editingStory && editingStory.monthKey) || defaultMonthKey)}" />
             </div>
             <div class="form-group">
+              <label class="form-label">Source Name</label>
+              <input class="form-input" id="admCaSource" value="${esc((editingStory && editingStory.sourceName) || 'PIB / DPR Chhattisgarh')}" />
+            </div>
+          </div>
+          <div class="grid-2">
+            <div class="form-group">
               <label class="form-label">Headline (Hindi)</label>
-              <input class="form-input" id="admCaHeadHi" placeholder="उदा: छत्तीसगढ़ आर्थिक सर्वेक्षण एवं नई योजनाएं" />
+              <input class="form-input" id="admCaHeadHi" value="${esc((editingStory && editingStory.headlineHi) || '')}" placeholder="उदा: छत्तीसगढ़ आर्थिक सर्वेक्षण एवं नई योजनाएं" />
             </div>
             <div class="form-group">
               <label class="form-label">Headline (English)</label>
-              <input class="form-input" id="admCaHeadEn" placeholder="e.g., Chhattisgarh Economic Survey & Key Schemes" />
+              <input class="form-input" id="admCaHeadEn" value="${esc((editingStory && editingStory.headlineEn) || '')}" placeholder="e.g., Chhattisgarh Economic Survey & Key Schemes" />
             </div>
           </div>
-          <div class="form-group">
-            <label class="form-label">Exam Key Points &amp; Summary (Bilingual)</label>
-            <textarea class="form-textarea" id="admCaSummary" rows="3" placeholder="परीक्षा उपयोगी मुख्य तथ्य..."></textarea>
+          <div class="grid-2">
+            <div class="form-group">
+              <label class="form-label">Exam Key Points &amp; Summary (Hindi)</label>
+              <textarea class="form-textarea" id="admCaSummaryHi" rows="3" placeholder="परीक्षा उपयोगी मुख्य तथ्य (हिन्दी)...">${esc((editingStory && editingStory.summaryHi) || '')}</textarea>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Exam Key Points &amp; Summary (English)</label>
+              <textarea class="form-textarea" id="admCaSummaryEn" rows="3" placeholder="Exam-oriented key facts (English)...">${esc((editingStory && (editingStory.summaryEn || editingStory.summaryHi)) || '')}</textarea>
+            </div>
           </div>
-          <button class="btn btn-primary" id="admPublishCaBtn">⚡ Publish Current Affairs Story</button>
+          <button class="btn btn-primary" id="admPublishCaBtn">
+            ${editingStory ? '💾 Save Updated Current Affairs' : '⚡ Publish Current Affairs Update'}
+          </button>
+        </div>
+
+        <!-- Existing Current Affairs Archive List -->
+        <div class="card">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+            <h3 style="font-size:1rem;font-weight:800;">📚 Published Current Affairs Archive (${(state.stories || []).length})</h3>
+          </div>
+          ${(state.stories || []).length === 0 ? `
+            <p style="font-size:0.84rem;color:var(--text-muted);">No Current Affairs published yet.</p>
+          ` : `
+            <div style="display:grid;gap:10px;max-height:480px;overflow-y:auto;">
+              ${(state.stories || []).map((st) => `
+                <div style="padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--surface-alt);display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+                  <div style="flex:1;min-width:240px;">
+                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px;">
+                      <span class="badge badge-exam">${esc(st.category || 'chhattisgarh').toUpperCase()}</span>
+                      <span class="badge badge-cloud">${esc(st.monthKey || defaultMonthKey)}</span>
+                      <span style="font-size:0.74rem;color:var(--text-muted);">${esc(st.sourceName || 'PIB / DPR')}</span>
+                    </div>
+                    <div style="font-weight:800;font-size:0.93rem;">${esc(st.headlineHi)}</div>
+                    <div style="font-size:0.8rem;color:var(--text-secondary);margin-top:2px;">${esc(st.headlineEn)}</div>
+                    <div style="font-size:0.8rem;color:var(--text);margin-top:4px;line-height:1.45;">${esc(st.summaryHi)}</div>
+                  </div>
+                  <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                    <button type="button" class="btn btn-outline btn-sm" data-edit-ca-story="${esc(st.id)}">✏️ Edit</button>
+                    <button type="button" class="btn btn-danger btn-sm" data-delete-ca-story="${esc(st.id)}">🗑️ Delete</button>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          `}
         </div>
       `;
+
+      bodyEl.querySelectorAll('[data-adm-ca-tab]').forEach((btn) => {
+        btn.onclick = () => {
+          state.admCaUploadTab = btn.getAttribute('data-adm-ca-tab') || 'prompt';
+          renderAdminConsole(rootEl, state, api);
+        };
+      });
+
+      const showCaStatus = (msg) => {
+        const box = document.getElementById('admAiCaStatusBox');
+        if (box) {
+          box.style.display = 'block';
+          box.textContent = msg;
+        }
+      };
+
+      const saveGeneratedCaBatch = async (rawItems, preferredCat, preferredMonth, preferredSource) => {
+        const added = enrichAndDeduplicateCurrentAffairsItems(
+          rawItems,
+          state.stories || [],
+          preferredCat,
+          preferredSource,
+          preferredMonth
+        );
+        if (added.length === 0) {
+          api.toast('ℹ️ कोई नया यूनिक करंट अफेयर्स नहीं मिला (डुप्लीकेट अपडेट्स को छोड़ दिया गया)।');
+          return 0;
+        }
+        state.stories = added.concat(state.stories || []);
+        api.saveState();
+        if (window.CGpediaCloud && window.CGpediaCloud.batchSaveCloudDocs) {
+          await window.CGpediaCloud.batchSaveCloudDocs('current_affairs', added);
+        }
+        api.toast(`✅ ${added.length} नए (Non-Repeating) करंट अफेयर्स सफलतापूर्वक पब्लिश किए गए!`);
+        renderAdminConsole(rootEl, state, api);
+        return added.length;
+      };
+
+      const hourlyBtn = document.getElementById('admTriggerHourlyCaNowBtn');
+      if (hourlyBtn) {
+        hourlyBtn.onclick = async () => {
+          hourlyBtn.disabled = true;
+          hourlyBtn.textContent = '⏳ Fetching Latest Updates...';
+          showCaStatus('⏳ छत्तीसगढ़, राष्ट्रीय एवं अंतर्राष्ट्रीय नवीनतम समसामयिकी अपडेट्स तैयार किए जा रहे हैं...');
+          try {
+            const cat = (document.getElementById('admAiCaCategory') && document.getElementById('admAiCaCategory').value) || 'ALL';
+            const monthVal = (document.getElementById('admAiCaMonth') && document.getElementById('admAiCaMonth').value) || defaultMonthKey;
+            const srcVal = (document.getElementById('admAiCaSource') && document.getElementById('admAiCaSource').value.trim()) || 'PIB / DPR Chhattisgarh';
+            const items = await generateCurrentAffairsWithAi({
+              mode: 'hourly',
+              category: cat,
+              monthKey: monthVal,
+              sourceName: srcVal,
+              count: 4,
+              existingStories: state.stories || [],
+              onProgress: showCaStatus
+            });
+            await saveGeneratedCaBatch(items, cat, monthVal, srcVal);
+          } catch (err) {
+            api.toast('⚠️ Auto-update error: ' + (err.message || 'Please try again'));
+          } finally {
+            hourlyBtn.disabled = false;
+            hourlyBtn.textContent = '🔄 Auto-Fetch Latest Hourly Current Affairs';
+          }
+        };
+      }
+
+      const runPromptBtn = document.getElementById('admRunAiCaPromptBtn');
+      if (runPromptBtn) {
+        runPromptBtn.onclick = async () => {
+          const promptVal = (document.getElementById('admAiCaPromptInput') && document.getElementById('admAiCaPromptInput').value.trim()) || '';
+          const countVal = Number((document.getElementById('admAiCaPromptCount') && document.getElementById('admAiCaPromptCount').value) || 5);
+          const cat = (document.getElementById('admAiCaCategory') && document.getElementById('admAiCaCategory').value) || 'ALL';
+          const monthVal = (document.getElementById('admAiCaMonth') && document.getElementById('admAiCaMonth').value) || defaultMonthKey;
+          const srcVal = (document.getElementById('admAiCaSource') && document.getElementById('admAiCaSource').value.trim()) || 'PIB / DPR Chhattisgarh';
+          if (!promptVal) {
+            api.toast('⚠️ कृपया करंट अफेयर्स का विषय या प्रॉम्प्ट दर्ज करें।');
+            return;
+          }
+          runPromptBtn.disabled = true;
+          runPromptBtn.textContent = '⏳ Generating Current Affairs...';
+          showCaStatus('⏳ विषय के आधार पर द्विभाषी करंट अफेयर्स तैयार किए जा रहे हैं...');
+          try {
+            const items = await generateCurrentAffairsWithAi({
+              mode: 'prompt',
+              topicPrompt: promptVal,
+              category: cat,
+              monthKey: monthVal,
+              sourceName: srcVal,
+              count: countVal,
+              existingStories: state.stories || [],
+              onProgress: showCaStatus
+            });
+            await saveGeneratedCaBatch(items, cat, monthVal, srcVal);
+          } finally {
+            runPromptBtn.disabled = false;
+            runPromptBtn.textContent = '✨ Generate & Publish Current Affairs';
+          }
+        };
+      }
+
+      const runPasteBtn = document.getElementById('admRunAiCaPasteBtn');
+      if (runPasteBtn) {
+        runPasteBtn.onclick = async () => {
+          const rawText = (document.getElementById('admAiCaPasteText') && document.getElementById('admAiCaPasteText').value.trim()) || '';
+          const cat = (document.getElementById('admAiCaCategory') && document.getElementById('admAiCaCategory').value) || 'ALL';
+          const monthVal = (document.getElementById('admAiCaMonth') && document.getElementById('admAiCaMonth').value) || defaultMonthKey;
+          const srcVal = (document.getElementById('admAiCaSource') && document.getElementById('admAiCaSource').value.trim()) || 'PIB / DPR Chhattisgarh';
+          if (!rawText) {
+            api.toast('⚠️ कृपया न्यूज़ या पैराग्राफ टेक्स्ट पेस्ट करें।');
+            return;
+          }
+          runPasteBtn.disabled = true;
+          runPasteBtn.textContent = '⏳ Extracting Current Affairs...';
+          showCaStatus('⏳ पेस्ट किए गए टेक्स्ट से मुख्य परीक्षा उपयोगी करंट अफेयर्स निकाले जा रहे हैं...');
+          try {
+            const items = await generateCurrentAffairsWithAi({
+              mode: 'paste',
+              rawText,
+              category: cat,
+              monthKey: monthVal,
+              sourceName: srcVal,
+              existingStories: state.stories || [],
+              onProgress: showCaStatus
+            });
+            await saveGeneratedCaBatch(items, cat, monthVal, srcVal);
+          } finally {
+            runPasteBtn.disabled = false;
+            runPasteBtn.textContent = '📋 Extract & Publish Current Affairs from Text';
+          }
+        };
+      }
+
+      const runFileBtn = document.getElementById('admRunAiCaFileBtn');
+      if (runFileBtn) {
+        runFileBtn.onclick = async () => {
+          const fileEl = document.getElementById('admAiCaFileInput');
+          const file = fileEl && fileEl.files && fileEl.files[0];
+          const cat = (document.getElementById('admAiCaCategory') && document.getElementById('admAiCaCategory').value) || 'ALL';
+          const monthVal = (document.getElementById('admAiCaMonth') && document.getElementById('admAiCaMonth').value) || defaultMonthKey;
+          const srcVal = (document.getElementById('admAiCaSource') && document.getElementById('admAiCaSource').value.trim()) || 'PIB / DPR Chhattisgarh';
+          if (!file) {
+            api.toast('⚠️ कृपया PDF या Image फ़ाइल चुनें।');
+            return;
+          }
+          runFileBtn.disabled = true;
+          runFileBtn.textContent = '⏳ Scanning File...';
+          showCaStatus(`⏳ फ़ाइल (${file.name}) को स्कैन कर द्विभाषी करंट अफेयर्स निकाले जा रहे हैं...`);
+          try {
+            const items = await generateCurrentAffairsWithAi({
+              mode: 'file',
+              file,
+              category: cat,
+              monthKey: monthVal,
+              sourceName: srcVal,
+              existingStories: state.stories || [],
+              onProgress: showCaStatus
+            });
+            await saveGeneratedCaBatch(items, cat, monthVal, srcVal);
+          } finally {
+            runFileBtn.disabled = false;
+            runFileBtn.textContent = '📄 Scan File & Publish Current Affairs';
+          }
+        };
+      }
+
+      const cancelEditCaBtn = document.getElementById('admCancelEditCaBtn');
+      if (cancelEditCaBtn) {
+        cancelEditCaBtn.onclick = () => {
+          state.editingCaStoryId = null;
+          renderAdminConsole(rootEl, state, api);
+        };
+      }
 
       document.getElementById('admPublishCaBtn').onclick = () => {
         const headHi = document.getElementById('admCaHeadHi').value.trim();
         const headEn = document.getElementById('admCaHeadEn').value.trim() || headHi;
-        const summary = document.getElementById('admCaSummary').value.trim() || headHi;
+        const summaryHi = document.getElementById('admCaSummaryHi').value.trim() || headHi;
+        const summaryEn = document.getElementById('admCaSummaryEn').value.trim() || summaryHi;
+        const catVal = document.getElementById('admCaCategory').value || 'chhattisgarh';
+        const monthVal = document.getElementById('admCaMonthKey').value || defaultMonthKey;
+        const yearVal = monthVal.split('-')[0] || String(new Date().getFullYear());
+        const srcVal = document.getElementById('admCaSource').value.trim() || 'DPR Chhattisgarh';
+
         if (!headHi) {
           api.toast('कृपया करंट अफेयर्स शीर्षक दर्ज करें।');
           return;
         }
-        const stObj = {
-          id: 'ca_' + Date.now(),
-          category: document.getElementById('admCaCategory').value,
+
+        if (editingStory) {
+          editingStory.category = catVal;
+          editingStory.headlineHi = headHi;
+          editingStory.headlineEn = headEn;
+          editingStory.summaryHi = summaryHi;
+          editingStory.summaryEn = summaryEn;
+          editingStory.sourceName = srcVal;
+          editingStory.monthKey = monthVal;
+          editingStory.yearKey = yearVal;
+          editingStory.updatedAtIso = new Date().toISOString();
+          state.editingCaStoryId = null;
+          api.saveState();
+          if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('current_affairs', editingStory.id, editingStory);
+          api.toast('✅ Current Affairs updated!');
+          renderAdminConsole(rootEl, state, api);
+          return;
+        }
+
+        const candidate = {
           headlineHi: headHi,
           headlineEn: headEn,
-          summaryHi: summary,
-          summaryEn: summary,
-          sourceName: document.getElementById('admCaSource').value.trim() || 'DPR Chhattisgarh',
-          createdAtMs: Date.now(),
-          expiresAtMs: Date.now() + 86400000
+          summaryHi
+        };
+        if (isDuplicateCurrentAffair(candidate, state.stories || [])) {
+          api.toast('⚠️ यह करंट अफेयर्स पहले से मौजूद है (Repeated Current Affairs blocked).');
+          return;
+        }
+
+        const nowMs = Date.now();
+        const nowIso = new Date(nowMs).toISOString();
+        const stObj = {
+          id: 'ca_' + nowMs,
+          category: catVal,
+          headlineHi: headHi,
+          headlineEn: headEn,
+          summaryHi,
+          summaryEn,
+          sourceName: srcVal,
+          monthKey: monthVal,
+          yearKey: yearVal,
+          dateIso: nowIso.slice(0, 10),
+          createdAtMs: nowMs,
+          expiresAtMs: nowMs + 86400000,
+          createdAtIso: nowIso,
+          updatedAtIso: nowIso
         };
         state.stories.unshift(stObj);
         api.saveState();
         if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('current_affairs', stObj.id, stObj);
-        api.toast('⚡ Current Affairs story published!');
+        api.toast('⚡ Current Affairs published!');
         renderAdminConsole(rootEl, state, api);
       };
+
+      bodyEl.querySelectorAll('[data-edit-ca-story]').forEach((btn) => {
+        btn.onclick = () => {
+          state.editingCaStoryId = btn.getAttribute('data-edit-ca-story');
+          renderAdminConsole(rootEl, state, api);
+        };
+      });
+
+      bodyEl.querySelectorAll('[data-delete-ca-story]').forEach((btn) => {
+        btn.onclick = async () => {
+          const sid = btn.getAttribute('data-delete-ca-story');
+          state.stories = (state.stories || []).filter((s) => s.id !== sid);
+          if (state.editingCaStoryId === sid) state.editingCaStoryId = null;
+          api.saveState();
+          if (window.CGpediaCloud) await window.CGpediaCloud.deleteCloudDoc('current_affairs', sid);
+          api.toast('🗑️ Current Affairs deleted.');
+          renderAdminConsole(rootEl, state, api);
+        };
+      });
       return;
     }
 
     if (activeSection === 'broadcast') {
+      const editingNotif = state.editingNotifId
+        ? (state.notifications || []).find((n) => n && n.id === state.editingNotifId)
+        : null;
+
       bodyEl.innerHTML = `
         <div class="grid-2">
           <div class="card">
-            <h3 style="font-size:1rem;font-weight:800;margin-bottom:10px;">📢 Post Announcement / Upcoming Exam Schedule</h3>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+              <h3 style="font-size:1rem;font-weight:800;">
+                ${editingNotif ? '✏️ Edit Announcement' : '📢 Post Announcement / Upcoming Exam Schedule'}
+              </h3>
+              ${editingNotif ? `<button type="button" class="btn btn-outline btn-sm" id="admCancelEditNotifBtn">✕ Cancel Edit</button>` : ''}
+            </div>
             <div class="form-group">
-              <input class="form-input" id="admNotifTitle" placeholder="Announcement Title (Hindi & English)" style="margin-bottom:8px;" />
-              <textarea class="form-textarea" id="admNotifBody" rows="3" placeholder="Message details, syllabus PDF link, or upcoming test date..." style="margin-bottom:8px;"></textarea>
+              <input class="form-input" id="admNotifTitle" value="${esc((editingNotif && (editingNotif.titleHi || editingNotif.titleEn)) || '')}" placeholder="Announcement Title (Hindi & English)" style="margin-bottom:8px;" />
+              <textarea class="form-textarea" id="admNotifBody" rows="3" placeholder="Message details, syllabus PDF link, or upcoming test date..." style="margin-bottom:8px;">${esc((editingNotif && (editingNotif.messageHi || editingNotif.messageEn)) || '')}</textarea>
               <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;margin-bottom:10px;">
-                <input type="checkbox" id="admNotifPin" checked /> Pin to Top of Student Dashboard
+                <input type="checkbox" id="admNotifPin" ${(editingNotif ? editingNotif.isPinned : true) ? 'checked' : ''} /> Pin to Top of Student Dashboard
               </label>
-              <button class="btn btn-primary" id="admSendBroadcastBtn">📢 Publish Announcement</button>
+              <button class="btn btn-primary" id="admSendBroadcastBtn">
+                ${editingNotif ? '💾 Save Announcement Changes' : '📢 Publish Announcement'}
+              </button>
+            </div>
+
+            <div style="margin-top:18px;border-top:1px solid var(--border);padding-top:14px;">
+              <h4 style="font-size:0.92rem;font-weight:800;margin-bottom:10px;">📋 Published Announcements (${(state.notifications || []).length})</h4>
+              ${(state.notifications || []).length === 0 ? `
+                <p style="font-size:0.82rem;color:var(--text-muted);">No announcements published yet.</p>
+              ` : `
+                <div style="display:grid;gap:10px;max-height:360px;overflow-y:auto;">
+                  ${(state.notifications || []).map((n) => `
+                    <div style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface-alt);">
+                      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
+                        <span class="badge ${n.isPinned ? 'badge-exam' : 'badge-cloud'}">${n.isPinned ? '📌 PINNED' : '📍 UNPINNED'}</span>
+                        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                          <button type="button" class="btn btn-outline btn-sm" data-toggle-pin-notif="${esc(n.id)}">
+                            ${n.isPinned ? '📍 Unpin' : '📌 Pin'}
+                          </button>
+                          <button type="button" class="btn btn-outline btn-sm" data-edit-notif="${esc(n.id)}">✏️ Edit</button>
+                          <button type="button" class="btn btn-danger btn-sm" data-delete-notif="${esc(n.id)}">🗑️ Delete</button>
+                        </div>
+                      </div>
+                      <div style="font-weight:800;font-size:0.88rem;">${esc(n.titleHi || n.titleEn)}</div>
+                      <div style="font-size:0.8rem;color:var(--text-secondary);margin-top:3px;">${esc(n.messageHi || n.messageEn)}</div>
+                    </div>
+                  `).join('')}
+                </div>
+              `}
             </div>
           </div>
 
@@ -1487,7 +1892,7 @@
             ${(state.queries || []).length === 0 ? `
               <p style="font-size:0.84rem;color:var(--text-muted);">No student support queries yet.</p>
             ` : `
-              <div style="display:grid;gap:10px;max-height:320px;overflow-y:auto;">
+              <div style="display:grid;gap:10px;max-height:460px;overflow-y:auto;">
                 ${state.queries.map((q) => `
                   <div style="padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--surface-alt);">
                     <div style="font-weight:800;font-size:0.85rem;">${esc(q.studentName)} (${esc(q.studentEmail)}) — <span class="badge badge-exam">${esc(q.category)}</span></div>
@@ -1504,18 +1909,48 @@
         </div>
       `;
 
+      const cancelEditNotifBtn = document.getElementById('admCancelEditNotifBtn');
+      if (cancelEditNotifBtn) {
+        cancelEditNotifBtn.onclick = () => {
+          state.editingNotifId = null;
+          renderAdminConsole(rootEl, state, api);
+        };
+      }
+
       document.getElementById('admSendBroadcastBtn').onclick = () => {
         const title = document.getElementById('admNotifTitle').value.trim();
         const msg = document.getElementById('admNotifBody').value.trim();
-        if (!title) return;
+        const isPinned = document.getElementById('admNotifPin').checked;
+        if (!title) {
+          api.toast('⚠️ कृपया घोषणा का शीर्षक दर्ज करें।');
+          return;
+        }
+        const nowIso = new Date().toISOString();
+
+        if (editingNotif) {
+          editingNotif.titleHi = title;
+          editingNotif.titleEn = title;
+          editingNotif.messageHi = msg || title;
+          editingNotif.messageEn = msg || title;
+          editingNotif.isPinned = isPinned;
+          editingNotif.updatedAtIso = nowIso;
+          state.editingNotifId = null;
+          api.saveState();
+          if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('broadcast_notifications', editingNotif.id, editingNotif);
+          api.toast('✅ Announcement updated!');
+          renderAdminConsole(rootEl, state, api);
+          return;
+        }
+
         const nObj = {
           id: 'notif_' + Date.now(),
           titleHi: title,
           titleEn: title,
           messageHi: msg || title,
           messageEn: msg || title,
-          isPinned: document.getElementById('admNotifPin').checked,
-          createdAtIso: new Date().toISOString()
+          isPinned,
+          createdAtIso: nowIso,
+          updatedAtIso: nowIso
         };
         state.notifications.unshift(nObj);
         api.saveState();
@@ -1523,6 +1958,39 @@
         api.toast('📢 Announcement published!');
         renderAdminConsole(rootEl, state, api);
       };
+
+      bodyEl.querySelectorAll('[data-toggle-pin-notif]').forEach((btn) => {
+        btn.onclick = () => {
+          const nid = btn.getAttribute('data-toggle-pin-notif');
+          const target = (state.notifications || []).find((n) => n && n.id === nid);
+          if (!target) return;
+          target.isPinned = !target.isPinned;
+          target.updatedAtIso = new Date().toISOString();
+          api.saveState();
+          if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('broadcast_notifications', target.id, target);
+          api.toast(target.isPinned ? '📌 Announcement pinned to Student Dashboard!' : '📍 Announcement unpinned from Student Dashboard.');
+          renderAdminConsole(rootEl, state, api);
+        };
+      });
+
+      bodyEl.querySelectorAll('[data-edit-notif]').forEach((btn) => {
+        btn.onclick = () => {
+          state.editingNotifId = btn.getAttribute('data-edit-notif');
+          renderAdminConsole(rootEl, state, api);
+        };
+      });
+
+      bodyEl.querySelectorAll('[data-delete-notif]').forEach((btn) => {
+        btn.onclick = async () => {
+          const nid = btn.getAttribute('data-delete-notif');
+          state.notifications = (state.notifications || []).filter((n) => n && n.id !== nid);
+          if (state.editingNotifId === nid) state.editingNotifId = null;
+          api.saveState();
+          if (window.CGpediaCloud) await window.CGpediaCloud.deleteCloudDoc('broadcast_notifications', nid);
+          api.toast('🗑️ Announcement deleted.');
+          renderAdminConsole(rootEl, state, api);
+        };
+      });
 
       bodyEl.querySelectorAll('[data-send-query-reply]').forEach((btn) => {
         btn.onclick = () => {
@@ -12987,6 +13455,396 @@ Return ONLY a valid JSON array of objects:
     }
   }
 
+  function isDuplicateCurrentAffair(candidate, existingStories) {
+    if (!candidate) return true;
+    const candHi = normalizeTextForComparison(candidate.headlineHi || '');
+    const candEn = normalizeTextForComparison(candidate.headlineEn || '');
+    const candSum = normalizeTextForComparison(candidate.summaryHi || candidate.summaryEn || '');
+    if (!candHi && !candEn) return true;
+
+    const list = Array.isArray(existingStories) ? existingStories : [];
+    for (let i = 0; i < list.length; i++) {
+      const ex = list[i];
+      if (!ex) continue;
+      const exHi = normalizeTextForComparison(ex.headlineHi || '');
+      const exEn = normalizeTextForComparison(ex.headlineEn || '');
+      const exSum = normalizeTextForComparison(ex.summaryHi || ex.summaryEn || '');
+      if (candHi && exHi && (candHi === exHi || computeTextSimilarity(candHi, exHi) >= 0.72)) {
+        return true;
+      }
+      if (candEn && exEn && (candEn === exEn || computeTextSimilarity(candEn, exEn) >= 0.72)) {
+        return true;
+      }
+      if (candSum && exSum && candSum.length > 24 && computeTextSimilarity(candSum, exSum) >= 0.80) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function enrichAndDeduplicateCurrentAffairsItems(rawItems, existingStories, defaultCategory, defaultSource, targetMonthKey) {
+    const items = Array.isArray(rawItems) ? rawItems : [];
+    const nowMs = Date.now();
+    const nowDate = new Date(nowMs);
+    const fallbackMonth = `${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, '0')}`;
+    const monthKey = String(targetMonthKey || fallbackMonth).trim();
+    const yearKey = monthKey.split('-')[0] || String(nowDate.getFullYear());
+    const runningPool = Array.isArray(existingStories) ? existingStories.slice() : [];
+    const results = [];
+
+    items.forEach((raw, idx) => {
+      if (!raw || typeof raw !== 'object') return;
+      const headHi = convertKrutiDevInText(String(raw.headlineHi || raw.titleHi || raw.headline || raw.title || '').trim());
+      const headEn = convertKrutiDevInText(String(raw.headlineEn || raw.titleEn || raw.headline || raw.title || headHi).trim());
+      const sumHi = convertKrutiDevInText(String(raw.summaryHi || raw.summary || raw.descriptionHi || headHi).trim());
+      const sumEn = convertKrutiDevInText(String(raw.summaryEn || raw.descriptionEn || raw.summary || sumHi).trim());
+      if (!headHi && !headEn) return;
+
+      const candidate = {
+        headlineHi: headHi || headEn,
+        headlineEn: headEn || headHi,
+        summaryHi: sumHi || headHi,
+        summaryEn: sumEn || sumHi
+      };
+      if (isDuplicateCurrentAffair(candidate, runningPool)) {
+        return;
+      }
+
+      let cat = String(raw.category || defaultCategory || 'chhattisgarh').toLowerCase().trim();
+      if (cat === 'all' || !['chhattisgarh', 'national', 'international'].includes(cat)) {
+        const combined = `${headHi} ${headEn} ${sumHi}`.toLowerCase();
+        if (/छत्तीसगढ़|रायपुर|बस्तर|बिलासपुर|सरगुजा|chhattisgarh|raipur|cgpsc|vyapam|महतारी|धान/.test(combined)) {
+          cat = 'chhattisgarh';
+        } else if (/विश्व|अंतर्राष्ट्रीय|संयुक्त राष्ट्र|नासा|world|international|global|un |unesco|summit/.test(combined)) {
+          cat = 'international';
+        } else {
+          cat = 'national';
+        }
+      }
+
+      const itemMonth = String(raw.monthKey || monthKey).trim();
+      const itemYear = itemMonth.split('-')[0] || yearKey;
+      const itemMs = nowMs + idx;
+      const itemIso = new Date(itemMs).toISOString();
+
+      const stObj = {
+        id: 'ca_' + itemMs + '_' + Math.random().toString(36).slice(2, 6),
+        category: cat,
+        headlineHi: candidate.headlineHi,
+        headlineEn: candidate.headlineEn,
+        summaryHi: candidate.summaryHi,
+        summaryEn: candidate.summaryEn,
+        sourceName: String(raw.sourceName || defaultSource || 'PIB / DPR Chhattisgarh').trim(),
+        monthKey: itemMonth,
+        yearKey: itemYear,
+        dateIso: String(raw.dateLabel || raw.dateIso || itemIso.slice(0, 10)),
+        createdAtMs: itemMs,
+        expiresAtMs: itemMs + 86400000,
+        createdAtIso: itemIso,
+        updatedAtIso: itemIso
+      };
+      runningPool.push(stObj);
+      results.push(stObj);
+    });
+
+    return results;
+  }
+
+  async function generateCurrentAffairsWithAi(options) {
+    const opts = options || {};
+    const mode = opts.mode || 'hourly';
+    const count = Math.max(1, Math.min(15, Number(opts.count || 5)));
+    const category = opts.category || 'ALL';
+    const monthKey = opts.monthKey || new Date().toISOString().slice(0, 7);
+    const existingStories = Array.isArray(opts.existingStories) ? opts.existingStories : [];
+    const existingHeadlines = existingStories
+      .slice(0, 35)
+      .map((s) => `- ${s.headlineHi || s.headlineEn}`)
+      .join('\n');
+
+    const schemaInstruction = `Return ONLY a valid JSON array of Current Affairs objects with this exact schema:
+[
+  {
+    "category": "chhattisgarh" | "national" | "international",
+    "headlineHi": "औपचारिक हिन्दी (देवनागरी) में करंट अफेयर्स शीर्षक",
+    "headlineEn": "Clear English headline",
+    "summaryHi": "परीक्षा उपयोगी विस्तृत मुख्य तथ्य एवं विवरण (हिन्दी में 2-4 वाक्य)",
+    "summaryEn": "Comprehensive exam-focused summary and key facts (2-4 sentences in English)",
+    "sourceName": "PIB / DPR Chhattisgarh / Official Source"
+  }
+]
+CRITICAL DEDUPLICATION RULE: Do NOT repeat or rephrase any of these existing headlines:
+${existingHeadlines || '(None)'}`;
+
+    let rawInputText = String(opts.rawText || '').trim();
+
+    if (mode === 'file' && opts.file) {
+      const file = opts.file;
+      const kind = await detectUploadedFileKind(file, '');
+      if (kind === 'pdf' && window.AndroidBridge && typeof window.AndroidBridge.initPdfUpload === 'function') {
+        const uploaded = await uploadPdfToAndroidBridge(file);
+        if (uploaded && uploaded.pageCount > 0) {
+          const allExtracted = [];
+          try {
+            const maxP = Math.min(uploaded.pageCount, 10);
+            for (let p = 1; p <= maxP; p += 2) {
+              const endP = Math.min(maxP, p + 1);
+              if (typeof opts.onProgress === 'function') {
+                opts.onProgress(`📄 PDF पृष्ठ ${p}-${endP} से करंट अफेयर्स निकाले जा रहे हैं...`);
+              }
+              const resJson = await callAndroidPdfVisionBatch(
+                uploaded.uploadId,
+                p,
+                endP,
+                `Extract all important Competitive Exam Current Affairs updates visible on pages ${p} to ${endP}.\n${schemaInstruction}`
+              );
+              const parsed = parseAiJsonArraySafely(resJson);
+              if (Array.isArray(parsed)) allExtracted.push(...parsed);
+            }
+          } finally {
+            if (typeof window.AndroidBridge.cleanupPdfUpload === 'function') {
+              window.AndroidBridge.cleanupPdfUpload(uploaded.uploadId);
+            }
+          }
+          if (allExtracted.length > 0) return allExtracted;
+        }
+      } else if (kind === 'image' && window.AndroidBridge && typeof window.AndroidBridge.analyzeQuestionImageWithAi === 'function') {
+        const dataUrl = await readFileAsDataUrl(file);
+        const resJson = await callAndroidAiBridge(
+          `Carefully read this newspaper/magazine image and extract all Competitive Exam Current Affairs updates in bilingual Hindi and English.\n${schemaInstruction}`,
+          dataUrl
+        );
+        const parsed = parseAiJsonArraySafely(resJson);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+      try {
+        rawInputText = await extractTextFromUploadedFile(file, opts.onProgress, {});
+      } catch (_) {}
+    }
+
+    const promptText = (mode === 'paste' || (mode === 'file' && rawInputText))
+      ? `You are an expert Chhattisgarh PSC (CGPSC), Vyapam & UPSC Current Affairs Editor.
+Read the following source text and extract all distinct, exam-relevant Current Affairs updates in both Hindi (Devanagari) and English:
+"""
+${rawInputText.slice(0, 28000)}
+"""
+${schemaInstruction}`
+      : `You are an expert Chhattisgarh PSC (CGPSC), Vyapam, UPSC & SSC Current Affairs Editor.
+Generate ${count} fresh, high-yield, non-repeating Current Affairs updates for ${monthKey} (${category === 'ALL' ? 'covering Chhattisgarh State schemes/decisions, National PIB news, and International/Science events' : `specifically focused on ${category}`}).
+${opts.topicPrompt ? `Focus Topic / Instruction: "${opts.topicPrompt}"` : ''}
+${schemaInstruction}`;
+
+    try {
+      const resJson = await callAndroidAiBridge(promptText);
+      const parsed = parseAiJsonArraySafely(resJson);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    } catch (_) {}
+
+    // Fallback intelligent parser when pasting text or topic on web without AndroidBridge
+    if (rawInputText) {
+      const paragraphs = rawInputText
+        .split(/\n\s*\n|\r?\n(?=[•\-\d]+\s*[\.\)])/)
+        .map((p) => convertKrutiDevInText(p.trim()))
+        .filter((p) => p.length > 25);
+      return paragraphs.slice(0, 12).map((para) => {
+        const firstLine = para.split(/\r?\n|\.|।/)[0].trim().slice(0, 120);
+        return {
+          category: category === 'ALL' ? 'chhattisgarh' : category,
+          headlineHi: firstLine,
+          headlineEn: firstLine,
+          summaryHi: para,
+          summaryEn: para,
+          sourceName: opts.sourceName || 'PIB / DPR Chhattisgarh'
+        };
+      });
+    }
+
+    if (opts.topicPrompt) {
+      return [
+        {
+          category: category === 'ALL' ? 'chhattisgarh' : category,
+          headlineHi: `${opts.topicPrompt} — परीक्षा उपयोगी मुख्य बिंदु`,
+          headlineEn: `${opts.topicPrompt} — Key Exam Highlights`,
+          summaryHi: `${opts.topicPrompt} से संबंधित महत्वपूर्ण तथ्य एवं नवीनतम आधिकारिक अपडेट जो आगामी प्रतियोगी परीक्षाओं (CGPSC, CG Vyapam, SSC, PSC) के लिए अत्यंत उपयोगी हैं।`,
+          summaryEn: `Important official facts and recent updates regarding ${opts.topicPrompt} for upcoming competitive examinations.`,
+          sourceName: opts.sourceName || 'PIB / DPR Chhattisgarh'
+        }
+      ];
+    }
+
+    return [];
+  }
+
+  async function generateCurrentAffairsQuizQuestionsWithAi(storiesList, requestedCount, scopeLabel) {
+    const stories = Array.isArray(storiesList) ? storiesList.filter((s) => s && (s.headlineHi || s.headlineEn)) : [];
+    const count = Math.max(1, Math.min(100, Number(requestedCount || 10)));
+    if (stories.length === 0) return [];
+
+    const contextDigest = stories.slice(0, 40).map((s, idx) =>
+      `[${idx + 1}] Category: ${s.category || 'Current Affairs'} | Month: ${s.monthKey || ''}\nHeadline (HI): ${s.headlineHi || ''}\nHeadline (EN): ${s.headlineEn || ''}\nDetails (HI): ${s.summaryHi || ''}\nDetails (EN): ${s.summaryEn || s.summaryHi || ''}`
+    ).join('\n\n');
+
+    const promptText = `You are a Senior Competitive Exam Question Paper Setter for CGPSC, CG Vyapam, UPSC, and SSC.
+Generate ${count} high-quality Bilingual (Hindi Devanagari + English) Multiple-Choice Questions (MCQs) STRICTLY based on the following Current Affairs updates (${scopeLabel || 'Recent Current Affairs'}):
+
+${contextDigest}
+
+Return ONLY a valid JSON array of ${count} question objects with this exact schema:
+[
+  {
+    "questionHi": "औपचारिक हिन्दी में प्रश्न...",
+    "questionEn": "Clear English question...",
+    "optionsHi": ["विकल्प A", "विकल्प B", "विकल्प C", "विकल्प D"],
+    "optionsEn": ["Option A", "Option B", "Option C", "Option D"],
+    "correctOptionIndex": 0,
+    "explanationHi": "विस्तृत हिन्दी व्याख्या...",
+    "explanationEn": "Detailed English explanation...",
+    "subjectTag": "Current Affairs"
+  }
+]`;
+
+    try {
+      const resJson = await callAndroidAiBridge(promptText);
+      const parsed = parseAiJsonArraySafely(resJson);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.slice(0, count).map((q, idx) => {
+          const optsHi = Array.isArray(q.optionsHi) && q.optionsHi.length === 4 ? q.optionsHi : ['विकल्प A', 'विकल्प B', 'विकल्प C', 'विकल्प D'];
+          const optsEn = Array.isArray(q.optionsEn) && q.optionsEn.length === 4 ? q.optionsEn : optsHi;
+          const corr = Math.max(0, Math.min(3, Number(q.correctOptionIndex != null ? q.correctOptionIndex : 0)));
+          return {
+            id: 'ca_q_' + Date.now() + '_' + idx,
+            subjectTag: 'Current Affairs',
+            topic: scopeLabel || 'Current Affairs',
+            questionHi: String(q.questionHi || q.questionEn || ''),
+            questionEn: String(q.questionEn || q.questionHi || ''),
+            optionsHi: optsHi,
+            optionsEn: optsEn,
+            optA_Hi: optsHi[0],
+            optB_Hi: optsHi[1],
+            optC_Hi: optsHi[2],
+            optD_Hi: optsHi[3],
+            optA_En: optsEn[0],
+            optB_En: optsEn[1],
+            optC_En: optsEn[2],
+            optD_En: optsEn[3],
+            correctIndex: corr,
+            correctOptionIndex: corr,
+            explanationHi: String(q.explanationHi || q.explanationEn || ''),
+            explanationEn: String(q.explanationEn || q.explanationHi || '')
+          };
+        });
+      }
+    } catch (_) {}
+
+    // Grounded deterministic builder strictly from the selected Current Affairs stories
+    const built = [];
+    const catLabelsHi = {
+      chhattisgarh: 'छत्तीसगढ़ राज्य समसामयिकी (Chhattisgarh State Current Affairs)',
+      national: 'राष्ट्रीय समसामयिकी एवं नीतियां (National Current Affairs)',
+      international: 'अंतर्राष्ट्रीय एवं विज्ञान-प्रौद्योगिकी (International & Science)'
+    };
+    const catLabelsEn = {
+      chhattisgarh: 'Chhattisgarh State Current Affairs',
+      national: 'National Current Affairs & Policies',
+      international: 'International Relations & Science-Tech'
+    };
+
+    for (let i = 0; i < count; i++) {
+      const st = stories[i % stories.length];
+      const other1 = stories[(i + 1) % stories.length];
+      const other2 = stories[(i + 2) % stories.length];
+      const other3 = stories[(i + 3) % stories.length];
+      const variant = i % 2;
+
+      if (variant === 0 || stories.length < 4) {
+        const correctCat = ['chhattisgarh', 'national', 'international'].includes(st.category) ? st.category : 'chhattisgarh';
+        const optsHi = [
+          catLabelsHi.chhattisgarh,
+          catLabelsHi.national,
+          catLabelsHi.international,
+          'उपरोक्त में से कोई नहीं'
+        ];
+        const optsEn = [
+          catLabelsEn.chhattisgarh,
+          catLabelsEn.national,
+          catLabelsEn.international,
+          'None of the above'
+        ];
+        const corrIdx = correctCat === 'chhattisgarh' ? 0 : (correctCat === 'national' ? 1 : 2);
+        built.push({
+          id: 'ca_q_' + Date.now() + '_' + i,
+          subjectTag: 'Current Affairs',
+          topic: scopeLabel || 'Current Affairs',
+          questionHi: `हालिया समसामयिकी में चर्चित "${st.headlineHi}" मुख्य रूप से किस श्रेणी और विवरण से संबंधित है?\nसंदर्भ: ${st.summaryHi}`,
+          questionEn: `With reference to recent Current Affairs, "${st.headlineEn || st.headlineHi}" primarily pertains to which category?\nContext: ${st.summaryEn || st.summaryHi}`,
+          optionsHi: optsHi,
+          optionsEn: optsEn,
+          optA_Hi: optsHi[0],
+          optB_Hi: optsHi[1],
+          optC_Hi: optsHi[2],
+          optD_Hi: optsHi[3],
+          optA_En: optsEn[0],
+          optB_En: optsEn[1],
+          optC_En: optsEn[2],
+          optD_En: optsEn[3],
+          correctIndex: corrIdx,
+          correctOptionIndex: corrIdx,
+          explanationHi: `${st.headlineHi}: ${st.summaryHi} (स्रोत: ${st.sourceName || 'PIB / DPR'})`,
+          explanationEn: `${st.headlineEn || st.headlineHi}: ${st.summaryEn || st.summaryHi} (Source: ${st.sourceName || 'PIB / DPR'})`
+        });
+      } else {
+        const corrIdx = i % 4;
+        const distractorsHi = [
+          other1.headlineHi,
+          other2.headlineHi,
+          other3.headlineHi
+        ];
+        const distractorsEn = [
+          other1.headlineEn || other1.headlineHi,
+          other2.headlineEn || other2.headlineHi,
+          other3.headlineEn || other3.headlineHi
+        ];
+        const optsHi = [];
+        const optsEn = [];
+        let dPtr = 0;
+        for (let slot = 0; slot < 4; slot++) {
+          if (slot === corrIdx) {
+            optsHi.push(st.headlineHi);
+            optsEn.push(st.headlineEn || st.headlineHi);
+          } else {
+            optsHi.push(distractorsHi[dPtr] || `विकल्प ${slot + 1}`);
+            optsEn.push(distractorsEn[dPtr] || `Option ${slot + 1}`);
+            dPtr += 1;
+          }
+        }
+        built.push({
+          id: 'ca_q_' + Date.now() + '_' + i,
+          subjectTag: 'Current Affairs',
+          topic: scopeLabel || 'Current Affairs',
+          questionHi: `निम्नलिखित में से कौन-सा समसामयिकी विषय इस तथ्य से संबंधित है — "${st.summaryHi}"?`,
+          questionEn: `Which of the following Current Affairs headlines corresponds to the key fact — "${st.summaryEn || st.summaryHi}"?`,
+          optionsHi: optsHi,
+          optionsEn: optsEn,
+          optA_Hi: optsHi[0],
+          optB_Hi: optsHi[1],
+          optC_Hi: optsHi[2],
+          optD_Hi: optsHi[3],
+          optA_En: optsEn[0],
+          optB_En: optsEn[1],
+          optC_En: optsEn[2],
+          optD_En: optsEn[3],
+          correctIndex: corrIdx,
+          correctOptionIndex: corrIdx,
+          explanationHi: `सही उत्तर: ${st.headlineHi} — ${st.summaryHi}`,
+          explanationEn: `Correct Answer: ${st.headlineEn || st.headlineHi} — ${st.summaryEn || st.summaryHi}`
+        });
+      }
+    }
+    return built;
+  }
+
   window.CGpediaAdmin = {
     renderAdminConsole,
     parseRawImportFile,
@@ -12997,6 +13855,10 @@ Return ONLY a valid JSON array of objects:
     autoCategorizeQuestionFromMaster,
     migrateExistingQuestionBankRecords,
     upsertCategoryMasterItem,
-    renameCategoryMasterItem
+    renameCategoryMasterItem,
+    isDuplicateCurrentAffair,
+    enrichAndDeduplicateCurrentAffairsItems,
+    generateCurrentAffairsWithAi,
+    generateCurrentAffairsQuizQuestionsWithAi
   };
 })();

@@ -46,6 +46,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import com.example.security.configureAppCheck
 import com.example.service.CgpediaNotificationHelper
+import com.example.service.CurrentAffairsSyncJobService
 import com.google.firebase.Firebase
 import com.google.firebase.ai.ai
 import com.google.firebase.ai.type.content
@@ -129,6 +130,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         configureAppCheck(this, intent)
         CgpediaNotificationHelper.ensureChannels(this)
+        CurrentAffairsSyncJobService.schedulePeriodicSync(this)
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_USER
         enableEdgeToEdge()
         // Default exam security flag; dynamically controlled via AndroidBridge.setSecureScreen(...)
@@ -367,7 +369,7 @@ class CgpediaAndroidBridge(private val activity: Activity) {
         inputContent: com.google.firebase.ai.type.Content,
         timeoutMs: Long
     ): String {
-        val candidateModels = listOf("gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.0-flash")
+        val candidateModels = listOf("gemini-3.8-flash", "gemini-3.5-flash-lite")
         var lastError: Exception? = null
         for (modelId in candidateModels) {
             try {
