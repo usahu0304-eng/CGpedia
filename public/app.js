@@ -299,7 +299,7 @@
     if (state.authSession.isAuthenticated !== true) return false;
     const uid = String((state.student && state.student.uid) || '').trim();
     const email = String((state.student && state.student.email) || '').trim();
-    if (!uid || uid.startsWith('STU-')) return false;
+    if (!uid) return false;
     return isValidRealEmailAddress(email);
   }
 
@@ -776,12 +776,13 @@
     const exams = window.CGpediaCloud ? window.CGpediaCloud.EXAM_CATEGORIES : [];
     const liveTests = (state.tests || []).filter((t) => t.status === 'published' && (state.selectedExamFilter === 'ALL' || t.examCode === state.selectedExamFilter));
     const nowMs = Date.now();
-    const activeStories = (state.stories || []).filter((s) => {
+    const activeStories = sortStoriesLatestFirst((state.stories || []).filter((s) => {
       if (s.expiresAtMs && Number(s.expiresAtMs) <= nowMs) return false;
-      const createdMs = Number(s.createdAtMs || (s.createdAtIso ? Date.parse(s.createdAtIso) : 0) || 0);
+      const createdMs = getStoryTimestampMs(s);
       if (createdMs > 0 && (nowMs - createdMs) > 86400000) return false;
       return true;
-    });
+    }));
+    const groupedStoryCategories = groupStoriesByCategoryCircles(activeStories);
     const pinnedNotifs = (state.notifications || []).filter((n) => n.isPinned);
 
     root.innerHTML = `
@@ -814,29 +815,38 @@
         </div>
       ` : ''}
 
-      <!-- Daily Current Affairs Stories & Instant Quiz Strip -->
+      <!-- Daily Dose Strip (Instagram-Style Category Story Circles + Daily Dose Quiz) -->
       <div class="card">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px;">
-          <h2 style="font-size:0.98rem;font-weight:800;">⚡ Daily Current Affairs Stories &amp; Instant Quiz</h2>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+          <h2 style="font-size:1.02rem;font-weight:800;">Daily Dose</h2>
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
             ${isCurrentUserAdmin() ? `<button class="btn btn-outline btn-sm" id="homeAdminPostStoryBtn">➕ Post Story</button>` : ''}
-            <button class="btn btn-primary btn-sm" id="homeLaunchDailyCaQuizBtn">🎯 Attempt Current Affairs Quiz</button>
+            <button class="btn btn-primary btn-sm" id="homeLaunchDailyCaQuizBtn">Daily Dose Quiz</button>
           </div>
         </div>
         ${activeStories.length === 0 ? `
           <div style="font-size:0.83rem;color:var(--text-muted);padding:6px 0;">
-            आज का करंट अफेयर्स डाइजेस्ट एवं क्विज़ तैयार है — ऊपर <strong>Attempt Current Affairs Quiz</strong> पर क्लिक करें।
+            आज का करंट अफेयर्स डाइजेस्ट एवं क्विज़ तैयार है — ऊपर <strong>Daily Dose Quiz</strong> पर क्लिक करें।
           </div>
         ` : `
-          <div class="stories-strip">
-            ${activeStories.map((st, idx) => `
-              <div class="story-item" data-open-story="${idx}">
-                <div class="story-ring" style="background:linear-gradient(45deg,#f09433 0%,#e6683c 25%,#dc2743 50%,#cc2366 75%,#bc1888 100%);padding:2.5px;">
-                  <div class="story-ring-inner">${st.category === 'chhattisgarh' ? '🌾' : st.category === 'national' ? '🇮🇳' : '🌍'}</div>
+          <div class="stories-strip" style="gap:18px;padding:4px 2px;">
+            ${groupedStoryCategories.map((catGroup) => {
+              const latestStory = catGroup.stories[0];
+              const thumbUrl = getStoryImageUrl(latestStory);
+              return `
+                <div class="story-item" data-open-story-category="${esc(catGroup.category)}" style="min-width:86px;cursor:pointer;">
+                  <div class="story-ring" style="position:relative;width:68px;height:68px;background:linear-gradient(45deg,#f09433 0%,#e6683c 25%,#dc2743 50%,#cc2366 75%,#bc1888 100%);padding:3px;border-radius:50%;">
+                    <div class="story-ring-inner" style="width:100%;height:100%;border-radius:50%;overflow:hidden;position:relative;background:#0F2557;display:flex;align-items:center;justify-content:center;">
+                      ${thumbUrl ? `<img src="${esc(thumbUrl)}" alt="${esc(catGroup.labelEn)}" style="width:100%;height:100%;object-fit:cover;display:block;" />` : `<span style="font-size:1.55rem;">${catGroup.icon}</span>`}
+                      <span style="position:absolute;inset:0;background:rgba(8,15,38,0.28);display:flex;align-items:center;justify-content:center;font-size:1.25rem;text-shadow:0 2px 6px rgba(0,0,0,0.65);">${catGroup.icon}</span>
+                    </div>
+                    <span style="position:absolute;bottom:-2px;right:-2px;background:#EA580C;color:#fff;font-size:0.66rem;font-weight:800;min-width:20px;height:20px;padding:0 5px;border-radius:99px;display:flex;align-items:center;justify-content:center;border:2px solid var(--surface);box-shadow:0 2px 6px rgba(0,0,0,0.3);">${catGroup.stories.length}</span>
+                  </div>
+                  <span class="story-caption" style="font-weight:800;font-size:0.77rem;margin-top:5px;">${esc(catGroup.labelEn)}</span>
+                  <span style="font-size:0.66rem;color:var(--text-muted);line-height:1.1;">${esc(formatStoryUploadTimeShort(latestStory))}</span>
                 </div>
-                <span class="story-caption">${esc(st.headlineHi || st.titleHi)}</span>
-              </div>
-            `).join('')}
+              `;
+            }).join('')}
           </div>
         `}
       </div>
@@ -1046,10 +1056,14 @@
       dailyQuizBtn.onclick = () => launchInstantDailyQuiz();
     }
 
-    document.querySelectorAll('[data-open-story]').forEach((item) => {
+    const groupedByCat = groupStoriesByCategoryCircles(activeStories);
+    document.querySelectorAll('[data-open-story-category]').forEach((item) => {
       item.onclick = () => {
-        const idx = Number(item.getAttribute('data-open-story'));
-        if (activeStories[idx]) openStoryViewerModal(idx, activeStories);
+        const catKey = item.getAttribute('data-open-story-category');
+        const foundGroup = groupedByCat.find((g) => g.category === catKey);
+        if (foundGroup && foundGroup.stories.length > 0) {
+          openStoryViewerModal(0, foundGroup.stories);
+        }
       };
     });
   }
@@ -1743,35 +1757,45 @@
     const quizDuration = Number(state.caQuizDurationMinutes || 12);
 
     const nowMs = Date.now();
-    const recent24hStories = allStories.filter((s) => {
+    const recent24hStories = sortStoriesLatestFirst(allStories.filter((s) => {
       if (s.expiresAtMs && Number(s.expiresAtMs) <= nowMs) return false;
-      const createdMs = Number(s.createdAtMs || (s.createdAtIso ? Date.parse(s.createdAtIso) : 0) || 0);
+      const createdMs = getStoryTimestampMs(s);
       return createdMs > 0 && (nowMs - createdMs) <= 86400000;
-    });
+    }));
+    const groupedRecentCategories = groupStoriesByCategoryCircles(recent24hStories);
 
     root.innerHTML = `
-      <!-- Top Story Strip for Today's Stories -->
+      <!-- Top Story Strip for Daily Dose -->
       ${(recent24hStories.length > 0 || isCurrentUserAdmin()) ? `
         <div class="card" style="margin-bottom:14px;">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px;">
-            <h2 style="font-size:0.96rem;font-weight:800;">📱 समसामयिकी स्टोरीज़ / Latest Current Affairs Stories</h2>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+            <h2 style="font-size:1.02rem;font-weight:800;">Daily Dose</h2>
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-              <span style="font-size:0.75rem;color:var(--text-secondary);">Tap any circle to view full story</span>
               ${isCurrentUserAdmin() ? `<button class="btn btn-outline btn-sm" id="caAdminPostStoryBtn">➕ Post Story</button>` : ''}
+              <button class="btn btn-primary btn-sm" id="caLaunchDailyDoseQuizBtn">Daily Dose Quiz</button>
             </div>
           </div>
           ${recent24hStories.length === 0 ? `
             <div style="font-size:0.82rem;color:var(--text-muted);padding:4px 0;">अभी कोई सक्रिय स्टोरी नहीं है। नया करंट अफेयर्स स्टोरी पोस्ट करने के लिए <strong>➕ Post Story</strong> पर क्लिक करें।</div>
           ` : `
-            <div class="stories-strip">
-              ${recent24hStories.map((st, idx) => `
-                <div class="story-item" data-ca-open-story="${idx}">
-                  <div class="story-ring" style="background:linear-gradient(45deg,#f09433 0%,#e6683c 25%,#dc2743 50%,#cc2366 75%,#bc1888 100%);padding:2.5px;">
-                    <div class="story-ring-inner">${st.category === 'chhattisgarh' ? '🌾' : st.category === 'national' ? '🇮🇳' : '🌍'}</div>
+            <div class="stories-strip" style="gap:18px;padding:4px 2px;">
+              ${groupedRecentCategories.map((catGroup) => {
+                const latestStory = catGroup.stories[0];
+                const thumbUrl = getStoryImageUrl(latestStory);
+                return `
+                  <div class="story-item" data-ca-open-story-cat="${esc(catGroup.category)}" style="min-width:86px;cursor:pointer;">
+                    <div class="story-ring" style="position:relative;width:68px;height:68px;background:linear-gradient(45deg,#f09433 0%,#e6683c 25%,#dc2743 50%,#cc2366 75%,#bc1888 100%);padding:3px;border-radius:50%;">
+                      <div class="story-ring-inner" style="width:100%;height:100%;border-radius:50%;overflow:hidden;position:relative;background:#0F2557;display:flex;align-items:center;justify-content:center;">
+                        ${thumbUrl ? `<img src="${esc(thumbUrl)}" alt="${esc(catGroup.labelEn)}" style="width:100%;height:100%;object-fit:cover;display:block;" />` : `<span style="font-size:1.55rem;">${catGroup.icon}</span>`}
+                        <span style="position:absolute;inset:0;background:rgba(8,15,38,0.28);display:flex;align-items:center;justify-content:center;font-size:1.25rem;text-shadow:0 2px 6px rgba(0,0,0,0.65);">${catGroup.icon}</span>
+                      </div>
+                      <span style="position:absolute;bottom:-2px;right:-2px;background:#EA580C;color:#fff;font-size:0.66rem;font-weight:800;min-width:20px;height:20px;padding:0 5px;border-radius:99px;display:flex;align-items:center;justify-content:center;border:2px solid var(--surface);box-shadow:0 2px 6px rgba(0,0,0,0.3);">${catGroup.stories.length}</span>
+                    </div>
+                    <span class="story-caption" style="font-weight:800;font-size:0.77rem;margin-top:5px;">${esc(catGroup.labelEn)}</span>
+                    <span style="font-size:0.66rem;color:var(--text-muted);line-height:1.1;">${esc(formatStoryUploadTimeShort(latestStory))}</span>
                   </div>
-                  <span class="story-caption">${esc(st.headlineHi || st.titleHi)}</span>
-                </div>
-              `).join('')}
+                `;
+              }).join('')}
             </div>
           `}
         </div>
@@ -1911,12 +1935,20 @@
     `;
 
     // Bind Story strip on Current Affairs page
-    root.querySelectorAll('[data-ca-open-story]').forEach((el) => {
+    root.querySelectorAll('[data-ca-open-story-cat]').forEach((el) => {
       el.onclick = () => {
-        const idx = Number(el.getAttribute('data-ca-open-story'));
-        if (recent24hStories[idx]) openStoryViewerModal(idx, recent24hStories);
+        const catKey = el.getAttribute('data-ca-open-story-cat');
+        const foundGroup = groupedRecentCategories.find((g) => g.category === catKey);
+        if (foundGroup && foundGroup.stories.length > 0) {
+          openStoryViewerModal(0, foundGroup.stories);
+        }
       };
     });
+
+    const caDailyDoseQuizBtn = document.getElementById('caLaunchDailyDoseQuizBtn');
+    if (caDailyDoseQuizBtn) {
+      caDailyDoseQuizBtn.onclick = () => launchInstantDailyQuiz();
+    }
 
     const caAdminPostBtn = document.getElementById('caAdminPostStoryBtn');
     if (caAdminPostBtn) {
@@ -4446,6 +4478,104 @@
 
   let activeStoryTimerId = null;
 
+  function normalizeStoryCategory(rawCat) {
+    const c = String(rawCat || '').trim().toLowerCase();
+    if (c === 'chhattisgarh' || c.includes('chhattisgarh') || c.includes('cg')) return 'chhattisgarh';
+    if (c === 'national' || c.includes('national') || c.includes('india') || c.includes('pib')) return 'national';
+    return 'international';
+  }
+
+  function getStoryTimestampMs(st) {
+    if (!st) return 0;
+    const ms = Number(st.createdAtMs || (st.createdAtIso ? Date.parse(st.createdAtIso) : 0) || 0);
+    return Number.isFinite(ms) && ms > 0 ? ms : 0;
+  }
+
+  function sortStoriesLatestFirst(list) {
+    return (Array.isArray(list) ? list.slice() : []).sort((a, b) => {
+      return getStoryTimestampMs(b) - getStoryTimestampMs(a);
+    });
+  }
+
+  function formatStoryUploadTimeShort(st) {
+    const ms = getStoryTimestampMs(st);
+    if (!ms) return 'Just now';
+    const d = new Date(ms);
+    return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+  }
+
+  function formatStoryUploadTimeFull(st) {
+    const ms = getStoryTimestampMs(st);
+    if (!ms) return 'Uploaded recently';
+    const d = new Date(ms);
+    const now = new Date();
+    const isToday = d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    const timeStr = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+    const dateStr = isToday
+      ? `Today, ${timeStr}`
+      : `${d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}, ${timeStr}`;
+    const diffMin = Math.max(1, Math.floor((Date.now() - ms) / 60000));
+    const relStr = diffMin < 60
+      ? `${diffMin}m ago`
+      : (diffMin < 1440 ? `${Math.floor(diffMin / 60)}h ago` : `${Math.floor(diffMin / 1440)}d ago`);
+    return `${dateStr} • ${relStr}`;
+  }
+
+  function getStoryImageUrl(st) {
+    if (!st) return '';
+    if (st.imageUrl && String(st.imageUrl).trim()) {
+      return String(st.imageUrl).trim();
+    }
+    if (window.CGpediaAdmin && typeof window.CGpediaAdmin.generateAutoStoryImageUrl === 'function') {
+      const generated = window.CGpediaAdmin.generateAutoStoryImageUrl(st);
+      if (generated) {
+        st.imageUrl = generated;
+        return generated;
+      }
+    }
+    const cat = normalizeStoryCategory(st.category);
+    const palette = cat === 'chhattisgarh'
+      ? { bg1: '#064E3B', bg2: '#047857', accent: '#34D399', badge: 'CHHATTISGARH DAILY DOSE', icon: '🌾' }
+      : cat === 'national'
+        ? { bg1: '#1E3A8A', bg2: '#1D4ED8', accent: '#FBBF24', badge: 'NATIONAL DAILY DOSE', icon: '🇮🇳' }
+        : { bg1: '#311042', bg2: '#6D28D9', accent: '#38BDF8', badge: 'INTERNATIONAL DAILY DOSE', icon: '🌍' };
+    const headline = String(st.headlineEn || st.titleEn || st.headlineHi || st.titleHi || 'Daily Current Affairs').replace(/[<>&"']/g, ' ').slice(0, 72);
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 420" width="800" height="420">
+      <defs>
+        <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="${palette.bg1}"/>
+          <stop offset="100%" stop-color="${palette.bg2}"/>
+        </linearGradient>
+      </defs>
+      <rect width="800" height="420" rx="22" fill="url(#g)"/>
+      <circle cx="700" cy="80" r="130" fill="${palette.accent}" opacity="0.14"/>
+      <circle cx="100" cy="360" r="160" fill="#ffffff" opacity="0.06"/>
+      <rect x="38" y="34" width="290" height="38" rx="19" fill="rgba(255,255,255,0.16)"/>
+      <text x="56" y="59" fill="#ffffff" font-family="sans-serif" font-size="16" font-weight="bold">${palette.icon} ${palette.badge}</text>
+      <text x="42" y="195" fill="#ffffff" font-family="sans-serif" font-size="28" font-weight="bold">${headline}</text>
+      <text x="42" y="370" fill="${palette.accent}" font-family="sans-serif" font-size="16" font-weight="bold">⚡ AI Curated Visual • CGPSC &amp; UPSC Exam Fact</text>
+    </svg>`;
+    const url = 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+    st.imageUrl = url;
+    return url;
+  }
+
+  function groupStoriesByCategoryCircles(stories) {
+    const sorted = sortStoriesLatestFirst(stories || []);
+    const categoriesMeta = [
+      { category: 'chhattisgarh', labelEn: 'Chhattisgarh', labelHi: 'छत्तीसगढ़ करंट अफेयर्स', icon: '🌾' },
+      { category: 'national', labelEn: 'National', labelHi: 'राष्ट्रीय करंट अफेयर्स', icon: '🇮🇳' },
+      { category: 'international', labelEn: 'International', labelHi: 'अंतर्राष्ट्रीय करंट अफेयर्स', icon: '🌍' }
+    ];
+    return categoriesMeta.map((meta) => {
+      const catStories = sorted.filter((st) => normalizeStoryCategory(st.category) === meta.category);
+      return {
+        ...meta,
+        stories: catStories
+      };
+    }).filter((grp) => grp.stories.length > 0);
+  }
+
   function openStoryViewerModal(storyOrIndex, optionalStoryList) {
     const storyRoot = document.getElementById('storyModalContainer');
     if (!storyRoot) return;
@@ -4456,21 +4586,29 @@
     }
 
     const nowMs = Date.now();
-    const defaultList = (state.stories || []).filter((s) => {
+    const defaultList = sortStoriesLatestFirst((state.stories || []).filter((s) => {
       if (s.expiresAtMs && Number(s.expiresAtMs) <= nowMs) return false;
-      const createdMs = Number(s.createdAtMs || (s.createdAtIso ? Date.parse(s.createdAtIso) : 0) || 0);
+      const createdMs = getStoryTimestampMs(s);
       return createdMs === 0 || (nowMs - createdMs) <= 86400000;
-    });
+    }));
 
-    const storiesList = Array.isArray(optionalStoryList) && optionalStoryList.length > 0
+    const rawList = Array.isArray(optionalStoryList) && optionalStoryList.length > 0
       ? optionalStoryList
       : (typeof storyOrIndex === 'object' && storyOrIndex ? [storyOrIndex] : defaultList);
 
+    // Ensure stories are always sorted Latest First, Oldest Last
+    const targetStoryObj = typeof storyOrIndex === 'number' && rawList[storyOrIndex]
+      ? rawList[storyOrIndex]
+      : (typeof storyOrIndex === 'object' ? storyOrIndex : null);
+    const storiesList = sortStoriesLatestFirst(rawList);
+
     if (!storiesList.length) return;
 
-    let currentIndex = typeof storyOrIndex === 'number'
-      ? Math.max(0, Math.min(storiesList.length - 1, storyOrIndex))
-      : 0;
+    let currentIndex = 0;
+    if (targetStoryObj && targetStoryObj.id) {
+      const matchedIdx = storiesList.findIndex((s) => s.id === targetStoryObj.id);
+      if (matchedIdx !== -1) currentIndex = matchedIdx;
+    }
 
     let progressPct = 0;
     let isPaused = false;
@@ -4485,97 +4623,103 @@
       storyRoot.innerHTML = '';
     }
 
-    function formatRelativeTime(st) {
-      const ms = Number(st.createdAtMs || (st.createdAtIso ? Date.parse(st.createdAtIso) : 0) || 0);
-      if (!ms) return 'Recent Update';
-      const diffMin = Math.max(1, Math.floor((Date.now() - ms) / 60000));
-      if (diffMin < 60) return `${diffMin}m ago`;
-      const diffHr = Math.floor(diffMin / 60);
-      if (diffHr < 24) return `${diffHr}h ago`;
-      return new Date(ms).toLocaleDateString('hi-IN', { day: 'numeric', month: 'short' });
-    }
-
     function renderCurrentStorySlide() {
       const storyObj = storiesList[currentIndex];
       if (!storyObj) {
         closeViewer();
         return;
       }
-      const catIcon = storyObj.category === 'chhattisgarh' ? '🌾' : storyObj.category === 'national' ? '🇮🇳' : '🌍';
-      const catName = storyObj.category === 'chhattisgarh'
-        ? 'Chhattisgarh Update'
-        : storyObj.category === 'national'
-          ? 'National Current Affairs'
-          : 'International & Economy';
+      const normCat = normalizeStoryCategory(storyObj.category);
+      const catIcon = normCat === 'chhattisgarh' ? '🌾' : normCat === 'national' ? '🇮🇳' : '🌍';
+      const catName = normCat === 'chhattisgarh'
+        ? 'Chhattisgarh'
+        : normCat === 'national'
+          ? 'National'
+          : 'International';
       const adminUser = isCurrentUserAdmin();
+      const imageUrl = getStoryImageUrl(storyObj);
+      const uploadTimeFormatted = formatStoryUploadTimeFull(storyObj);
 
       storyRoot.innerHTML = `
-        <div class="modal-backdrop" id="instaStoryBackdrop" style="background:rgba(4,9,24,0.92);padding:10px;">
-          <div style="width:100%;max-width:430px;min-height:540px;max-height:92vh;background:linear-gradient(165deg,#0B193D 0%,#132D6B 55%,#1E1B4B 100%);color:#fff;border-radius:22px;border:1px solid rgba(255,255,255,0.16);box-shadow:0 24px 60px rgba(0,0,0,0.65);display:flex;flex-direction:column;justify-content:space-between;position:relative;overflow:hidden;user-select:none;">
+        <div class="modal-backdrop" id="instaStoryBackdrop" style="position:fixed;inset:0;width:100vw;height:100dvh;background:#040918;padding:0;margin:0;z-index:9999;display:flex;align-items:stretch;justify-content:center;">
+          <div style="width:100vw;height:100dvh;max-width:100vw;max-height:100dvh;background:linear-gradient(165deg,#07122E 0%,#0F2557 52%,#1B1440 100%);color:#fff;border-radius:0;border:none;display:flex;flex-direction:column;justify-content:space-between;position:relative;overflow:hidden;user-select:none;">
 
-            <!-- Top Segmented Instagram Story Progress Bars -->
-            <div style="padding:12px 14px 8px 14px;z-index:4;">
-              <div style="display:flex;gap:5px;margin-bottom:10px;">
+            <!-- Top Segmented Instagram/WhatsApp Full-Screen Story Progress Bars -->
+            <div style="padding:max(14px, env(safe-area-inset-top, 14px)) 16px 10px 16px;background:linear-gradient(180deg,rgba(4,9,24,0.85) 0%,rgba(4,9,24,0) 100%);z-index:4;">
+              <div style="display:flex;gap:5px;margin-bottom:12px;">
                 ${storiesList.map((_, idx) => {
                   const fill = idx < currentIndex ? 100 : (idx === currentIndex ? progressPct : 0);
                   return `
-                    <div style="flex:1;height:3.5px;background:rgba(255,255,255,0.26);border-radius:99px;overflow:hidden;">
+                    <div style="flex:1;height:3.5px;background:rgba(255,255,255,0.28);border-radius:99px;overflow:hidden;">
                       <div id="instaStoryProgBar_${idx}" style="width:${fill}%;height:100%;background:#fff;border-radius:99px;transition:width 0.08s linear;"></div>
                     </div>
                   `;
                 }).join('')}
               </div>
 
-              <!-- Story Author / Category Header + Admin Post/Delete Controls -->
+              <!-- Story Category Circle + Upload Time + Admin Post/Delete Controls -->
               <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-                <div style="display:flex;align-items:center;gap:9px;min-width:0;">
-                  <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(45deg,#f09433,#dc2743,#bc1888);padding:2px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                    <div style="width:100%;height:100%;border-radius:50%;background:#0F2557;display:flex;align-items:center;justify-content:center;font-size:1.05rem;">${catIcon}</div>
+                <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+                  <div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(45deg,#f09433,#dc2743,#bc1888);padding:2.5px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <div style="width:100%;height:100%;border-radius:50%;background:#0F2557;display:flex;align-items:center;justify-content:center;font-size:1.15rem;">${catIcon}</div>
                   </div>
                   <div style="min-width:0;">
-                    <div style="font-size:0.84rem;font-weight:800;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(catName)}</div>
-                    <div style="font-size:0.7rem;color:#BFDBFE;">${esc(formatRelativeTime(storyObj))} • ${currentIndex + 1}/${storiesList.length}</div>
+                    <div style="font-size:0.92rem;font-weight:800;line-height:1.2;display:flex;align-items:center;gap:6px;">
+                      <span>${esc(catName)}</span>
+                      <span style="font-size:0.72rem;font-weight:700;padding:1px 7px;border-radius:99px;background:rgba(255,255,255,0.16);">${currentIndex + 1}/${storiesList.length}</span>
+                    </div>
+                    <div style="font-size:0.74rem;color:#BFDBFE;margin-top:2px;">🕒 ${esc(uploadTimeFormatted)}</div>
                   </div>
                 </div>
                 <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
                   ${adminUser ? `
-                    <button type="button" class="btn btn-header-chip" id="instaAdminPostStoryBtn" title="Post New Story" style="padding:4px 9px;font-size:0.74rem;background:rgba(37,99,235,0.85);color:#fff;">➕ Post</button>
-                    <button type="button" class="btn btn-header-chip" id="instaAdminDeleteStoryBtn" title="Delete This Story" style="padding:4px 9px;font-size:0.74rem;background:rgba(220,38,38,0.88);color:#fff;">🗑️ Delete</button>
+                    <button type="button" class="btn btn-header-chip" id="instaAdminPostStoryBtn" title="Post New Story" style="padding:5px 10px;font-size:0.75rem;background:rgba(37,99,235,0.9);color:#fff;">➕ Post</button>
+                    <button type="button" class="btn btn-header-chip" id="instaAdminDeleteStoryBtn" title="Delete This Story" style="padding:5px 10px;font-size:0.75rem;background:rgba(220,38,38,0.9);color:#fff;">🗑️ Delete</button>
                   ` : ''}
-                  <button type="button" class="btn btn-header-chip" id="closeStoryModalBtn" style="padding:4px 10px;font-size:0.82rem;">✕</button>
+                  <button type="button" class="btn btn-header-chip" id="closeStoryModalBtn" style="padding:5px 12px;font-size:0.9rem;background:rgba(255,255,255,0.16);color:#fff;">✕</button>
                 </div>
               </div>
             </div>
 
-            <!-- Story Body with Pure Instagram Gesture Navigation (Tap Left = Prev, Tap Right = Next, Hold = Pause) -->
-            <div id="instaStoryContentArea" style="flex:1;padding:18px 22px;display:flex;flex-direction:column;justify-content:center;position:relative;overflow-y:auto;cursor:pointer;">
-              <div style="margin-bottom:10px;">
-                <span class="badge" style="background:rgba(234,88,12,0.92);color:#fff;font-size:0.7rem;padding:4px 10px;border-radius:99px;">
-                  ⚡ ${esc((storyObj.category || 'Current Affairs').toUpperCase())}
+            <!-- Full-Screen Story Body with Image + Headlines + Summary (Tap Left = Prev, Tap Right = Next, Hold = Pause) -->
+            <div id="instaStoryContentArea" style="flex:1;width:100%;max-width:680px;margin:0 auto;padding:10px 20px 18px 20px;display:flex;flex-direction:column;justify-content:center;position:relative;overflow-y:auto;cursor:pointer;">
+              ${imageUrl ? `
+                <div style="width:100%;max-height:240px;border-radius:16px;overflow:hidden;margin-bottom:14px;border:1px solid rgba(255,255,255,0.18);box-shadow:0 12px 30px rgba(0,0,0,0.4);background:#091534;flex-shrink:0;">
+                  <img src="${esc(imageUrl)}" alt="${esc(storyObj.headlineHi || storyObj.titleHi || 'Story Visual')}" style="width:100%;height:210px;object-fit:cover;display:block;" />
+                </div>
+              ` : ''}
+
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+                <span class="badge" style="background:rgba(234,88,12,0.95);color:#fff;font-size:0.72rem;padding:4px 11px;border-radius:99px;">
+                  ${catIcon} ${esc(catName.toUpperCase())}
+                </span>
+                <span style="font-size:0.74rem;color:#93C5FD;font-weight:600;">
+                  📅 ${esc(uploadTimeFormatted)}
                 </span>
               </div>
-              <h2 style="font-size:1.22rem;font-weight:800;line-height:1.4;margin-bottom:8px;color:#FFFFFF;">
+
+              <h2 style="font-size:1.26rem;font-weight:800;line-height:1.38;margin-bottom:6px;color:#FFFFFF;">
                 ${esc(storyObj.headlineHi || storyObj.titleHi)}
               </h2>
-              <div style="font-size:0.88rem;font-weight:600;color:#93C5FD;margin-bottom:14px;line-height:1.4;">
+              <div style="font-size:0.9rem;font-weight:600;color:#93C5FD;margin-bottom:12px;line-height:1.38;">
                 ${esc(storyObj.headlineEn || storyObj.titleEn)}
               </div>
-              <div style="padding:14px;border-radius:14px;background:rgba(255,255,255,0.09);border:1px solid rgba(255,255,255,0.14);backdrop-filter:blur(6px);">
-                <p style="font-size:0.92rem;line-height:1.65;color:#F8FAFC;margin-bottom:${storyObj.summaryEn && storyObj.summaryEn !== storyObj.summaryHi ? '10px' : '0'};">
+              <div style="padding:14px 16px;border-radius:16px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.16);backdrop-filter:blur(8px);">
+                <p style="font-size:0.94rem;line-height:1.62;color:#F8FAFC;margin-bottom:${storyObj.summaryEn && storyObj.summaryEn !== storyObj.summaryHi ? '10px' : '0'};">
                   ${esc(storyObj.summaryHi)}
                 </p>
                 ${storyObj.summaryEn && storyObj.summaryEn !== storyObj.summaryHi ? `
-                  <p style="font-size:0.8rem;line-height:1.55;color:#DBEAFE;margin:0;">
+                  <p style="font-size:0.82rem;line-height:1.52;color:#DBEAFE;margin:0;">
                     ${esc(storyObj.summaryEn)}
                   </p>
                 ` : ''}
               </div>
             </div>
 
-            <!-- Story Footer Instant Quiz Action Only (No Prev/Next/Pause Buttons) -->
-            <div style="padding:12px 16px 16px 16px;background:rgba(6,13,34,0.65);border-top:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:space-between;gap:8px;z-index:4;">
-              <span style="font-size:0.72rem;color:#93C5FD;">Tap left/right to navigate • Hold to pause</span>
-              <button class="btn btn-warning btn-sm" id="storyTakeQuizBtn" style="font-weight:800;">🎯 Take Instant Quiz</button>
+            <!-- Story Footer Daily Dose Quiz Action -->
+            <div style="padding:12px 18px max(18px, env(safe-area-inset-bottom, 18px)) 18px;background:rgba(4,9,24,0.82);border-top:1px solid rgba(255,255,255,0.12);display:flex;align-items:center;justify-content:space-between;gap:10px;z-index:4;">
+              <span style="font-size:0.74rem;color:#93C5FD;">Tap left/right to switch story • Hold to pause</span>
+              <button class="btn btn-warning btn-sm" id="storyTakeQuizBtn" style="font-weight:800;padding:7px 14px;">Daily Dose Quiz</button>
             </div>
           </div>
         </div>
@@ -4707,28 +4851,29 @@
     if (!isCurrentUserAdmin()) return;
     const modalRoot = document.getElementById('genericModalContainer');
     if (!modalRoot) return;
+    let uploadedImageDataUrl = '';
     modalRoot.innerHTML = `
       <div class="modal-backdrop" id="quickAdminStoryModalBackdrop">
-        <div class="modal-card" style="max-width:560px;width:100%;">
+        <div class="modal-card" style="max-width:560px;width:100%;max-height:92vh;overflow-y:auto;">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;">
             <div>
-              <span class="badge badge-exam">🛡️ ADMIN STORY PUBLISHER</span>
-              <h2 style="font-size:1.1rem;font-weight:800;margin-top:4px;">➕ Post Current Affairs Story</h2>
+              <span class="badge badge-exam">🛡️ ADMIN DAILY DOSE PUBLISHER</span>
+              <h2 style="font-size:1.1rem;font-weight:800;margin-top:4px;">➕ Post Daily Dose Story</h2>
             </div>
             <button type="button" class="btn btn-outline btn-sm" id="closeQuickAdminStoryModalBtn">✕</button>
           </div>
 
           <div style="padding:10px 12px;border-radius:10px;background:var(--secondary-soft);margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
-            <span style="font-size:0.78rem;color:var(--text);">Want to generate stories from Topic, News Text, or PDF/Image with Gemini AI?</span>
+            <span style="font-size:0.78rem;color:var(--text);">Want to generate stories from Topic, News Text, or PDF/Image with Google AI?</span>
             <button type="button" class="btn btn-navy btn-sm" id="openFullAiCaStudioBtn">⚡ Open AI Current Affairs Studio</button>
           </div>
 
           <div class="form-group">
-            <label class="form-label">Category</label>
+            <label class="form-label">Category Circle (Instagram Style Group)</label>
             <select class="form-select" id="quickStoryCatInput">
-              <option value="chhattisgarh">🌾 Chhattisgarh Current Affairs</option>
-              <option value="national">🇮🇳 National (PIB &amp; India)</option>
-              <option value="international">🌍 International, Economy &amp; Science</option>
+              <option value="chhattisgarh">🌾 Chhattisgarh</option>
+              <option value="national">🇮🇳 National</option>
+              <option value="international">🌍 International</option>
             </select>
           </div>
           <div class="form-group">
@@ -4747,6 +4892,16 @@
             <label class="form-label">Key Exam Points / Summary (English)</label>
             <textarea class="form-textarea" id="quickStorySummaryEn" rows="2" placeholder="Exam-relevant key facts in English..."></textarea>
           </div>
+          <div class="form-group">
+            <label class="form-label">🖼️ Attach Story Image (Optional — Google AI auto-attaches if left blank)</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <input type="file" accept="image/*" class="form-input" id="quickStoryImageFileInput" style="flex:1;min-width:190px;padding:6px;" />
+              <input type="url" class="form-input" id="quickStoryImageUrlInput" placeholder="Or paste Image URL (https://...)" style="flex:1;min-width:190px;" />
+            </div>
+            <div id="quickStoryImagePreviewWrap" style="display:none;margin-top:8px;">
+              <img id="quickStoryImagePreviewEl" src="" alt="Preview" style="max-height:110px;border-radius:10px;border:1px solid var(--border);" />
+            </div>
+          </div>
 
           <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:14px;">
             <button type="button" class="btn btn-outline" id="cancelQuickAdminStoryBtn">Cancel</button>
@@ -4763,12 +4918,44 @@
       closeModal();
       navigateToTab('admin', 'stories');
     };
+
+    const fileInput = document.getElementById('quickStoryImageFileInput');
+    const urlInput = document.getElementById('quickStoryImageUrlInput');
+    const previewWrap = document.getElementById('quickStoryImagePreviewWrap');
+    const previewImg = document.getElementById('quickStoryImagePreviewEl');
+
+    if (fileInput) {
+      fileInput.onchange = () => {
+        const f = fileInput.files && fileInput.files[0];
+        if (!f) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          uploadedImageDataUrl = String(reader.result || '');
+          if (previewImg && previewWrap && uploadedImageDataUrl) {
+            previewImg.src = uploadedImageDataUrl;
+            previewWrap.style.display = 'block';
+          }
+        };
+        reader.readAsDataURL(f);
+      };
+    }
+    if (urlInput) {
+      urlInput.oninput = () => {
+        const val = (urlInput.value || '').trim();
+        if (val && previewImg && previewWrap) {
+          previewImg.src = val;
+          previewWrap.style.display = 'block';
+        }
+      };
+    }
+
     document.getElementById('publishQuickAdminStoryBtn').onclick = async () => {
-      const cat = document.getElementById('quickStoryCatInput').value || 'chhattisgarh';
+      const cat = normalizeStoryCategory(document.getElementById('quickStoryCatInput').value || 'chhattisgarh');
       const headHi = (document.getElementById('quickStoryHeadlineHi').value || '').trim();
       const headEn = (document.getElementById('quickStoryHeadlineEn').value || '').trim() || headHi;
       const sumHi = (document.getElementById('quickStorySummaryHi').value || '').trim();
       const sumEn = (document.getElementById('quickStorySummaryEn').value || '').trim() || sumHi;
+      const customImgUrl = (urlInput && urlInput.value ? urlInput.value.trim() : '') || uploadedImageDataUrl;
       if (!headHi || !sumHi) {
         toast('⚠️ कृपया स्टोरी का शीर्षक (Headline) और मुख्य बिंदु (Summary) दर्ज करें।');
         return;
@@ -4791,14 +4978,15 @@
         monthKey,
         yearKey: String(now.getFullYear())
       };
-      state.stories = [newStory, ...(state.stories || [])];
+      newStory.imageUrl = customImgUrl || getStoryImageUrl(newStory);
+      state.stories = sortStoriesLatestFirst([newStory, ...(state.stories || [])]);
       saveState(true);
       if (window.CGpediaCloud && typeof window.CGpediaCloud.saveCloudDoc === 'function') {
         await window.CGpediaCloud.saveCloudDoc('current_affairs', newStory.id, newStory);
       }
       closeModal();
       renderApp();
-      toast('✅ Current Affairs Story published live!');
+      toast('✅ Daily Dose Story published live!');
     };
   }
 

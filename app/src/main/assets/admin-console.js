@@ -1612,6 +1612,16 @@
               <textarea class="form-textarea" id="admCaSummaryEn" rows="3" placeholder="Exam-oriented key facts (English)...">${esc((editingStory && (editingStory.summaryEn || editingStory.summaryHi)) || '')}</textarea>
             </div>
           </div>
+          <div class="grid-2" style="align-items:end;margin-bottom:10px;">
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">Attach Story Image (Upload Photo — Optional, AI auto-attaches if blank)</label>
+              <input type="file" class="form-input" id="admCaImageFileInput" accept="image/*" />
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">Or Paste Story Image URL (Optional)</label>
+              <input class="form-input" id="admCaImageUrlInput" value="${esc((editingStory && editingStory.imageUrl && !String(editingStory.imageUrl).startsWith('data:')) ? editingStory.imageUrl : '')}" placeholder="https://... (Leave blank for AI auto-image)" />
+            </div>
+          </div>
           <button class="btn btn-primary" id="admPublishCaBtn">
             ${editingStory ? '💾 Save Updated Current Affairs' : '⚡ Publish Current Affairs Update'}
           </button>
@@ -1628,7 +1638,8 @@
             <div style="display:grid;gap:10px;max-height:480px;overflow-y:auto;">
               ${(state.stories || []).map((st) => `
                 <div style="padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--surface-alt);display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-                  <div style="flex:1;min-width:240px;">
+                  <img src="${esc(st.imageUrl || generateAutoStoryImageUrl(st))}" alt="" style="width:76px;height:54px;border-radius:8px;object-fit:cover;border:1px solid var(--border);flex-shrink:0;" />
+                  <div style="flex:1;min-width:220px;">
                     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px;">
                       <span class="badge badge-exam">${esc(st.category || 'chhattisgarh').toUpperCase()}</span>
                       <span class="badge badge-cloud">${esc(st.monthKey || defaultMonthKey)}</span>
@@ -1822,7 +1833,7 @@
         };
       }
 
-      document.getElementById('admPublishCaBtn').onclick = () => {
+      document.getElementById('admPublishCaBtn').onclick = async () => {
         const headHi = document.getElementById('admCaHeadHi').value.trim();
         const headEn = document.getElementById('admCaHeadEn').value.trim() || headHi;
         const summaryHi = document.getElementById('admCaSummaryHi').value.trim() || headHi;
@@ -1831,10 +1842,20 @@
         const monthVal = document.getElementById('admCaMonthKey').value || defaultMonthKey;
         const yearVal = monthVal.split('-')[0] || String(new Date().getFullYear());
         const srcVal = document.getElementById('admCaSource').value.trim() || 'DPR Chhattisgarh';
+        const imgUrlText = (document.getElementById('admCaImageUrlInput') && document.getElementById('admCaImageUrlInput').value.trim()) || '';
+        const imgFileEl = document.getElementById('admCaImageFileInput');
+        const imgFile = imgFileEl && imgFileEl.files && imgFileEl.files[0];
 
         if (!headHi) {
           api.toast('कृपया करंट अफेयर्स शीर्षक दर्ज करें।');
           return;
+        }
+
+        let resolvedImgUrl = imgUrlText;
+        if (imgFile) {
+          try {
+            resolvedImgUrl = await readFileAsDataUrl(imgFile);
+          } catch (_) {}
         }
 
         if (editingStory) {
@@ -1846,6 +1867,12 @@
           editingStory.sourceName = srcVal;
           editingStory.monthKey = monthVal;
           editingStory.yearKey = yearVal;
+          editingStory.imageUrl = resolvedImgUrl || editingStory.imageUrl || generateAutoStoryImageUrl({
+            category: catVal,
+            headlineHi: headHi,
+            headlineEn: headEn,
+            sourceName: srcVal
+          });
           editingStory.updatedAtIso = new Date().toISOString();
           state.editingCaStoryId = null;
           api.saveState();
@@ -1883,6 +1910,7 @@
           createdAtIso: nowIso,
           updatedAtIso: nowIso
         };
+        stObj.imageUrl = resolvedImgUrl || generateAutoStoryImageUrl(stObj);
         state.stories.unshift(stObj);
         api.saveState();
         if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('current_affairs', stObj.id, stObj);
@@ -13741,6 +13769,69 @@ Return ONLY a valid JSON array of objects:
     return false;
   }
 
+  function generateAutoStoryImageUrl(storyItem) {
+    const st = storyItem || {};
+    if (st.imageUrl && String(st.imageUrl).trim()) return String(st.imageUrl).trim();
+    const cat = String(st.category || 'chhattisgarh').toLowerCase();
+    const combinedText = `${st.headlineHi || ''} ${st.headlineEn || ''} ${st.summaryHi || ''}`.toLowerCase();
+
+    let gradStart = '#0F2557';
+    let gradMid = '#1E3A8A';
+    let gradEnd = '#EA580C';
+    let badgeText = 'CHHATTISGARH UPDATE';
+    let iconEmoji = '🌾';
+    if (cat === 'national') {
+      gradStart = '#0B2447';
+      gradMid = '#19376D';
+      gradEnd = '#16A34A';
+      badgeText = 'NATIONAL (INDIA) UPDATE';
+      iconEmoji = '🇮🇳';
+    } else if (cat === 'international') {
+      gradStart = '#1E1B4B';
+      gradMid = '#312E81';
+      gradEnd = '#0284C7';
+      badgeText = 'INTERNATIONAL & SCIENCE';
+      iconEmoji = '🌍';
+    }
+
+    if (/बजट|आर्थिक|बैंक|वित्त|budget|economy|gdp|rbi|bank|scheme|योजना/.test(combinedText)) {
+      iconEmoji = '📊';
+    } else if (/इसरो|अंतरिक्ष|विज्ञान|उपग्रह|isro|space|science|satellite|drdo|रक्षा/.test(combinedText)) {
+      iconEmoji = '🚀';
+    } else if (/पुरस्कार|सम्मान|रत्न|खेल|award|prize|medal|olympic|sports/.test(combinedText)) {
+      iconEmoji = '🏆';
+    } else if (/वन|पर्यावरण|नदी|जलप्रपात|राष्ट्रीय उद्यान|forest|tiger|park|environment/.test(combinedText)) {
+      iconEmoji = '🌿';
+    }
+
+    const rawTitle = String(st.headlineEn || st.headlineHi || 'Current Affairs Highlight').replace(/[<>&"']/g, ' ');
+    const line1 = rawTitle.slice(0, 44);
+    const line2 = rawTitle.length > 44 ? rawTitle.slice(44, 88) + (rawTitle.length > 88 ? '...' : '') : '';
+    const srcLabel = String(st.sourceName || 'CGpedia Daily Dose').replace(/[<>&"']/g, ' ').slice(0, 36);
+
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 440" width="800" height="440">
+      <defs>
+        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="${gradStart}"/>
+          <stop offset="58%" stop-color="${gradMid}"/>
+          <stop offset="100%" stop-color="${gradEnd}"/>
+        </linearGradient>
+      </defs>
+      <rect width="800" height="440" rx="24" fill="url(#bg)"/>
+      <circle cx="710" cy="85" r="145" fill="rgba(255,255,255,0.07)"/>
+      <circle cx="95" cy="380" r="165" fill="rgba(255,255,255,0.05)"/>
+      <rect x="38" y="34" width="290" height="38" rx="19" fill="rgba(255,255,255,0.16)"/>
+      <text x="58" y="59" fill="#FFFFFF" font-family="sans-serif" font-size="16" font-weight="800" letter-spacing="1">${badgeText}</text>
+      <circle cx="675" cy="185" r="76" fill="rgba(255,255,255,0.13)" stroke="rgba(255,255,255,0.28)" stroke-width="2"/>
+      <text x="675" y="210" text-anchor="middle" font-size="68">${iconEmoji}</text>
+      <text x="42" y="175" fill="#F8FAFC" font-family="sans-serif" font-size="29" font-weight="800">${line1}</text>
+      <text x="42" y="218" fill="#DBEAFE" font-family="sans-serif" font-size="25" font-weight="700">${line2}</text>
+      <rect x="42" y="342" width="420" height="44" rx="12" fill="rgba(15,23,42,0.45)"/>
+      <text x="60" y="370" fill="#93C5FD" font-family="sans-serif" font-size="17" font-weight="700">⚡ ${srcLabel} • Daily Dose Visual</text>
+    </svg>`;
+    return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+  }
+
   function enrichAndDeduplicateCurrentAffairsItems(rawItems, existingStories, defaultCategory, defaultSource, targetMonthKey) {
     let resolvedCategory = defaultCategory;
     let resolvedSource = defaultSource;
@@ -13810,6 +13901,7 @@ Return ONLY a valid JSON array of objects:
         createdAtIso: itemIso,
         updatedAtIso: itemIso
       };
+      stObj.imageUrl = raw.imageUrl || generateAutoStoryImageUrl(stObj);
       runningPool.push(stObj);
       results.push(stObj);
     });
@@ -14434,6 +14526,7 @@ Return ONLY a valid JSON array of ${count} question objects with this exact sche
     upsertCategoryMasterItem,
     renameCategoryMasterItem,
     isDuplicateCurrentAffair,
+    generateAutoStoryImageUrl,
     enrichAndDeduplicateCurrentAffairsItems,
     generateCurrentAffairsWithAi,
     generateCurrentAffairsQuizQuestionsWithAi,

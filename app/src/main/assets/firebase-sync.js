@@ -949,39 +949,184 @@
     return result;
   }
 
+  function computeCloudCredDigest(email, password) {
+    const raw = `cgpedia_salt_v4::${String(email || '').trim().toLowerCase()}::${String(password || '')}`;
+    let h1 = 0xdeadbeef ^ raw.length;
+    let h2 = 0x41c6ce57 ^ raw.length;
+    for (let i = 0; i < raw.length; i++) {
+      const ch = raw.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761);
+      h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+  }
+
   async function registerWithEmailPassword(name, email, password, phone, targetExams) {
-    if (!auth || typeof window.firebase === 'undefined') {
-      throw new Error('Firebase Auth unavailable in offline mode.');
+    if (navigator.onLine === false) {
+      const netErr = new Error('Offline registration is disabled.');
+      netErr.code = 'auth/network-request-failed';
+      throw netErr;
     }
     const cleanEmail = String(email || '').trim().toLowerCase();
-    const cred = await auth.createUserWithEmailAndPassword(cleanEmail, password);
-    const fbUser = cred.user;
-    if (fbUser && typeof fbUser.updateProfile === 'function' && name) {
+    const digest = computeCloudCredDigest(cleanEmail, password);
+
+    if (auth && typeof window.firebase !== 'undefined') {
       try {
-        await fbUser.updateProfile({ displayName: name });
-      } catch (_) {}
+        const cred = await auth.createUserWithEmailAndPassword(cleanEmail, password);
+        const fbUser = cred.user;
+        if (fbUser && typeof fbUser.updateProfile === 'function' && name) {
+          try {
+            await fbUser.updateProfile({ displayName: name });
+          } catch (_) {}
+        }
+        if (fbUser && db) {
+          await saveCloudDoc('users', fbUser.uid, {
+            userId: fbUser.uid,
+            displayName: name || 'Aspirant',
+            email: cleanEmail,
+            credDigest: digest,
+            phoneNumber: String(phone || '').trim(),
+            targetExams: Array.isArray(targetExams) ? targetExams : ['CGPSC'],
+            role: cleanEmail === OWNER_ADMIN_EMAIL ? 'admin' : 'student',
+            createdAtIso: new Date().toISOString()
+          });
+        }
+        return fbUser;
+      } catch (fbErr) {
+        const code = String((fbErr && fbErr.code) || '');
+        if (
+          code.includes('email-already-in-use') ||
+          code.includes('invalid-email') ||
+          code.includes('weak-password') ||
+          code.includes('network-request-failed')
+        ) {
+          throw fbErr;
+        }
+        // If Email/Password provider is not enabled in Firebase Auth console (operation-not-allowed),
+        // fall through to online Cloud Firestore `users` registration below.
+      }
     }
-    if (fbUser && db) {
-      await saveCloudDoc('users', fbUser.uid, {
-        userId: fbUser.uid,
-        displayName: name || 'Aspirant',
-        email: cleanEmail,
-        phoneNumber: String(phone || '').trim(),
-        targetExams: Array.isArray(targetExams) ? targetExams : ['CGPSC'],
-        role: cleanEmail === OWNER_ADMIN_EMAIL ? 'admin' : 'student',
-        createdAtIso: new Date().toISOString()
+
+    if (!db) {
+      throw new Error('Cloud database connection unavailable. Please check your internet connection.');
+    }
+
+    const existingSnap = await db.collection('users').where('email', '==', cleanEmail).get();
+    if (existingSnap && !existingSnap.empty) {
+      let hasRegisteredCred = false;
+      existingSnap.forEach((doc) => {
+        const d = doc.data() || {};
+        if (d.credDigest) hasRegisteredCred = true;
       });
+      if (hasRegisteredCred) {
+        const dupErr = new Error('This email is already registered.');
+        dupErr.code = 'auth/email-already-in-use';
+        throw dupErr;
+      }
     }
-    return fbUser;
+
+    const cloudUid = 'USR-' + computeCloudCredDigest(cleanEmail, 'uid_seed_v1').toUpperCase();
+    const nowIso = new Date().toISOString();
+    await saveCloudDoc('users', cloudUid, {
+      userId: cloudUid,
+      displayName: name || 'Aspirant',
+      email: cleanEmail,
+      credDigest: digest,
+      phoneNumber: String(phone || '').trim(),
+      targetExams: Array.isArray(targetExams) ? targetExams : ['CGPSC'],
+      role: cleanEmail === OWNER_ADMIN_EMAIL ? 'admin' : 'student',
+      createdAtIso: nowIso,
+      updatedAtIso: nowIso
+    });
+
+    return {
+      uid: cloudUid,
+      displayName: name || 'Aspirant',
+      email: cleanEmail,
+      phoneNumber: String(phone || '').trim()
+    };
   }
 
   async function signInWithEmailPassword(email, password) {
-    if (!auth || typeof window.firebase === 'undefined') {
-      throw new Error('Firebase Auth unavailable in offline mode.');
+    if (navigator.onLine === false) {
+      const netErr = new Error('Offline login is disabled.');
+      netErr.code = 'auth/network-request-failed';
+      throw netErr;
     }
     const cleanEmail = String(email || '').trim().toLowerCase();
-    const cred = await auth.signInWithEmailAndPassword(cleanEmail, password);
-    return cred.user;
+    const digest = computeCloudCredDigest(cleanEmail, password);
+
+    if (auth && typeof window.firebase !== 'undefined') {
+      try {
+        const cred = await auth.signInWithEmailAndPassword(cleanEmail, password);
+        if (cred && cred.user && db) {
+          saveCloudDoc('users', cred.user.uid, {
+            userId: cred.user.uid,
+            email: cleanEmail,
+            credDigest: digest,
+            updatedAtIso: new Date().toISOString()
+          }).catch(() => {});
+        }
+        return cred.user;
+      } catch (fbErr) {
+        const code = String((fbErr && fbErr.code) || '');
+        if (
+          code.includes('wrong-password') ||
+          code.includes('network-request-failed') ||
+          code.includes('too-many-requests') ||
+          code.includes('user-disabled')
+        ) {
+          throw fbErr;
+        }
+        // Fall through to online Cloud Firestore `users` verification when provider is operation-not-allowed or account was registered in Firestore
+      }
+    }
+
+    if (!db) {
+      throw new Error('Cloud database connection unavailable. Please check your internet connection.');
+    }
+
+    const snap = await db.collection('users').where('email', '==', cleanEmail).get();
+    if (!snap || snap.empty) {
+      const notFoundErr = new Error('No registered account found with this email.');
+      notFoundErr.code = 'auth/user-not-found';
+      throw notFoundErr;
+    }
+
+    let matchedDoc = null;
+    let docWithoutCred = null;
+    snap.forEach((doc) => {
+      const data = Object.assign({ id: doc.id }, doc.data());
+      if (data.credDigest && data.credDigest === digest) {
+        matchedDoc = data;
+      } else if (!data.credDigest && !docWithoutCred) {
+        docWithoutCred = data;
+      }
+    });
+
+    if (!matchedDoc && docWithoutCred) {
+      // Existing cloud user profile from before password digest was stored: bind digest now
+      await saveCloudDoc('users', docWithoutCred.userId || docWithoutCred.id, {
+        credDigest: digest,
+        updatedAtIso: new Date().toISOString()
+      });
+      matchedDoc = docWithoutCred;
+    }
+
+    if (!matchedDoc) {
+      const wrongPassErr = new Error('Incorrect password for this account.');
+      wrongPassErr.code = 'auth/wrong-password';
+      throw wrongPassErr;
+    }
+
+    return {
+      uid: matchedDoc.userId || matchedDoc.id,
+      displayName: matchedDoc.displayName || matchedDoc.name || cleanEmail.split('@')[0],
+      email: cleanEmail,
+      phoneNumber: matchedDoc.phoneNumber || matchedDoc.phone || ''
+    };
   }
 
   async function sendPasswordReset(email) {
