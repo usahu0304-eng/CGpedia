@@ -439,18 +439,77 @@
     };
   }
 
-  function updateSyncBadge(statusText, isOnline) {
+  let currentSyncStatusState = 'synchronizing';
+
+  function updateSyncBadge(stateOrText, isOnline) {
     const badge = document.getElementById('cloudSyncStatusBadge');
     if (!badge) return;
-    badge.textContent = statusText;
-    if (isOnline) {
+
+    const normalized = String(stateOrText || '').trim().toLowerCase();
+    let mode = 'connected';
+    let label = '🟢 Connected';
+    let tooltip = 'Firebase Live Sync Connected';
+
+    if (normalized === 'synchronizing' || normalized.includes('synchronizing') || normalized.includes('syncing')) {
+      mode = 'synchronizing';
+      label = '🔄 Synchronizing...';
+      tooltip = 'Synchronizing latest data with Firebase Cloud...';
+    } else if (normalized === 'offline' || normalized.includes('offline') || navigator.onLine === false) {
+      mode = 'offline';
+      label = '⚡ Offline';
+      tooltip = 'Offline Mode — Showing cached data; changes will sync when online';
+    } else if (normalized === 'error' || normalized.includes('error')) {
+      mode = 'error';
+      label = '⚠️ Connection Error';
+      tooltip = 'Firebase Cloud connection error — Retrying automatically';
+    } else if (normalized === 'connected' || isOnline === true) {
+      mode = 'connected';
+      label = '🟢 Connected';
+      tooltip = 'Firebase Live Sync Connected & Up to Date';
+    } else if (isOnline === false) {
+      mode = 'offline';
+      label = '⚡ Offline';
+      tooltip = 'Offline Mode — Showing cached data';
+    }
+
+    currentSyncStatusState = mode;
+    badge.textContent = label;
+    badge.setAttribute('data-sync-state', mode);
+    badge.title = tooltip;
+
+    if (mode === 'connected') {
       badge.style.background = 'rgba(22, 163, 74, 0.28)';
       badge.style.color = '#86EFAC';
+      badge.style.borderColor = 'rgba(134, 239, 172, 0.45)';
+    } else if (mode === 'synchronizing') {
+      badge.style.background = 'rgba(14, 165, 233, 0.28)';
+      badge.style.color = '#BAE6FD';
+      badge.style.borderColor = 'rgba(125, 211, 252, 0.45)';
+    } else if (mode === 'error') {
+      badge.style.background = 'rgba(220, 38, 38, 0.28)';
+      badge.style.color = '#FCA5A5';
+      badge.style.borderColor = 'rgba(252, 165, 165, 0.45)';
     } else {
       badge.style.background = 'rgba(217, 119, 6, 0.28)';
       badge.style.color = '#FDE68A';
+      badge.style.borderColor = 'rgba(253, 230, 138, 0.45)';
     }
   }
+
+  window.addEventListener('offline', () => {
+    updateSyncBadge('offline', false);
+  });
+
+  window.addEventListener('online', () => {
+    if (isCloudConnected) {
+      updateSyncBadge('synchronizing', true);
+      setTimeout(() => {
+        if (navigator.onLine !== false && isCloudConnected) {
+          updateSyncBadge('connected', true);
+        }
+      }, 900);
+    }
+  });
 
   const DELETED_DOCS_STORAGE_KEY = 'cgpedia_deleted_cloud_ids_v1';
 
@@ -539,9 +598,19 @@
     }
   }
 
+  const activeListenerMap = new Map();
+  let secondaryListenersAttached = false;
+  let secondaryListenerTimer = null;
+
   function initFirebaseConnection(onStateReady) {
+    if (navigator.onLine === false) {
+      updateSyncBadge('offline', false);
+    } else {
+      updateSyncBadge('synchronizing', true);
+    }
+
     if (typeof window.firebase === 'undefined') {
-      updateSyncBadge('⚡ Local + Offline Ready', false);
+      updateSyncBadge('offline', false);
       if (window.CGpediaApp && typeof window.CGpediaApp.handleFirebaseAuthUser === 'function') {
         window.CGpediaApp.handleFirebaseAuthUser(null);
       }
@@ -568,7 +637,6 @@
         console.warn('Firebase Storage initialization notice:', storageErr);
       }
       isCloudConnected = true;
-      updateSyncBadge('☁️ Firebase Live', true);
 
       auth.onAuthStateChanged((fbUser) => {
         if (window.CGpediaApp && typeof window.CGpediaApp.handleFirebaseAuthUser === 'function') {
@@ -576,11 +644,15 @@
         }
       });
 
-      subscribeCloudCollections();
+      // Start Firestore synchronization non-blockingly in the background so UI renders immediately
+      setTimeout(() => {
+        subscribeCloudCollections();
+      }, 10);
+
       if (onStateReady) onStateReady(true);
     } catch (err) {
       console.warn('Firebase initialization fallback:', err);
-      updateSyncBadge('⚡ Offline Mode', false);
+      updateSyncBadge(navigator.onLine === false ? 'offline' : 'error', false);
       if (window.CGpediaApp && typeof window.CGpediaApp.handleFirebaseAuthUser === 'function') {
         window.CGpediaApp.handleFirebaseAuthUser(null);
       }
@@ -588,56 +660,132 @@
     }
   }
 
-  function subscribeCloudCollections() {
-    if (!db) return;
-    activeUnsubscribes.forEach((u) => { try { u(); } catch (_) {} });
-    activeUnsubscribes = [];
+  function attachSingleCollectionListener(col, key, onFirstSnapshotDone) {
+    if (!db || activeListenerMap.has(col)) {
+      if (typeof onFirstSnapshotDone === 'function') onFirstSnapshotDone();
+      return;
+    }
+    let firstSnapFired = false;
+    try {
+      const unsub = db.collection(col).onSnapshot(
+        (snap) => {
+          if (!firstSnapFired) {
+            firstSnapFired = true;
+            if (typeof onFirstSnapshotDone === 'function') onFirstSnapshotDone();
+          }
+          if (navigator.onLine !== false && currentSyncStatusState === 'error') {
+            updateSyncBadge('connected', true);
+          }
+          if (!window.CGpediaApp || typeof window.CGpediaApp.mergeCloudCollection !== 'function') return;
+          const docs = [];
+          snap.forEach((doc) => {
+            const data = doc.data() || {};
+            if (data.isDeleted === true || data.status === 'deleted') {
+              markDocDeletedLocally(col, doc.id);
+              return;
+            }
+            docs.push(Object.assign({ id: doc.id }, data));
+          });
+          window.CGpediaApp.mergeCloudCollection(key, docs, col);
+        },
+        (err) => {
+          if (!firstSnapFired) {
+            firstSnapFired = true;
+            if (typeof onFirstSnapshotDone === 'function') onFirstSnapshotDone();
+          }
+          console.warn(`Firestore listener notice [${col}]:`, err && err.message ? err.message : err);
+          if (navigator.onLine === false) {
+            updateSyncBadge('offline', false);
+          } else if (err && (err.code === 'unavailable' || err.code === 'unauthenticated' || err.code === 'resource-exhausted')) {
+            updateSyncBadge('error', false);
+          }
+        }
+      );
+      activeListenerMap.set(col, unsub);
+      activeUnsubscribes.push(unsub);
+    } catch (_) {
+      if (!firstSnapFired && typeof onFirstSnapshotDone === 'function') {
+        firstSnapFired = true;
+        onFirstSnapshotDone();
+      }
+    }
+  }
 
-    const collectionsToWatch = [
-      { col: 'app_config', key: 'configDocs' },
+  function subscribeSecondaryCollectionsNow() {
+    if (!db || secondaryListenersAttached) return;
+    secondaryListenersAttached = true;
+    if (secondaryListenerTimer) {
+      clearTimeout(secondaryListenerTimer);
+      secondaryListenerTimer = null;
+    }
+
+    // Tier 2: Deferred Student & Admin Collections (loaded in background after initial Home render)
+    const secondaryCollections = [
+      { col: 'upcoming_tests', key: 'upcomingTests' },
+      { col: 'coupons', key: 'coupons' },
+      { col: 'purchases', key: 'activations' },
+      { col: 'admin_staff', key: 'adminStaff' },
+      { col: 'users', key: 'registeredStudents' },
       { col: 'exams', key: 'examMaster' },
       { col: 'subjects', key: 'subjectMaster' },
       { col: 'topics', key: 'topicMaster' },
       { col: 'subtopics', key: 'subtopicMaster' },
-      { col: 'exam_folders', key: 'folders' },
-      { col: 'tests', key: 'tests' },
       { col: 'question_bank', key: 'questionBank' },
-      { col: 'current_affairs', key: 'stories' },
-      { col: 'broadcast_notifications', key: 'notifications' },
-      { col: 'upcoming_tests', key: 'upcomingTests' },
-      { col: 'coupons', key: 'coupons' },
-      { col: 'purchases', key: 'activations' },
       { col: 'orders', key: 'orders' },
-      { col: 'leaderboard', key: 'leaderboard' },
       { col: 'student_queries', key: 'queries' },
-      { col: 'question_reports', key: 'questionReports' },
-      { col: 'admin_staff', key: 'adminStaff' },
-      { col: 'users', key: 'registeredStudents' }
+      { col: 'question_reports', key: 'questionReports' }
     ];
 
-    collectionsToWatch.forEach(({ col, key }) => {
-      try {
-        const unsub = db.collection(col).onSnapshot(
-          (snap) => {
-            if (!window.CGpediaApp || typeof window.CGpediaApp.mergeCloudCollection !== 'function') return;
-            const docs = [];
-            snap.forEach((doc) => {
-              const data = doc.data() || {};
-              if (data.isDeleted === true || data.status === 'deleted') {
-                markDocDeletedLocally(col, doc.id);
-                return;
-              }
-              docs.push(Object.assign({ id: doc.id }, data));
-            });
-            window.CGpediaApp.mergeCloudCollection(key, docs, col);
-          },
-          (err) => {
-            console.warn(`Firestore listener notice [${col}]:`, err && err.message ? err.message : err);
-          }
-        );
-        activeUnsubscribes.push(unsub);
-      } catch (_) {}
+    secondaryCollections.forEach(({ col, key }) => {
+      attachSingleCollectionListener(col, key);
     });
+  }
+
+  function subscribeCloudCollections() {
+    if (!db) return;
+    if (activeListenerMap.size > 0) return; // Prevent duplicate listeners
+
+    if (navigator.onLine !== false) {
+      updateSyncBadge('synchronizing', true);
+    }
+
+    // Tier 1: Essential initial collections needed for Home Dashboard, Stories, Tests & Notifications
+    const essentialCollections = [
+      { col: 'app_config', key: 'configDocs' },
+      { col: 'exam_folders', key: 'folders' },
+      { col: 'tests', key: 'tests' },
+      { col: 'current_affairs', key: 'stories' },
+      { col: 'broadcast_notifications', key: 'notifications' },
+      { col: 'leaderboard', key: 'leaderboard' }
+    ];
+
+    let remainingEssential = essentialCollections.length;
+    const markEssentialReceived = () => {
+      remainingEssential -= 1;
+      if (remainingEssential <= 0) {
+        if (navigator.onLine !== false) {
+          updateSyncBadge('connected', true);
+        }
+        // Attach Tier 2 collections smoothly in background after Tier 1 completes
+        if (!secondaryListenersAttached && !secondaryListenerTimer) {
+          secondaryListenerTimer = setTimeout(() => {
+            subscribeSecondaryCollectionsNow();
+          }, 180);
+        }
+      }
+    };
+
+    essentialCollections.forEach(({ col, key }) => {
+      attachSingleCollectionListener(col, key, markEssentialReceived);
+    });
+
+    // Fallback: ensure Connected badge and Tier 2 listeners activate within 1.2s even on slow mobile networks
+    setTimeout(() => {
+      if (navigator.onLine !== false && currentSyncStatusState === 'synchronizing' && isCloudConnected) {
+        updateSyncBadge('connected', true);
+      }
+      subscribeSecondaryCollectionsNow();
+    }, 1200);
   }
 
   function prepareCloudPayload(docId, payload) {
@@ -1270,6 +1418,9 @@
     DEFAULT_SUBTOPICS,
     MAX_ANTHEM_FILE_BYTES,
     initFirebaseConnection,
+    subscribeSecondaryCollectionsNow,
+    updateSyncBadge,
+    getActiveListenerCount: () => activeListenerMap.size,
     saveCloudDoc,
     deleteCloudDoc,
     batchSaveCloudDocs,

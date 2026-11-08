@@ -1,23 +1,21 @@
-const CACHE_NAME = 'cgpedia-platform-v20';
-const ASSETS = [
+const CACHE_NAME = 'cgpedia-platform-v21';
+const CORE_ASSETS = [
   '/',
   '/index.html',
-  '/styles.css?v=6.3',
-  '/firebase-sync.js?v=6.6',
-  '/exam-engine.js?v=6.6',
-  '/admin-console.js?v=6.6',
-  '/app.js?v=6.6',
+  '/styles.css?v=6.7',
+  '/firebase-sync.js?v=6.7',
+  '/exam-engine.js?v=6.7',
+  '/app.js?v=6.7',
   '/manifest.webmanifest',
   '/favicon.png',
   '/assets/cgpedia-logo-clean.png',
-  '/assets/icon-192.png',
-  '/assets/icon-512.png'
+  '/assets/icon-192.png'
 ];
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)).catch(() => {})
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_ASSETS)).catch(() => {})
   );
 });
 
@@ -59,15 +57,41 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
 
+  const isHtmlNavigation =
+    event.request.mode === 'navigate' ||
+    url.pathname === '/' ||
+    url.pathname.endsWith('.html');
+
+  // HTML navigation: Network-First with instant cache fallback
+  if (isHtmlNavigation) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response && response.status === 200 && response.type === 'basic') {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone)).catch(() => {});
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request).then((cached) => cached || caches.match('/index.html')))
+    );
+    return;
+  }
+
+  // Static JS, CSS, Images & Icons: Stale-While-Revalidate for instant repeat loads
   event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        if (response && response.status === 200 && response.type === 'basic') {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone)).catch(() => {});
-        }
-        return response;
-      })
-      .catch(() => caches.match(event.request).then((cached) => cached || caches.match('/index.html')))
+    caches.match(event.request).then((cachedResponse) => {
+      const networkFetch = fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+            const clone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone)).catch(() => {});
+          }
+          return networkResponse;
+        })
+        .catch(() => cachedResponse);
+
+      return cachedResponse || networkFetch;
+    })
   );
 });

@@ -14,8 +14,13 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=6.3" />
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin />
+  <link rel="preload" as="image" href="assets/cgpedia-logo-clean.png" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+  <noscript>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  </noscript>
+  <link rel="stylesheet" href="styles.css?v=6.7" />
   <!-- Firebase v10 SDK for Real-Time Cloud Sync across Web & Android -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" defer></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" defer></script>
@@ -26,7 +31,7 @@
   <!-- Splash Screen with Cleaned Original CGpedia Logo -->
   <div class="splash-overlay" id="splashOverlay">
     <div class="splash-card">
-      <img src="assets/cgpedia-logo-clean.png" alt="CGpedia Official Logo" class="splash-logo-img" />
+      <img src="assets/cgpedia-logo-clean.png" alt="CGpedia Official Logo" class="splash-logo-img" width="66" height="66" decoding="async" fetchpriority="high" />
       <h1 class="splash-title">CGpedia</h1>
       <p class="splash-subtitle">Competitive Exam Preparation &amp; Online Test Series Platform</p>
       <div class="splash-tags">
@@ -58,7 +63,7 @@
   <div class="pwa-install-banner" id="pwaInstallBanner">
     <div class="pwa-install-inner">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-        <img src="assets/cgpedia-logo-clean.png" alt="CGpedia" style="width:28px;height:28px;border-radius:50%;object-fit:cover;border:1.5px solid #fff;" />
+        <img src="assets/cgpedia-logo-clean.png" alt="CGpedia" width="28" height="28" loading="lazy" decoding="async" style="width:28px;height:28px;border-radius:50%;object-fit:cover;border:1.5px solid #fff;" />
         <span id="pwaBannerText"><strong>CGpedia App:</strong> इंस्टेंट लाइव अपडेट्स के लिए सीधे अपने फोन या डेस्कटॉप पर इंस्टॉल करें</span>
       </div>
       <div style="display:flex;align-items:center;gap:8px;">
@@ -73,12 +78,12 @@
     <div class="header-inner">
       <div class="brand-identity" id="brandHomeTrigger" role="button" tabindex="0" aria-label="CGpedia Home">
         <div class="brand-logo-box" id="headerBrandLogo">
-          <img src="assets/cgpedia-logo-clean.png" alt="CGpedia Logo" class="brand-logo-img" />
+          <img src="assets/cgpedia-logo-clean.png" alt="CGpedia Logo" class="brand-logo-img" width="42" height="42" decoding="async" fetchpriority="high" />
         </div>
         <div>
           <div class="brand-title">
             <span id="headerBrandTitle">CGpedia</span>
-            <span class="badge badge-cloud" id="cloudSyncStatusBadge" title="Firebase Cloud Sync Status">☁️ Live Sync</span>
+            <span class="badge badge-cloud" id="cloudSyncStatusBadge" data-sync-state="synchronizing" title="Firebase Cloud Sync Status">🔄 Synchronizing...</span>
           </div>
           <div class="brand-subtitle" id="headerBrandSubtitle">Competitive Exam &amp; CBT Test Portal</div>
         </div>
@@ -97,7 +102,7 @@
     <div class="hero-banner" id="persistentHeroCard">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
         <div style="display:flex;align-items:center;gap:14px;">
-          <img src="assets/cgpedia-logo-clean.png" alt="CGpedia Official Logo" style="width:66px;height:66px;border-radius:50%;object-fit:cover;border:2.5px solid #93C5FD;background:#F4EFEA;flex-shrink:0;" />
+          <img src="assets/cgpedia-logo-clean.png" alt="CGpedia Official Logo" width="66" height="66" decoding="async" style="width:66px;height:66px;border-radius:50%;object-fit:cover;border:2.5px solid #93C5FD;background:#F4EFEA;flex-shrink:0;" />
           <div>
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
               <span class="badge" id="heroStudentGreetingBadge" style="background:rgba(255,255,255,0.18);color:#fff;">नमस्ते, Aspirant 👋</span>
@@ -195,17 +200,16 @@
   <!-- Toast Notification Container -->
   <div class="toast-container" id="toastContainer"></div>
 
-  <!-- Modular Platform Scripts -->
+  <!-- Modular Platform Scripts (admin-console.js is lazy-loaded on demand by app.js) -->
   <script>
-    // Fail-safe splash dismissal guard so the splash screen can never remain stuck
+    // Fast splash dismissal guard so initial UI is never blocked
     setTimeout(function () {
       var sp = document.getElementById('splashOverlay');
       if (sp) sp.classList.add('hidden');
-    }, 1200);
+    }, 180);
   </script>
-  <script src="firebase-sync.js?v=6.6" defer></script>
-  <script src="exam-engine.js?v=6.6" defer></script>
-  <script src="admin-console.js?v=6.6" defer></script>
-  <script src="app.js?v=6.6" defer></script>
+  <script src="firebase-sync.js?v=6.7" defer></script>
+  <script src="exam-engine.js?v=6.7" defer></script>
+  <script src="app.js?v=6.7" defer></script>
 </body>
 </html>

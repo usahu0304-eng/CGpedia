@@ -246,7 +246,44 @@
   let synthAnthemPlaying = false;
   let settingsDrawerOpen = false;
   let settingsProfileEditExpanded = false;
-  let authStateCheckComplete = isStudentAuthenticated();
+  let authStateCheckComplete = true;
+  let adminConsoleLoadPromise = null;
+
+  function ensureAdminConsoleLoaded() {
+    if (window.CGpediaAdmin && typeof window.CGpediaAdmin.renderAdminConsole === 'function') {
+      return Promise.resolve(window.CGpediaAdmin);
+    }
+    if (adminConsoleLoadPromise) {
+      return adminConsoleLoadPromise;
+    }
+    adminConsoleLoadPromise = new Promise((resolve) => {
+      try {
+        const existingScript = document.querySelector('script[data-admin-console-lazy="1"]');
+        if (existingScript) {
+          existingScript.addEventListener('load', () => resolve(window.CGpediaAdmin || null), { once: true });
+          existingScript.addEventListener('error', () => {
+            adminConsoleLoadPromise = null;
+            resolve(null);
+          }, { once: true });
+          return;
+        }
+        const script = document.createElement('script');
+        script.src = 'admin-console.js?v=6.7';
+        script.defer = true;
+        script.setAttribute('data-admin-console-lazy', '1');
+        script.onload = () => resolve(window.CGpediaAdmin || null);
+        script.onerror = () => {
+          adminConsoleLoadPromise = null;
+          resolve(null);
+        };
+        document.head.appendChild(script);
+      } catch (_) {
+        adminConsoleLoadPromise = null;
+        resolve(null);
+      }
+    });
+    return adminConsoleLoadPromise;
+  }
 
   function loadState() {
     const def = createDefaultState();
@@ -766,7 +803,26 @@
         saveState();
         renderHomeDashboard(root, savedSession);
       } else if (window.CGpediaAdmin && typeof window.CGpediaAdmin.renderAdminConsole === 'function') {
+        if (window.CGpediaCloud && typeof window.CGpediaCloud.subscribeSecondaryCollectionsNow === 'function') {
+          window.CGpediaCloud.subscribeSecondaryCollectionsNow();
+        }
         window.CGpediaAdmin.renderAdminConsole(root, state, publicApi);
+      } else {
+        root.innerHTML = `
+          <div class="card" style="max-width:480px;margin:36px auto;text-align:center;padding:28px 20px;">
+            <div style="font-size:1.8rem;margin-bottom:8px;">🛡️</div>
+            <h2 style="font-size:1.05rem;font-weight:800;margin-bottom:4px;">Loading Master Admin Console...</h2>
+            <p style="font-size:0.84rem;color:var(--text-secondary);">Initializing Admin tools and Question Bank workspace.</p>
+          </div>
+        `;
+        if (window.CGpediaCloud && typeof window.CGpediaCloud.subscribeSecondaryCollectionsNow === 'function') {
+          window.CGpediaCloud.subscribeSecondaryCollectionsNow();
+        }
+        ensureAdminConsoleLoaded().then((adminMod) => {
+          if (adminMod && state.activeTab === 'admin') {
+            renderApp();
+          }
+        });
       }
     }
   }
@@ -4982,6 +5038,7 @@
     };
 
     try {
+      await ensureAdminConsoleLoaded();
       if (window.CGpediaAdmin && typeof window.CGpediaAdmin.generateCurrentAffairsQuizQuestionsWithAi === 'function') {
         const aiQs = await window.CGpediaAdmin.generateCurrentAffairsQuizQuestionsWithAi({
           stories: targetStories,
@@ -6282,7 +6339,7 @@
       }
       saveState();
       applyBrandingAndSecurity();
-      renderApp();
+      scheduleCloudRenderApp();
       return;
     }
 
@@ -7267,19 +7324,27 @@
   window.CGpediaApp = publicApi;
 
   document.addEventListener('DOMContentLoaded', () => {
-    // Hide splash smoothly after 650ms
-    setTimeout(() => {
+    // 1. Render initial Home or Login UI immediately using cached/default state without waiting for network
+    syncOrientationViewportMode();
+    renderApp();
+
+    // Dismiss splash screen immediately on next animation frame after initial paint
+    const dismissSplashImmediate = () => {
       const splash = document.getElementById('splashOverlay');
       if (splash) splash.classList.add('hidden');
-    }, 650);
+    };
+    if (typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(dismissSplashImmediate);
+    } else {
+      dismissSplashImmediate();
+    }
 
-    // Safety fallback timer so auth loading state resolves even if offline
-    setTimeout(() => {
-      if (!authStateCheckComplete) {
-        authStateCheckComplete = true;
-        renderApp();
-      }
-    }, 420);
+    // If user is already logged in as Admin, preload Admin Console module non-blockingly in idle time
+    if (isCurrentUserAdmin()) {
+      setTimeout(() => {
+        ensureAdminConsoleLoaded();
+      }, 250);
+    }
 
     // Browser Back/Forward (popstate) & manual URL hash change protection
     window.addEventListener('popstate', () => {
@@ -7444,15 +7509,16 @@
       dismissPwa.onclick = () => pwaBanner.classList.add('hidden');
     }
 
-    // Register Service Worker & force update check
+    // Register Service Worker non-blockingly after initial render
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
-      navigator.serviceWorker.register('sw.js?v=6.6').then((reg) => {
-        try { reg.update(); } catch (_) {}
-      }).catch(() => {});
+      setTimeout(() => {
+        navigator.serviceWorker.register('sw.js?v=6.7').then((reg) => {
+          try { reg.update(); } catch (_) {}
+        }).catch(() => {});
+      }, 300);
     }
 
     // Portrait (Normal Mobile Site) vs Landscape (1280px Desktop Site) Automatic Switcher
-    syncOrientationViewportMode();
     window.addEventListener('orientationchange', () => {
       setTimeout(() => syncOrientationViewportMode(), 80);
       setTimeout(() => syncOrientationViewportMode(), 260);
@@ -7472,14 +7538,13 @@
     if (isStudentAuthenticated()) {
       setTimeout(() => {
         requestStudentNotificationPermissionImmediate();
-      }, 600);
+      }, 800);
     }
 
-    // Connect Firebase Cloud Sync & Intelligent Verified Current Affairs Sync
+    // Connect Firebase Cloud Sync & Intelligent Verified Current Affairs Sync in background
     let hourlyCaSyncInProgress = false;
     async function runHourlyCurrentAffairsAutoUpdate(forceNow) {
       if (hourlyCaSyncInProgress || navigator.onLine === false) return;
-      if (!window.CGpediaAdmin || typeof window.CGpediaAdmin.generateCurrentAffairsWithAi !== 'function') return;
 
       const LAST_HOURLY_CA_KEY = 'cgpedia_last_hourly_ca_sync_ms_v1';
       const lastSyncMs = Number(localStorage.getItem(LAST_HOURLY_CA_KEY) || 0);
@@ -7496,6 +7561,10 @@
 
       hourlyCaSyncInProgress = true;
       try {
+        await ensureAdminConsoleLoaded();
+        if (!window.CGpediaAdmin || typeof window.CGpediaAdmin.generateCurrentAffairsWithAi !== 'function') {
+          return;
+        }
         const generated = await window.CGpediaAdmin.generateCurrentAffairsWithAi({
           mode: 'intelligent_sync',
           category: 'ALL',
@@ -7534,27 +7603,28 @@
       }
     }
 
-    if (window.CGpediaCloud) {
-      window.CGpediaCloud.initFirebaseConnection((connected) => {
-        if (connected && isCurrentUserAdmin() && !adminInitialAutoSyncTriggered) {
-          adminInitialAutoSyncTriggered = true;
-          setTimeout(() => {
-            syncLocalAdminStateToCloud(false);
-          }, 1200);
-        }
-        if (connected) {
-          setTimeout(() => {
-            runHourlyCurrentAffairsAutoUpdate(false);
-          }, 3500);
-        }
-      });
-    }
+    // Start Firebase connection non-blockingly after initial paint
+    setTimeout(() => {
+      if (window.CGpediaCloud) {
+        window.CGpediaCloud.initFirebaseConnection((connected) => {
+          if (connected && isCurrentUserAdmin() && !adminInitialAutoSyncTriggered) {
+            adminInitialAutoSyncTriggered = true;
+            setTimeout(() => {
+              syncLocalAdminStateToCloud(false);
+            }, 1200);
+          }
+          if (connected) {
+            setTimeout(() => {
+              runHourlyCurrentAffairsAutoUpdate(false);
+            }, 4000);
+          }
+        });
+      }
+    }, 10);
 
     // Trigger online Current Affairs auto-update every 1 hour (3,600,000 ms)
     setInterval(() => {
       runHourlyCurrentAffairsAutoUpdate(false);
     }, 3600000);
-
-    renderApp();
   });
 })();

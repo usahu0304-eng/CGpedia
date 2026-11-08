@@ -1,6 +1,9 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const zlib = require('zlib');
+
+const PORT = 3000;
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -8,124 +11,175 @@ const MIME_TYPES = {
   '.js': 'application/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.webmanifest': 'application/manifest+json; charset=utf-8',
-  '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
-  '.webp': 'image/webp'
+  '.webp': 'image/webp',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.ogg': 'audio/ogg'
 };
 
-const server = http.createServer((req, res) => {
-  const urlPath = decodeURIComponent((req.url || '/').split('?')[0]);
+const COMPRESSIBLE_EXTS = new Set(['.html', '.css', '.js', '.json', '.webmanifest', '.svg']);
+const STATIC_ASSET_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.svg', '.ico', '.css', '.js', '.woff2', '.ttf', '.mp3', '.wav', '.ogg', '.webmanifest']);
 
-  // Gemini AI JSON proxy for Web Browser clients
-  if (req.method === 'POST' && urlPath === '/api/gemini-generate') {
-    let rawBody = '';
-    req.on('data', (chunk) => {
-      if (rawBody.length < 15 * 1024 * 1024) rawBody += chunk;
-    });
-    req.on('end', async () => {
-      try {
-        const payload = JSON.parse(rawBody || '{}');
-        const promptText = String(payload.promptText || '').trim();
-        const base64Image = String(payload.base64Image || '').trim();
-        const apiKey = String(process.env.GEMINI_API_KEY || '').trim();
-        if (!apiKey || !promptText) {
-          res.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ ok: false, error: 'GEMINI_API_KEY not configured on server' }));
-          return;
-        }
-        const parts = [];
-        if (base64Image) {
-          const cleanB64 = base64Image.includes('base64,') ? base64Image.split('base64,')[1] : base64Image;
-          const mimeMatch = base64Image.match(/^data:([^;]+);base64,/);
-          parts.push({
-            inlineData: {
-              mimeType: (mimeMatch && mimeMatch[1]) || 'image/jpeg',
-              data: cleanB64
-            }
-          });
-        }
-        parts.push({ text: promptText });
+// In-memory cache of raw + gzipped buffers keyed by filePath -> { mtimeMs, raw, gzip, etag }
+const responseCache = new Map();
 
-        const models = ['gemini-2.5-flash', 'gemini-2.0-flash'];
-        for (const model of models) {
-          try {
-            const apiRes = await fetch(
-              `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`,
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  contents: [{ parts }],
-                  generationConfig: {
-                    responseMimeType: 'application/json',
-                    temperature: Number(payload.temperature || 0.65)
-                  }
-                })
-              }
-            );
-            if (apiRes.ok) {
-              const data = await apiRes.json();
-              const textOut =
-                data &&
-                data.candidates &&
-                data.candidates[0] &&
-                data.candidates[0].content &&
-                data.candidates[0].content.parts &&
-                data.candidates[0].content.parts[0] &&
-                data.candidates[0].content.parts[0].text;
-              if (textOut) {
-                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-                res.end(JSON.stringify({ ok: true, text: textOut }));
-                return;
-              }
-            }
-          } catch (_) {}
+function getCachedFileEntry(filePath, stat) {
+  const mtimeMs = stat.mtimeMs;
+  const cached = responseCache.get(filePath);
+  if (cached && cached.mtimeMs === mtimeMs && cached.size === stat.size) {
+    return cached;
+  }
+  const raw = fs.readFileSync(filePath);
+  const ext = path.extname(filePath).toLowerCase();
+  const gzip = COMPRESSIBLE_EXTS.has(ext) && raw.length > 256
+    ? zlib.gzipSync(raw, { level: zlib.constants.Z_BEST_SPEED })
+    : null;
+  const etag = `W/"${stat.size.toString(16)}-${Math.floor(mtimeMs).toString(16)}"`;
+  const entry = { mtimeMs, size: stat.size, raw, gzip, etag, ext };
+  responseCache.set(filePath, entry);
+  return entry;
+}
+
+function resolveCandidateFilePath(safeRelPath) {
+  const candidateRoots = [
+    __dirname,
+    path.join(__dirname, 'dist'),
+    path.join(__dirname, 'public')
+  ];
+  for (const rootDir of candidateRoots) {
+    const candidate = path.join(rootDir, safeRelPath);
+    if (!candidate.startsWith(rootDir)) continue;
+    try {
+      if (fs.existsSync(candidate)) {
+        const st = fs.statSync(candidate);
+        if (st.isFile()) {
+          return { filePath: candidate, stat: st };
         }
-        res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ ok: false, error: 'Gemini upstream unavailable' }));
-      } catch (err) {
-        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ ok: false, error: err.message || 'Bad request' }));
       }
-    });
-    return;
+    } catch (_) {}
   }
+  return null;
+}
 
-  const safeRelPath = urlPath === '/' ? 'index.html' : urlPath.replace(/^\/+/, '');
-  const candidatePath = path.join(__dirname, safeRelPath);
+const server = http.createServer((req, res) => {
+  const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  const pathname = decodeURIComponent(parsedUrl.pathname);
+  const hasVersionQuery = parsedUrl.searchParams.has('v');
 
+  // Redirect any legacy APK download URLs back to the web portal root
   if (
-    candidatePath.startsWith(__dirname) &&
-    fs.existsSync(candidatePath) &&
-    fs.statSync(candidatePath).isFile()
+    pathname === '/CGpedia.apk' ||
+    pathname === '/download/CGpedia.apk' ||
+    pathname === '/apk' ||
+    pathname === '/download-apk'
   ) {
-    const ext = path.extname(candidatePath).toLowerCase();
-    const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+    res.writeHead(302, { Location: '/' });
+    res.end();
+    return;
+  }
+
+  // Health & status check endpoint
+  if (pathname === '/api/status') {
+    const body = JSON.stringify({
+      app: 'CGpedia Multi-Exam Test Series & CBT Platform',
+      version: '6.7.0',
+      mode: 'Web & PWA Platform (Compressed + Cached)',
+      status: 'online'
+    });
     res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store'
+    });
+    res.end(body);
+    return;
+  }
+
+  let relPath = pathname === '/' ? '/index.html' : pathname;
+  const safeRelPath = path.normalize(relPath).replace(/^(\.\.(\/|\\|$))+/, '').replace(/^[/\\]+/, '');
+  const reqExt = path.extname(safeRelPath).toLowerCase();
+
+  let resolved = resolveCandidateFilePath(safeRelPath);
+
+  // SPA fallback ONLY for non-asset navigation routes
+  if (!resolved && !STATIC_ASSET_EXTS.has(reqExt)) {
+    resolved = resolveCandidateFilePath('index.html');
+  }
+
+  if (!resolved) {
+    res.writeHead(404, {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Cache-Control': 'no-cache'
+    });
+    res.end('404 Not Found');
+    return;
+  }
+
+  try {
+    const entry = getCachedFileEntry(resolved.filePath, resolved.stat);
+    const contentType = MIME_TYPES[entry.ext] || 'application/octet-stream';
+    const isHtmlOrSw = entry.ext === '.html' || safeRelPath === 'sw.js';
+
+    const cacheControl = isHtmlOrSw
+      ? 'no-cache, must-revalidate'
+      : (hasVersionQuery || entry.ext === '.png' || entry.ext === '.jpg' || entry.ext === '.svg' || entry.ext === '.ico' || entry.ext === '.woff2')
+        ? 'public, max-age=86400, stale-while-revalidate=604800'
+        : 'public, max-age=3600, stale-while-revalidate=86400';
+
+    if (req.headers['if-none-match'] === entry.etag) {
+      res.writeHead(304, {
+        'ETag': entry.etag,
+        'Cache-Control': cacheControl
+      });
+      res.end();
+      return;
+    }
+
+    const acceptEncoding = String(req.headers['accept-encoding'] || '');
+    const useGzip = Boolean(entry.gzip && acceptEncoding.includes('gzip'));
+    const payload = useGzip ? entry.gzip : entry.raw;
+
+    const headers = {
       'Content-Type': contentType,
-      'Cache-Control': 'no-cache, no-store, must-revalidate'
-    });
-    fs.createReadStream(candidatePath).pipe(res);
-    return;
-  }
+      'Content-Length': payload.length,
+      'Cache-Control': cacheControl,
+      'ETag': entry.etag,
+      'Vary': 'Accept-Encoding'
+    };
+    if (useGzip) {
+      headers['Content-Encoding'] = 'gzip';
+    }
 
-  // SPA Fallback to root /index.html
-  const indexHtmlPath = path.join(__dirname, 'index.html');
-  if (fs.existsSync(indexHtmlPath)) {
-    res.writeHead(200, {
-      'Content-Type': 'text/html; charset=utf-8',
-      'Cache-Control': 'no-cache, no-store, must-revalidate'
-    });
-    fs.createReadStream(indexHtmlPath).pipe(res);
-    return;
+    res.writeHead(200, headers);
+    if (req.method === 'HEAD') {
+      res.end();
+    } else {
+      res.end(payload);
+    }
+  } catch (err) {
+    res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Internal Server Error');
   }
-
-  res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-  res.end('Not Found');
 });
 
-server.listen(3000, '0.0.0.0', () => {
-  console.log('CGpedia PWA server listening on port 3000');
+server.on('error', (err) => {
+  if (err && err.code === 'EADDRINUSE') {
+    console.log(`Port ${PORT} is already active; CGpedia Web Server is running.`);
+    process.exit(0);
+  } else {
+    console.error('Server error:', err);
+  }
+});
+
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`====================================================`);
+  console.log(`CGpedia Multi-Exam Web Server active on port ${PORT}`);
+  console.log(`Web Portal URL : http://localhost:${PORT}/`);
+  console.log(`====================================================`);
 });
