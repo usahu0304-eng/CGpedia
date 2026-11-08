@@ -268,7 +268,7 @@
           return;
         }
         const script = document.createElement('script');
-        script.src = 'admin-console.js?v=6.7';
+        script.src = 'admin-console.js?v=6.8';
         script.defer = true;
         script.setAttribute('data-admin-console-lazy', '1');
         script.onload = () => resolve(window.CGpediaAdmin || null);
@@ -379,7 +379,7 @@
     }
     saveStateTimerId = setTimeout(() => {
       flushSaveStateNow();
-    }, 120);
+    }, 450);
   }
 
   window.addEventListener('pagehide', flushSaveStateNow);
@@ -5191,14 +5191,31 @@
     }
   }
 
-  function normalizeStoryCategory(rawCat, fallbackText) {
+  function normalizeStoryCategory(rawCat, fallbackText, rawId) {
     const c = String(rawCat || '').trim().toLowerCase();
-    if (c === 'chhattisgarh' || c.includes('chhattisgarh') || c === 'cg') return 'chhattisgarh';
-    if (c === 'national' || c.includes('national') || c.includes('india') || c.includes('pib')) return 'national';
-    if (c === 'international' || c.includes('international') || c.includes('world') || c.includes('global')) return 'international';
+    const idStr = String(rawId || '').trim().toLowerCase();
     const text = String(fallbackText || '').toLowerCase();
-    if (/छत्तीसगढ़|रायपुर|बस्तर|बिलासपुर|सरगुजा|chhattisgarh|raipur|bastar|surguja/.test(text)) return 'chhattisgarh';
-    if (/विश्व|अंतर्राष्ट्रीय|संयुक्त राष्ट्र|world|international|global|un |unesco|cop-|spadex|docking/.test(text)) return 'international';
+
+    // Check explicit ID or International keywords FIRST because "international" contains "national"
+    if (idStr.includes('_int_') || idStr.includes('international')) {
+      return 'international';
+    }
+    if (c === 'international' || c.includes('international') || c.includes('world') || c.includes('global') || c === 'int') {
+      return 'international';
+    }
+    if (c === 'chhattisgarh' || c.includes('chhattisgarh') || c === 'cg') {
+      return 'chhattisgarh';
+    }
+    // Repair items that were previously misclassified as 'national' due to substring collision
+    if (/विश्व|अंतर्राष्ट्रीय|संयुक्त राष्ट्र|स्पैडेक्स|अंतरिक्ष में डॉकिंग|वैश्विक|शिखर सम्मेलन|संधि|नासा|world|international|global|un |unesco|who|imf|world bank|summit|bilateral|cop-|spadex|in-space autonomous docking|global space desk/.test(text)) {
+      return 'international';
+    }
+    if (/छत्तीसगढ़|रायपुर|बस्तर|बिलासपुर|सरगुजा|chhattisgarh|raipur|bastar|surguja/.test(text)) {
+      return 'chhattisgarh';
+    }
+    if (c === 'national' || c.includes('national') || c.includes('india') || c.includes('pib')) {
+      return 'national';
+    }
     return 'national';
   }
 
@@ -5268,15 +5285,33 @@
     return union > 0 ? inter / union : 0;
   }
 
-  // Unified, deduplicated Current Affairs & Daily Dose content database
+  let _canonicalStoriesCacheKey = '';
+  let _canonicalStoriesCacheResult = null;
+  const _sessionBootTimestampMs = Date.now();
+
+  function invalidateCanonicalCurrentAffairsCache() {
+    _canonicalStoriesCacheKey = '';
+    _canonicalStoriesCacheResult = null;
+  }
+
+  // Unified, deduplicated, and memoized Current Affairs & Daily Dose content database
   function getCanonicalCurrentAffairsList() {
     const rawList = Array.isArray(state.stories) ? state.stories : [];
-    const nowMs = Date.now();
-    const nowDate = new Date(nowMs);
-    const currentMonthKey = `${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, '0')}`;
-    const currentYearKey = String(nowDate.getFullYear());
+    const currentMonthDate = new Date();
+    const currentMonthKey = `${currentMonthDate.getFullYear()}-${String(currentMonthDate.getMonth() + 1).padStart(2, '0')}`;
+    const currentYearKey = String(currentMonthDate.getFullYear());
 
-    // Ensure baseline verified items across Chhattisgarh, National, and International exist if empty
+    // Build a fast fingerprint so repeated calls during UI renders return in O(1) without CPU spikes
+    const fingerprint = `${currentMonthKey}::${rawList.length}::` + rawList.map((item) => {
+      if (!item || typeof item !== 'object') return '';
+      return `${item.id || ''}|${item.category || ''}|${item.createdAtMs || ''}|${item.isDeleted ? 1 : 0}`;
+    }).join('~');
+
+    if (_canonicalStoriesCacheResult && _canonicalStoriesCacheKey === fingerprint) {
+      return _canonicalStoriesCacheResult;
+    }
+
+    // Ensure baseline verified items across Chhattisgarh, National, and International exist
     const baselineVerifiedItems = [
       {
         id: 'ca_verified_cg_ind_policy',
@@ -5287,7 +5322,7 @@
         summaryEn: 'Under the Industrial Policy 2024-30, Chhattisgarh provides enhanced capital subsidies and stamp duty exemptions for MSMEs, agro-processing, and green industries in Bastar and Surguja divisions.',
         sourceName: 'DPR Chhattisgarh',
         sourceUrl: 'https://dprcg.gov.in',
-        createdAtMs: nowMs - 7200000
+        createdAtMs: _sessionBootTimestampMs - 7200000
       },
       {
         id: 'ca_verified_nat_vidyalaxmi',
@@ -5298,32 +5333,44 @@
         summaryEn: 'Approved by the Union Cabinet, PM Vidyalaxmi provides collateral-free, guarantor-free education loans with 3% interest subvention for students admitted to top 860 NIRF-ranked institutions.',
         sourceName: 'PIB India',
         sourceUrl: 'https://pib.gov.in',
-        createdAtMs: nowMs - 5400000
+        createdAtMs: _sessionBootTimestampMs - 5400000
       },
       {
         id: 'ca_verified_int_spadex',
         category: 'international',
-        headlineHi: 'इसरो (ISRO) स्पैडेक्स (SpaDeX) मिशन: अंतरिक्ष में डॉकिंग तकनीक सिद्ध करने वाला भारत चौथा देश बना',
-        headlineEn: 'ISRO SpaDeX Mission: India Becomes 4th Country to Demonstrate In-Space Autonomous Docking',
+        headlineHi: 'इसरो (ISRO) स्पैडेक्स (SpaDeX) मिशन: अंतरिक्ष में डॉकिंग तकनीक सिद्ध करने वाला भारत विश्व का चौथा देश बना',
+        headlineEn: 'ISRO SpaDeX Mission: India Becomes 4th Country Globally to Demonstrate In-Space Autonomous Docking',
         summaryHi: 'भारतीय अंतरिक्ष अनुसंधान संगठन (ISRO) ने PSLV-C60 द्वारा प्रक्षेपित SpaDeX (SDX01 चेज़र और SDX02 टारगेट) उपग्रहों की सफल अंतरिक्ष डॉकिंग पूर्ण की, जिससे अमेरिका, रूस और चीन के बाद भारत विश्व का चौथा देश बन गया है।',
         summaryEn: 'ISRO successfully executed autonomous orbital docking with the SpaDeX satellites (SDX01 and SDX02) launched aboard PSLV-C60, making India the 4th nation globally after the US, Russia, and China.',
         sourceName: 'ISRO / Global Space Desk',
         sourceUrl: 'https://www.isro.gov.in',
-        createdAtMs: nowMs - 3600000
+        createdAtMs: _sessionBootTimestampMs - 3600000
+      },
+      {
+        id: 'ca_verified_int_un_quantum_year',
+        category: 'international',
+        headlineHi: 'संयुक्त राष्ट्र (UN) द्वारा वर्ष 2025 को अंतर्राष्ट्रीय क्वांटम विज्ञान एवं प्रौद्योगिकी वर्ष घोषित किया गया',
+        headlineEn: 'United Nations Proclaims 2025 as the International Year of Quantum Science and Technology (IYQ)',
+        summaryHi: 'संयुक्त राष्ट्र महासभा और यूनेस्को (UNESCO) ने क्वांटम यांत्रिकी के 100 वर्ष पूर्ण होने के उपलक्ष्य में वैश्विक वैज्ञानिक सहयोग, क्वांटम कंप्यूटिंग एवं सतत विकास अनुप्रयोगों को बढ़ावा देने हेतु इस अंतर्राष्ट्रीय पहल का शुभारंभ किया है।',
+        summaryEn: 'The UN General Assembly and UNESCO launched the International Year of Quantum Science and Technology to advance global research cooperation in quantum computing, cryptography, and sustainable development.',
+        sourceName: 'United Nations / UNESCO',
+        sourceUrl: 'https://news.un.org',
+        createdAtMs: _sessionBootTimestampMs - 1800000
       }
     ];
 
-    const combinedInput = rawList.length > 0 ? rawList.slice() : baselineVerifiedItems;
-    // Also ensure International category has at least 1 verified item if missing
-    const hasInt = combinedInput.some((s) => s && normalizeStoryCategory(s.category, `${s.headlineHi || ''} ${s.headlineEn || ''}`) === 'international');
-    if (!hasInt) {
-      combinedInput.push(baselineVerifiedItems[2]);
+    const combinedInput = rawList.length > 0 ? rawList.slice() : baselineVerifiedItems.slice();
+    const countInt = combinedInput.filter((s) => s && normalizeStoryCategory(s.category, `${s.headlineHi || ''} ${s.headlineEn || ''}`, s.id) === 'international').length;
+    if (countInt === 0) {
+      combinedInput.push(baselineVerifiedItems[2], baselineVerifiedItems[3]);
+    } else if (countInt === 1) {
+      combinedInput.push(baselineVerifiedItems[3]);
     }
-    const hasNat = combinedInput.some((s) => s && normalizeStoryCategory(s.category, `${s.headlineHi || ''} ${s.headlineEn || ''}`) === 'national');
+    const hasNat = combinedInput.some((s) => s && normalizeStoryCategory(s.category, `${s.headlineHi || ''} ${s.headlineEn || ''}`, s.id) === 'national');
     if (!hasNat) {
       combinedInput.push(baselineVerifiedItems[1]);
     }
-    const hasCg = combinedInput.some((s) => s && normalizeStoryCategory(s.category, `${s.headlineHi || ''} ${s.headlineEn || ''}`) === 'chhattisgarh');
+    const hasCg = combinedInput.some((s) => s && normalizeStoryCategory(s.category, `${s.headlineHi || ''} ${s.headlineEn || ''}`, s.id) === 'chhattisgarh');
     if (!hasCg) {
       combinedInput.push(baselineVerifiedItems[0]);
     }
@@ -5340,7 +5387,7 @@
       const sumEn = String(raw.summaryEn || sumHi).trim();
       if (!headHi && !headEn) return;
 
-      const id = String(raw.id || (`ca_${nowMs}_${idx}`)).trim();
+      const id = String(raw.id || (`ca_${_sessionBootTimestampMs}_${idx}`)).trim();
       if (seenIds.has(id)) return;
 
       // Prevent duplicate copies of the same news via similarity check
@@ -5352,15 +5399,14 @@
       if (isDup) return;
 
       seenIds.add(id);
-      const ts = getStoryTimestampMs(raw) || (nowMs - (idx * 60000));
+      const ts = getStoryTimestampMs(raw) || (_sessionBootTimestampMs - (idx * 60000));
       const d = new Date(ts);
       const derivedMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      // Align monthKey with current month if the item is recent (within 48h) so Daily Dose and Current Affairs counts always match
-      const monthKey = (nowMs - ts) <= 172800000
+      const monthKey = (_sessionBootTimestampMs - ts) <= 172800000
         ? currentMonthKey
         : (/^\d{4}-\d{2}$/.test(String(raw.monthKey || '')) ? String(raw.monthKey) : derivedMonth);
       const yearKey = monthKey.slice(0, 4) || currentYearKey;
-      const cat = normalizeStoryCategory(raw.category, `${headHi} ${headEn} ${sumHi}`);
+      const cat = normalizeStoryCategory(raw.category, `${headHi} ${headEn} ${sumHi} ${sumEn}`, id);
       const defaultSourceUrl = cat === 'chhattisgarh'
         ? 'https://dprcg.gov.in'
         : (cat === 'national' ? 'https://pib.gov.in' : 'https://news.un.org');
@@ -5392,6 +5438,10 @@
     });
 
     state.stories = deduplicated;
+    _canonicalStoriesCacheKey = `${currentMonthKey}::${deduplicated.length}::` + deduplicated.map((item) => {
+      return `${item.id || ''}|${item.category || ''}|${item.createdAtMs || ''}|${item.isDeleted ? 1 : 0}`;
+    }).join('~');
+    _canonicalStoriesCacheResult = deduplicated;
     return deduplicated;
   }
 
@@ -5545,20 +5595,12 @@
     const lang = getCaLangMode();
     const isHi = lang === 'hi';
     const groupedCategories = groupStoriesByCategoryCircles(storiesList);
-    const totalStories = (storiesList || []).length;
-    const totalSeen = (storiesList || []).filter((s) => isStorySeenByStudent(s.id)).length;
-    const totalUnseen = Math.max(0, totalStories - totalSeen);
 
     return `
       <div class="card" style="margin-bottom:14px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
             <h2 style="font-size:1.04rem;font-weight:800;margin:0;">Daily Dose</h2>
-            <span style="font-size:0.73rem;font-weight:700;padding:2px 9px;border-radius:99px;background:var(--surface-alt);border:1px solid var(--border);color:var(--text-secondary);">
-              ${isHi
-                ? `अनदेखे: ${totalUnseen} • देखे गए: ${totalSeen}`
-                : `Unseen: ${totalUnseen} • Seen: ${totalSeen}`}
-            </span>
           </div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
             <div style="display:inline-flex;border-radius:99px;border:1px solid var(--border-strong);overflow:hidden;background:var(--surface-alt);">
@@ -5578,10 +5620,6 @@
               const targetPreviewStory = catGroup.stories[catGroup.firstUnseenIndex] || catGroup.stories[catGroup.stories.length - 1];
               const thumbUrl = getStoryImageUrl(targetPreviewStory);
               const ringSvg = buildWhatsAppStoryRingSvg(catGroup.stories);
-              const statusText = catGroup.unseenCount > 0
-                ? (isHi ? `● ${catGroup.unseenCount} अनदेखे` : `● ${catGroup.unseenCount} Unseen`)
-                : (isHi ? '✓ सभी देखे गए' : '✓ All Seen');
-              const statusColor = catGroup.unseenCount > 0 ? '#059669' : 'var(--text-muted)';
               return `
                 <div class="story-item" data-open-whatsapp-cat="${esc(catGroup.category)}" data-strip-prefix="${esc(prefix)}" style="min-width:92px;cursor:pointer;display:flex;flex-direction:column;align-items:center;">
                   <div style="position:relative;width:74px;height:74px;display:flex;align-items:center;justify-content:center;">
@@ -5592,7 +5630,6 @@
                     </div>
                   </div>
                   <span class="story-caption" style="font-weight:800;font-size:0.79rem;margin-top:6px;color:var(--text);">${esc(catGroup.displayLabel)}</span>
-                  <span style="font-size:0.68rem;font-weight:700;color:${statusColor};line-height:1.2;margin-top:2px;">${esc(statusText)}</span>
                 </div>
               `;
             }).join('')}
@@ -5704,9 +5741,6 @@
       const headlineText = getStoryLocalizedHeadline(storyObj, lang);
       const summaryText = getStoryLocalizedSummary(storyObj, lang);
 
-      const seenCountInSeq = storiesList.filter((s) => isStorySeenByStudent(s.id)).length;
-      const unseenCountInSeq = Math.max(0, storiesList.length - seenCountInSeq);
-
       storyRoot.innerHTML = `
         <div class="modal-backdrop" id="instaStoryBackdrop" style="position:fixed;inset:0;width:100vw;height:100dvh;background:#040918;padding:0;margin:0;z-index:9999;display:flex;align-items:stretch;justify-content:center;">
           <div style="width:100vw;height:100dvh;max-width:100vw;max-height:100dvh;background:linear-gradient(165deg,#07122E 0%,#0F2557 52%,#1B1440 100%);color:#fff;border-radius:0;border:none;display:flex;flex-direction:column;justify-content:space-between;position:relative;overflow:hidden;user-select:none;">
@@ -5727,7 +5761,7 @@
                 }).join('')}
               </div>
 
-              <!-- Story Category Header + Seen/Unseen Indicator + Language Switch + Admin Controls -->
+              <!-- Story Category Header + Language Switch + Admin Controls (No Seen/Unseen Numbers) -->
               <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
                 <div style="display:flex;align-items:center;gap:10px;min-width:0;">
                   <div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(45deg,#10B981,#059669);padding:2.5px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
@@ -5736,9 +5770,6 @@
                   <div style="min-width:0;">
                     <div style="font-size:0.92rem;font-weight:800;line-height:1.2;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                       <span>${esc(catName)}</span>
-                      <span style="font-size:0.68rem;font-weight:700;padding:2px 8px;border-radius:99px;background:rgba(16,185,129,0.22);color:#6EE7B7;">
-                        ${isHi ? `देखे: ${seenCountInSeq} • अनदेखे: ${unseenCountInSeq}` : `Seen: ${seenCountInSeq} • Unseen: ${unseenCountInSeq}`}
-                      </span>
                     </div>
                     <div style="font-size:0.73rem;color:#BFDBFE;margin-top:2px;">🕒 ${esc(uploadTimeFormatted)}</div>
                   </div>
@@ -6324,18 +6355,12 @@
           if (globalDoc.whatsappSupportNumber && !globalDoc.whatsappNumber) {
             state.config.whatsappNumber = globalDoc.whatsappSupportNumber;
           }
-        } else if (adminMode && localTs > cloudTs && window.CGpediaCloud && window.CGpediaCloud.saveCloudDoc) {
-          window.CGpediaCloud.saveCloudDoc('app_config', 'global', Object.assign({ id: 'global', configKey: 'global' }, state.config));
         }
-      } else if (adminMode && state.config && window.CGpediaCloud && window.CGpediaCloud.saveCloudDoc) {
-        window.CGpediaCloud.saveCloudDoc('app_config', 'global', Object.assign({ id: 'global', configKey: 'global' }, state.config));
       }
 
       const taxDoc = docs.find((d) => d.id === 'taxonomy' || d.configKey === 'taxonomy');
       if (taxDoc) {
         state.customTaxonomy = Object.assign({ customCategories: [], customSubjects: [] }, state.customTaxonomy || {}, taxDoc);
-      } else if (adminMode && state.customTaxonomy && window.CGpediaCloud && window.CGpediaCloud.saveCloudDoc) {
-        window.CGpediaCloud.saveCloudDoc('app_config', 'taxonomy', Object.assign({ id: 'taxonomy', configKey: 'taxonomy' }, state.customTaxonomy));
       }
       saveState();
       applyBrandingAndSecurity();
@@ -6355,11 +6380,9 @@
         : [];
 
       const mergedMap = new Map();
-      const cloudIds = new Set();
       activeCloudDocs.forEach((cDoc) => {
         if (!isDeletedFn(colName, cDoc.id)) {
           mergedMap.set(String(cDoc.id), cDoc);
-          cloudIds.add(String(cDoc.id));
         }
       });
 
@@ -6369,9 +6392,6 @@
       localArr.forEach((lDoc) => {
         const lid = String(lDoc.id);
         if (!mergedMap.has(lid)) {
-          // If Cloud is empty on initial load, push all local Admin items to Cloud.
-          // If Cloud already has documents, only push local items that have admin timestamps/metadata
-          // (so untouched default seed items on a second Admin device don't overwrite Cloud).
           const isAuthoredOrEmptyCloud = !cloudHasDocs || Boolean(lDoc.updatedAtIso || lDoc.createdAtIso || lDoc.updatedByAdminEmail);
           if (isAuthoredOrEmptyCloud) {
             mergedMap.set(lid, lDoc);
@@ -6381,7 +6401,7 @@
           const cDoc = mergedMap.get(lid);
           const cTime = cDoc.updatedAtIso ? Date.parse(cDoc.updatedAtIso) : 0;
           const lTime = lDoc.updatedAtIso ? Date.parse(lDoc.updatedAtIso) : 0;
-          if (lTime > cTime) {
+          if (lTime > cTime + 2000) {
             mergedMap.set(lid, lDoc);
             toPushToCloud.push(lDoc);
           }
@@ -6402,6 +6422,7 @@
     }
 
     if (key === 'stories') {
+      invalidateCanonicalCurrentAffairsCache();
       getCanonicalCurrentAffairsList();
     }
 
@@ -6409,16 +6430,23 @@
       const myCloudDoc = activeCloudDocs.find((u) => String(u.id || u.userId) === String(state.student.uid));
       if (myCloudDoc) {
         if (Array.isArray(myCloudDoc.seenStoryIds) && myCloudDoc.seenStoryIds.length > 0) {
-          const mergedSeen = new Set([
-            ...Array.from(getSeenStoryIdsSet()),
-            ...myCloudDoc.seenStoryIds.map((id) => String(id))
-          ]);
-          const nextArr = Array.from(mergedSeen);
-          state.seenStoryIds = nextArr;
-          state.student.seenStoryIds = nextArr;
-          saveSeenStoriesToLocal(state.student.uid, nextArr);
+          const currentSeenSet = getSeenStoryIdsSet();
+          let hasNewSeenId = false;
+          myCloudDoc.seenStoryIds.forEach((id) => {
+            const cleanId = String(id);
+            if (cleanId && !currentSeenSet.has(cleanId)) {
+              currentSeenSet.add(cleanId);
+              hasNewSeenId = true;
+            }
+          });
+          if (hasNewSeenId) {
+            const nextArr = Array.from(currentSeenSet);
+            state.seenStoryIds = nextArr;
+            state.student.seenStoryIds = nextArr;
+            saveSeenStoriesToLocal(state.student.uid, nextArr);
+          }
         }
-        if (myCloudDoc.caLangMode === 'hi' || myCloudDoc.caLangMode === 'en') {
+        if ((myCloudDoc.caLangMode === 'hi' || myCloudDoc.caLangMode === 'en') && myCloudDoc.caLangMode !== state.caLangMode) {
           state.caLangMode = myCloudDoc.caLangMode;
           state.student.caLangMode = myCloudDoc.caLangMode;
         }
@@ -6444,6 +6472,14 @@
     cloudRenderTimerId = setTimeout(() => {
       cloudRenderTimerId = null;
       if (cloudRenderScheduled) return;
+      // Do not rebuild background DOM while Full-Screen Story Viewer or CBT Exam is active
+      if (document.getElementById('instaStoryBackdrop')) {
+        return;
+      }
+      const cbtRoot = document.getElementById('cbtExamContainer');
+      if (cbtRoot && cbtRoot.children.length > 0) {
+        return;
+      }
       cloudRenderScheduled = true;
       const runRender = () => {
         cloudRenderScheduled = false;
@@ -6464,7 +6500,7 @@
       } else {
         runRender();
       }
-    }, 90);
+    }, 180);
   }
 
   const NOTIFIED_ITEMS_STORAGE_KEY = 'cgpedia_notified_items_v1';
@@ -7512,7 +7548,7 @@
     // Register Service Worker non-blockingly after initial render
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
       setTimeout(() => {
-        navigator.serviceWorker.register('sw.js?v=6.7').then((reg) => {
+        navigator.serviceWorker.register('sw.js?v=6.8').then((reg) => {
           try { reg.update(); } catch (_) {}
         }).catch(() => {});
       }, 300);
@@ -7579,6 +7615,7 @@
           });
           if (uniqueItems.length > 0) {
             state.stories = [...uniqueItems, ...canonicalStories];
+            invalidateCanonicalCurrentAffairsCache();
             getCanonicalCurrentAffairsList();
             saveState();
             localStorage.setItem(LAST_HOURLY_CA_KEY, String(Date.now()));
@@ -7603,20 +7640,14 @@
       }
     }
 
-    // Start Firebase connection non-blockingly after initial paint
+    // Start Firebase connection non-blockingly after initial paint (without full-database write storm)
     setTimeout(() => {
       if (window.CGpediaCloud) {
         window.CGpediaCloud.initFirebaseConnection((connected) => {
-          if (connected && isCurrentUserAdmin() && !adminInitialAutoSyncTriggered) {
-            adminInitialAutoSyncTriggered = true;
-            setTimeout(() => {
-              syncLocalAdminStateToCloud(false);
-            }, 1200);
-          }
           if (connected) {
             setTimeout(() => {
               runHourlyCurrentAffairsAutoUpdate(false);
-            }, 4000);
+            }, 4500);
           }
         });
       }

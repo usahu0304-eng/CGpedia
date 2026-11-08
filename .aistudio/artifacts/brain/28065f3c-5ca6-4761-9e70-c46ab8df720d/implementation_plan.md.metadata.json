@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan for WhatsApp-style Oldest-to-Latest Daily Dose stories, Seen/Unseen segmented ring and direct jump to first unseen story, AI Generated image watermark/badge, and unifying Daily Dose & Current Affairs story counts.",
-  "updatedAt":  "2026-11-07T14:09:26.053232615Z",
+  "summary":  "Implementation plan to fix application hang/freeze and device heating, restore International Current Affairs & Daily Dose content and auto-updates, and remove all numerical seen/unseen story counters from Daily Dose and the full-screen Story Viewer.",
+  "updatedAt":  "2026-11-08T09:46:50.794027410Z",
   "requestFeedback":  true,
   "userFacing":  true
 }
