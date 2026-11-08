@@ -1867,12 +1867,18 @@
           editingStory.sourceName = srcVal;
           editingStory.monthKey = monthVal;
           editingStory.yearKey = yearVal;
-          editingStory.imageUrl = resolvedImgUrl || editingStory.imageUrl || generateAutoStoryImageUrl({
-            category: catVal,
-            headlineHi: headHi,
-            headlineEn: headEn,
-            sourceName: srcVal
-          });
+          if (resolvedImgUrl) {
+            editingStory.imageUrl = resolvedImgUrl;
+            editingStory.isAiGeneratedImage = String(resolvedImgUrl).startsWith('data:image/svg+xml');
+          } else if (!editingStory.imageUrl) {
+            editingStory.imageUrl = generateAutoStoryImageUrl({
+              category: catVal,
+              headlineHi: headHi,
+              headlineEn: headEn,
+              sourceName: srcVal
+            });
+            editingStory.isAiGeneratedImage = true;
+          }
           editingStory.updatedAtIso = new Date().toISOString();
           state.editingCaStoryId = null;
           api.saveState();
@@ -1894,6 +1900,7 @@
 
         const nowMs = Date.now();
         const nowIso = new Date(nowMs).toISOString();
+        const hasAuthenticCustomPhoto = Boolean(resolvedImgUrl && !String(resolvedImgUrl).startsWith('data:image/svg+xml'));
         const stObj = {
           id: 'ca_' + nowMs,
           category: catVal,
@@ -1902,13 +1909,16 @@
           summaryHi,
           summaryEn,
           sourceName: srcVal,
+          sourceUrl: catVal === 'chhattisgarh' ? 'https://dprcg.gov.in' : (catVal === 'national' ? 'https://pib.gov.in' : 'https://news.un.org'),
           monthKey: monthVal,
           yearKey: yearVal,
           dateIso: nowIso.slice(0, 10),
+          publishedDateIso: nowIso.slice(0, 10),
           createdAtMs: nowMs,
           expiresAtMs: nowMs + 86400000,
           createdAtIso: nowIso,
-          updatedAtIso: nowIso
+          updatedAtIso: nowIso,
+          isAiGeneratedImage: !hasAuthenticCustomPhoto
         };
         stObj.imageUrl = resolvedImgUrl || generateAutoStoryImageUrl(stObj);
         state.stories.unshift(stObj);
@@ -13744,8 +13754,8 @@ Return ONLY a valid JSON array of objects:
 
   function isDuplicateCurrentAffair(candidate, existingStories) {
     if (!candidate) return true;
-    const candHi = normalizeTextForComparison(candidate.headlineHi || '');
-    const candEn = normalizeTextForComparison(candidate.headlineEn || '');
+    const candHi = normalizeTextForComparison(candidate.headlineHi || candidate.titleHi || '');
+    const candEn = normalizeTextForComparison(candidate.headlineEn || candidate.titleEn || '');
     const candSum = normalizeTextForComparison(candidate.summaryHi || candidate.summaryEn || '');
     if (!candHi && !candEn) return true;
 
@@ -13753,16 +13763,17 @@ Return ONLY a valid JSON array of objects:
     for (let i = 0; i < list.length; i++) {
       const ex = list[i];
       if (!ex) continue;
-      const exHi = normalizeTextForComparison(ex.headlineHi || '');
-      const exEn = normalizeTextForComparison(ex.headlineEn || '');
+      if (candidate.id && ex.id && String(candidate.id) === String(ex.id)) return true;
+      const exHi = normalizeTextForComparison(ex.headlineHi || ex.titleHi || '');
+      const exEn = normalizeTextForComparison(ex.headlineEn || ex.titleEn || '');
       const exSum = normalizeTextForComparison(ex.summaryHi || ex.summaryEn || '');
-      if (candHi && exHi && (candHi === exHi || computeTextSimilarity(candHi, exHi) >= 0.72)) {
+      if (candHi && exHi && (candHi === exHi || computeTextSimilarity(candHi, exHi) >= 0.65)) {
         return true;
       }
-      if (candEn && exEn && (candEn === exEn || computeTextSimilarity(candEn, exEn) >= 0.72)) {
+      if (candEn && exEn && (candEn === exEn || computeTextSimilarity(candEn, exEn) >= 0.65)) {
         return true;
       }
-      if (candSum && exSum && candSum.length > 24 && computeTextSimilarity(candSum, exSum) >= 0.80) {
+      if (candSum && exSum && candSum.length > 24 && computeTextSimilarity(candSum, exSum) >= 0.72) {
         return true;
       }
     }
@@ -13771,26 +13782,28 @@ Return ONLY a valid JSON array of objects:
 
   function generateAutoStoryImageUrl(storyItem) {
     const st = storyItem || {};
-    if (st.imageUrl && String(st.imageUrl).trim()) return String(st.imageUrl).trim();
+    if (st.imageUrl && String(st.imageUrl).trim() && !String(st.imageUrl).startsWith('data:image/svg+xml')) {
+      return String(st.imageUrl).trim();
+    }
     const cat = String(st.category || 'chhattisgarh').toLowerCase();
     const combinedText = `${st.headlineHi || ''} ${st.headlineEn || ''} ${st.summaryHi || ''}`.toLowerCase();
 
     let gradStart = '#0F2557';
     let gradMid = '#1E3A8A';
     let gradEnd = '#EA580C';
-    let badgeText = 'CHHATTISGARH UPDATE';
+    let badgeText = 'CHHATTISGARH CURRENT AFFAIRS';
     let iconEmoji = '🌾';
     if (cat === 'national') {
       gradStart = '#0B2447';
       gradMid = '#19376D';
       gradEnd = '#16A34A';
-      badgeText = 'NATIONAL (INDIA) UPDATE';
+      badgeText = 'NATIONAL CURRENT AFFAIRS';
       iconEmoji = '🇮🇳';
     } else if (cat === 'international') {
       gradStart = '#1E1B4B';
       gradMid = '#312E81';
       gradEnd = '#0284C7';
-      badgeText = 'INTERNATIONAL & SCIENCE';
+      badgeText = 'INTERNATIONAL CURRENT AFFAIRS';
       iconEmoji = '🌍';
     }
 
@@ -13804,10 +13817,10 @@ Return ONLY a valid JSON array of objects:
       iconEmoji = '🌿';
     }
 
-    const rawTitle = String(st.headlineEn || st.headlineHi || 'Current Affairs Highlight').replace(/[<>&"']/g, ' ');
+    const rawTitle = String(st.headlineEn || st.titleEn || st.headlineHi || st.titleHi || 'Current Affairs Highlight').replace(/[<>&"']/g, ' ');
     const line1 = rawTitle.slice(0, 44);
     const line2 = rawTitle.length > 44 ? rawTitle.slice(44, 88) + (rawTitle.length > 88 ? '...' : '') : '';
-    const srcLabel = String(st.sourceName || 'CGpedia Daily Dose').replace(/[<>&"']/g, ' ').slice(0, 36);
+    const srcLabel = String(st.sourceName || 'Official News Desk').replace(/[<>&"']/g, ' ').slice(0, 34);
 
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 440" width="800" height="440">
       <defs>
@@ -13820,14 +13833,16 @@ Return ONLY a valid JSON array of objects:
       <rect width="800" height="440" rx="24" fill="url(#bg)"/>
       <circle cx="710" cy="85" r="145" fill="rgba(255,255,255,0.07)"/>
       <circle cx="95" cy="380" r="165" fill="rgba(255,255,255,0.05)"/>
-      <rect x="38" y="34" width="290" height="38" rx="19" fill="rgba(255,255,255,0.16)"/>
-      <text x="58" y="59" fill="#FFFFFF" font-family="sans-serif" font-size="16" font-weight="800" letter-spacing="1">${badgeText}</text>
-      <circle cx="675" cy="185" r="76" fill="rgba(255,255,255,0.13)" stroke="rgba(255,255,255,0.28)" stroke-width="2"/>
-      <text x="675" y="210" text-anchor="middle" font-size="68">${iconEmoji}</text>
-      <text x="42" y="175" fill="#F8FAFC" font-family="sans-serif" font-size="29" font-weight="800">${line1}</text>
-      <text x="42" y="218" fill="#DBEAFE" font-family="sans-serif" font-size="25" font-weight="700">${line2}</text>
-      <rect x="42" y="342" width="420" height="44" rx="12" fill="rgba(15,23,42,0.45)"/>
-      <text x="60" y="370" fill="#93C5FD" font-family="sans-serif" font-size="17" font-weight="700">⚡ ${srcLabel} • Daily Dose Visual</text>
+      <rect x="38" y="34" width="330" height="38" rx="19" fill="rgba(255,255,255,0.16)"/>
+      <text x="56" y="59" fill="#FFFFFF" font-family="sans-serif" font-size="15" font-weight="800" letter-spacing="0.8">${badgeText}</text>
+      <rect x="556" y="34" width="206" height="36" rx="18" fill="rgba(15,23,42,0.72)" stroke="rgba(255,255,255,0.35)" stroke-width="1.5"/>
+      <text x="659" y="57" text-anchor="middle" fill="#FDE68A" font-family="sans-serif" font-size="14" font-weight="800">✨ AI Generated Image</text>
+      <circle cx="675" cy="195" r="76" fill="rgba(255,255,255,0.13)" stroke="rgba(255,255,255,0.28)" stroke-width="2"/>
+      <text x="675" y="220" text-anchor="middle" font-size="68">${iconEmoji}</text>
+      <text x="42" y="175" fill="#F8FAFC" font-family="sans-serif" font-size="28" font-weight="800">${line1}</text>
+      <text x="42" y="218" fill="#DBEAFE" font-family="sans-serif" font-size="24" font-weight="700">${line2}</text>
+      <rect x="42" y="342" width="470" height="44" rx="12" fill="rgba(15,23,42,0.52)"/>
+      <text x="60" y="370" fill="#93C5FD" font-family="sans-serif" font-size="16" font-weight="700">Source: ${srcLabel} • AI Generated Image</text>
     </svg>`;
     return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
   }
@@ -13837,7 +13852,7 @@ Return ONLY a valid JSON array of objects:
     let resolvedSource = defaultSource;
     let resolvedMonthKey = targetMonthKey;
     if (defaultCategory && typeof defaultCategory === 'object' && !Array.isArray(defaultCategory)) {
-      resolvedCategory = defaultCategory.category || 'chhattisgarh';
+      resolvedCategory = defaultCategory.category || 'ALL';
       resolvedSource = defaultCategory.sourceName || defaultSource;
       resolvedMonthKey = defaultCategory.monthKey || targetMonthKey;
     }
@@ -13868,40 +13883,51 @@ Return ONLY a valid JSON array of objects:
         return;
       }
 
-      let cat = String(raw.category || resolvedCategory || 'chhattisgarh').toLowerCase().trim();
+      let cat = String(raw.category || resolvedCategory || '').toLowerCase().trim();
       if (cat === 'all' || !['chhattisgarh', 'national', 'international'].includes(cat)) {
-        const combined = `${headHi} ${headEn} ${sumHi}`.toLowerCase();
-        if (/छत्तीसगढ़|रायपुर|बस्तर|बिलासपुर|सरगुजा|chhattisgarh|raipur|cgpsc|vyapam|महतारी|धान/.test(combined)) {
+        const combined = `${headHi} ${headEn} ${sumHi} ${sumEn}`.toLowerCase();
+        if (/छत्तीसगढ़|रायपुर|बस्तर|बिलासपुर|सरगुजा|कोरबा|दुर्ग|दंतेवाड़ा|chhattisgarh|raipur|cgpsc|vyapam|महतारी|धान/.test(combined)) {
           cat = 'chhattisgarh';
-        } else if (/विश्व|अंतर्राष्ट्रीय|संयुक्त राष्ट्र|नासा|world|international|global|un |unesco|summit/.test(combined)) {
+        } else if (/विश्व|अंतर्राष्ट्रीय|संयुक्त राष्ट्र|नासा|वैश्विक|शिखर सम्मेलन|संधि|world|international|global|un |unesco|who|imf|world bank|summit|bilateral|space|docking|spadex/.test(combined)) {
           cat = 'international';
         } else {
           cat = 'national';
         }
       }
 
-      const itemMonth = String(raw.monthKey || monthKey).trim();
+      // Always keep monthKey aligned with the target/current month so Daily Dose and Current Affairs never diverge
+      const itemMonth = /^\d{4}-\d{2}$/.test(monthKey) ? monthKey : fallbackMonth;
       const itemYear = itemMonth.split('-')[0] || yearKey;
-      const itemMs = nowMs + idx;
+      const itemMs = nowMs + (idx * 1000);
       const itemIso = new Date(itemMs).toISOString();
+      const defaultSourceUrl = cat === 'chhattisgarh'
+        ? 'https://dprcg.gov.in'
+        : (cat === 'national' ? 'https://pib.gov.in' : 'https://news.un.org');
+      const rawImg = String(raw.imageUrl || '').trim();
+      const hasAuthenticPhoto = Boolean(rawImg && !rawImg.startsWith('data:image/svg+xml'));
 
       const stObj = {
-        id: 'ca_' + itemMs + '_' + Math.random().toString(36).slice(2, 6),
+        id: String(raw.id || ('ca_' + itemMs + '_' + Math.random().toString(36).slice(2, 6))),
         category: cat,
+        titleHi: candidate.headlineHi,
+        titleEn: candidate.headlineEn,
         headlineHi: candidate.headlineHi,
         headlineEn: candidate.headlineEn,
         summaryHi: candidate.summaryHi,
         summaryEn: candidate.summaryEn,
-        sourceName: String(raw.sourceName || resolvedSource || 'PIB / DPR Chhattisgarh').trim(),
+        sourceName: String(raw.sourceName || resolvedSource || (cat === 'chhattisgarh' ? 'DPR Chhattisgarh' : (cat === 'national' ? 'PIB India' : 'Global Official Desk'))).trim(),
+        sourceUrl: String(raw.sourceUrl || defaultSourceUrl).trim(),
         monthKey: itemMonth,
         yearKey: itemYear,
-        dateIso: String(raw.dateLabel || raw.dateIso || itemIso.slice(0, 10)),
+        dateIso: String(raw.publishedDateIso || raw.dateIso || itemIso.slice(0, 10)),
+        publishedDateIso: String(raw.publishedDateIso || raw.dateIso || itemIso.slice(0, 10)),
         createdAtMs: itemMs,
         expiresAtMs: itemMs + 86400000,
         createdAtIso: itemIso,
-        updatedAtIso: itemIso
+        updatedAtIso: itemIso,
+        isAiGeneratedImage: !hasAuthenticPhoto
       };
-      stObj.imageUrl = raw.imageUrl || generateAutoStoryImageUrl(stObj);
+      stObj.imageUrl = hasAuthenticPhoto ? rawImg : generateAutoStoryImageUrl(stObj);
       runningPool.push(stObj);
       results.push(stObj);
     });
@@ -14033,7 +14059,7 @@ ${schemaInstruction}`;
       ];
     }
 
-    // Curated non-repeating hourly pool so automated updates work even when Admin is offline or on Web without AndroidBridge
+    // Curated verified pool across Chhattisgarh, National, and International categories
     const curatedHourlyPool = [
       {
         category: 'chhattisgarh',
@@ -14041,23 +14067,8 @@ ${schemaInstruction}`;
         headlineEn: 'Chhattisgarh Industrial Development Policy 2024-30: Special Investment Incentives in Bastar & Surguja',
         summaryHi: 'राज्य सरकार ने नई औद्योगिक नीति 2024-30 के अंतर्गत अनुसूचित क्षेत्रों, बस्तर और सरगुजा संभाग में एमएसएमई, कृषि प्रसंस्करण एवं हरित उद्योग स्थापित करने पर अतिरिक्त पूंजी अनुदान तथा स्टाम्प शुल्क छूट का प्रावधान किया है।',
         summaryEn: 'Under the Industrial Policy 2024-30, Chhattisgarh provides enhanced capital subsidies and stamp duty exemptions for MSMEs, agro-processing, and green industries in Bastar and Surguja divisions.',
-        sourceName: 'DPR Chhattisgarh'
-      },
-      {
-        category: 'chhattisgarh',
-        headlineHi: 'गुरु घासीदास-तमोर पिंगला टाइगर रिजर्व देश का 56वां बाघ अभयारण्य अधिसूचित',
-        headlineEn: 'Guru Ghasidas-Tamor Pingla Notified as India’s 56th Tiger Reserve in Chhattisgarh',
-        summaryHi: 'छत्तीसगढ़ के मनेंद्रगढ़-चिरमिरी-भरतपुर, कोरिया, सूरजपुर और बलरामपुर जिलों में विस्तृत 2,829 वर्ग किमी क्षेत्रफल वाले गुरु घासीदास-तमोर पिंगला टाइगर रिजर्व को भारत के 56वें टाइगर रिजर्व के रूप में अधिसूचित किया गया है, जो क्षेत्रफल की दृष्टि से देश का तीसरा सबसे बड़ा टाइगर रिजर्व है।',
-        summaryEn: 'Spanning 2,829 sq km across MCB, Koriya, Surajpur, and Balrampur districts, Guru Ghasidas-Tamor Pingla has been notified as India’s 56th and third-largest Tiger Reserve.',
-        sourceName: 'NTCA / DPR Chhattisgarh'
-      },
-      {
-        category: 'chhattisgarh',
-        headlineHi: 'नियद नेल्लानार योजना: बस्तर के दूरस्थ ग्रामों में 50 से अधिक मूलभूत योजनाओं का एकीकृत क्रियान्वयन',
-        headlineEn: 'Niyad Nellanar Scheme: Integrated Delivery of 50+ Basic Welfare Schemes in Remote Bastar Villages',
-        summaryHi: 'छत्तीसगढ़ शासन की नियद नेल्लानार ("आपका अच्छा गाँव") योजना के तहत बस्तर संभाग के सुरक्षा कैंपों के 5 किमी की परिधि में स्थित ग्रामों में आवास, पेयजल, सौर ऊर्जा, आयुष्मान कार्ड, राशन और सड़क सुविधा शत-प्रतिशत पहुंचाई जा रही है।',
-        summaryEn: 'Chhattisgarh’s Niyad Nellanar ("Your Good Village") initiative saturates villages within 5 km of security camps in Bastar with housing, drinking water, solar power, Ayushman cards, and road connectivity.',
-        sourceName: 'DPR Chhattisgarh'
+        sourceName: 'DPR Chhattisgarh',
+        sourceUrl: 'https://dprcg.gov.in'
       },
       {
         category: 'national',
@@ -14065,27 +14076,51 @@ ${schemaInstruction}`;
         headlineEn: 'PM Vidyalaxmi Scheme: Collateral-Free Education Loans up to ₹10 Lakh for Meritorious Students',
         summaryHi: 'केंद्रीय मंत्रिमंडल द्वारा स्वीकृत पीएम विद्यालक्ष्मी योजना के अंतर्गत देश के शीर्ष 860 उच्च शिक्षण संस्थानों (NIRF रैंकिंग आधारित) में प्रवेश लेने वाले छात्रों को बिना किसी जमानत या गारंटर के शिक्षा ऋण तथा 3% ब्याज अनुदान प्रदान किया जा रहा है।',
         summaryEn: 'Approved by the Union Cabinet, PM Vidyalaxmi provides collateral-free, guarantor-free education loans with 3% interest subvention for students admitted to top 860 NIRF-ranked institutions.',
-        sourceName: 'PIB India'
+        sourceName: 'PIB India',
+        sourceUrl: 'https://pib.gov.in'
       },
       {
         category: 'international',
         headlineHi: 'इसरो (ISRO) स्पैडेक्स (SpaDeX) मिशन: अंतरिक्ष में डॉकिंग तकनीक सिद्ध करने वाला भारत चौथा देश बना',
         headlineEn: 'ISRO SpaDeX Mission: India Becomes 4th Country to Demonstrate In-Space Autonomous Docking',
-        summaryHi: 'भारतीय अंतरिक्ष अनुसंधान संगठन (ISRO) ने PSLV-C60 द्वारा प्रक्षेपित SpaDeX (SDX01 चेज़र और SDX02 टारगेट) उपग्रहों की सफल अंतरिक्ष डॉकिंग पूर्ण की, जो भारतीय अंतरिक्ष स्टेशन और चंद्रयान-4 मिशन के लिए आधारभूत तकनीक है।',
-        summaryEn: 'ISRO successfully executed autonomous orbital docking with the SpaDeX satellites (SDX01 and SDX02) launched aboard PSLV-C60, a critical milestone for Bharatiya Antariksh Station and Chandrayaan-4.',
-        sourceName: 'ISRO / PIB'
+        summaryHi: 'भारतीय अंतरिक्ष अनुसंधान संगठन (ISRO) ने PSLV-C60 द्वारा प्रक्षेपित SpaDeX (SDX01 चेज़र और SDX02 टारगेट) उपग्रहों की सफल अंतरिक्ष डॉकिंग पूर्ण की, जिससे अमेरिका, रूस और चीन के बाद भारत विश्व का चौथा देश बन गया है।',
+        summaryEn: 'ISRO successfully executed autonomous orbital docking with the SpaDeX satellites (SDX01 and SDX02) launched aboard PSLV-C60, making India the 4th nation globally after the US, Russia, and China.',
+        sourceName: 'ISRO / Global Space Desk',
+        sourceUrl: 'https://www.isro.gov.in'
       },
       {
         category: 'chhattisgarh',
-        headlineHi: 'कृषक उन्नति योजना एवं महतारी वंदन योजना से ग्रामीण अर्थव्यवस्था को सशक्त आधार',
-        headlineEn: 'Krishak Unnati Yojana & Mahtari Vandan Yojana Strengthen Rural Economy in Chhattisgarh',
-        summaryHi: 'छत्तीसगढ़ में कृषक उन्नति योजना के अंतर्गत समर्थन मूल्य पर धान उपार्जन एवं अंतर की राशि के प्रत्यक्ष अंतरण तथा महतारी वंदन योजना के तहत विवाहित महिलाओं को प्रतिमाह ₹1,000 की डीबीटी सहायता से ग्रामीण क्रय शक्ति में उल्लेखनीय वृद्धि दर्ज की गई है।',
-        summaryEn: 'Direct benefit transfers under Krishak Unnati Yojana for paddy procurement differential and ₹1,000 monthly assistance under Mahtari Vandan Yojana have boosted rural purchasing power in Chhattisgarh.',
-        sourceName: 'DPR Chhattisgarh'
+        headlineHi: 'गुरु घासीदास-तमोर पिंगला टाइगर रिजर्व देश का 56वां बाघ अभयारण्य अधिसूचित',
+        headlineEn: 'Guru Ghasidas-Tamor Pingla Notified as India’s 56th Tiger Reserve in Chhattisgarh',
+        summaryHi: 'छत्तीसगढ़ के मनेंद्रगढ़-चिरमिरी-भरतपुर, कोरिया, सूरजपुर और बलरामपुर जिलों में विस्तृत 2,829 वर्ग किमी क्षेत्रफल वाले गुरु घासीदास-तमोर पिंगला टाइगर रिजर्व को भारत के 56वें टाइगर रिजर्व के रूप में अधिसूचित किया गया है।',
+        summaryEn: 'Spanning 2,829 sq km across MCB, Koriya, Surajpur, and Balrampur districts, Guru Ghasidas-Tamor Pingla has been notified as India’s 56th and third-largest Tiger Reserve.',
+        sourceName: 'NTCA / DPR Chhattisgarh',
+        sourceUrl: 'https://dprcg.gov.in'
+      },
+      {
+        category: 'national',
+        headlineHi: 'एक राष्ट्र-एक सब्सक्रिप्शन (ONOS): देश के सभी सरकारी उच्च शिक्षण संस्थानों को वैश्विक शोध पत्रिकाओं तक निःशुल्क पहुँच',
+        headlineEn: 'One Nation One Subscription (ONOS): Nationwide Access to International Scholarly Research Journals',
+        summaryHi: 'भारत सरकार ने 6,000 करोड़ रुपये के परिव्यय के साथ वन नेशन वन सब्सक्रिप्शन (ONOS) योजना को मंजूरी दी है, जिससे 6,300 से अधिक सरकारी विश्वविद्यालयों और कॉलेजों के छात्रों व शोधकर्ताओं को 13,000+ अंतर्राष्ट्रीय जर्नल्स निःशुल्क उपलब्ध होंगे।',
+        summaryEn: 'With an outlay of ₹6,000 crore, the Union Cabinet approved One Nation One Subscription (ONOS) providing 6,300+ government higher education institutions centralized access to over 13,000 international research journals.',
+        sourceName: 'PIB India',
+        sourceUrl: 'https://pib.gov.in'
+      },
+      {
+        category: 'international',
+        headlineHi: 'संयुक्त राष्ट्र जलवायु सम्मेलन (UNFCCC COP-29): विकासशील देशों के लिए $300 बिलियन वार्षिक जलवायु वित्त लक्ष्य (NCQG)',
+        headlineEn: 'UN Climate Summit (COP-29 Baku): $300 Billion Annual New Collective Quantified Goal (NCQG) Adopted',
+        summaryHi: 'अज़रबैजान के बाकू में आयोजित संयुक्त राष्ट्र जलवायु परिवर्तन सम्मेलन (COP-29) में वर्ष 2035 तक विकासशील देशों के लिए प्रतिवर्ष 300 बिलियन डॉलर के नए सामूहिक परिमाणित जलवायु वित्त लक्ष्य (NCQG) और अनुच्छेद 6 कार्बन बाज़ार नियमों को स्वीकृति दी गई।',
+        summaryEn: 'At UNFCCC COP-29 in Baku, Azerbaijan, nations adopted the New Collective Quantified Goal (NCQG) committing $300 billion annually by 2035 for developing countries alongside Article 6 global carbon market rules.',
+        sourceName: 'UNFCCC Official',
+        sourceUrl: 'https://unfccc.int'
       }
     ];
 
-    const nonDupFallback = curatedHourlyPool.filter((item) => !isDuplicateCurrentAffair(item, existingStories));
+    const nonDupFallback = curatedHourlyPool.filter((item) => {
+      if (category && category !== 'ALL' && item.category !== category.toLowerCase()) return false;
+      return !isDuplicateCurrentAffair(item, existingStories);
+    });
     return nonDupFallback.slice(0, count);
   }
 

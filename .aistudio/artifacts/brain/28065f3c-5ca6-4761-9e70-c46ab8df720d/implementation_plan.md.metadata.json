@@ -1,6 +1,6 @@
 {
-  "summary":  "Updated implementation plan incorporating the Instagram/WhatsApp-style Category-Grouped Fullscreen \"Daily Dose\" Stories (Chhattisgarh, National, International circles, latest-first ordering, upload timestamp on every slide, AI auto-attached + Admin-uploadable story images, \"Daily Dose\" heading, and \"Daily Dose Quiz\" button) alongside the Browser & App startup/login restoration.",
-  "updatedAt":  "2026-11-07T13:20:05.333864210Z",
+  "summary":  "Implementation plan for WhatsApp-style Oldest-to-Latest Daily Dose stories, Seen/Unseen segmented ring and direct jump to first unseen story, AI Generated image watermark/badge, and unifying Daily Dose & Current Affairs story counts.",
+  "updatedAt":  "2026-11-07T14:09:26.053232615Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

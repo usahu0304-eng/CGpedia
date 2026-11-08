@@ -194,6 +194,8 @@
         phone: '',
         targetExams: ['CGPSC', 'UPSC', 'SSC'],
         preferredLang: 'bilingual',
+        caLangMode: 'hi',
+        seenStoryIds: [],
         leaderboardPublic: true
       },
       // Clean Slate: ZERO hardcoded dummy test series or sample tests
@@ -775,14 +777,7 @@
   function renderHomeDashboard(root, savedCbtSession) {
     const exams = window.CGpediaCloud ? window.CGpediaCloud.EXAM_CATEGORIES : [];
     const liveTests = (state.tests || []).filter((t) => t.status === 'published' && (state.selectedExamFilter === 'ALL' || t.examCode === state.selectedExamFilter));
-    const nowMs = Date.now();
-    const activeStories = sortStoriesLatestFirst((state.stories || []).filter((s) => {
-      if (s.expiresAtMs && Number(s.expiresAtMs) <= nowMs) return false;
-      const createdMs = getStoryTimestampMs(s);
-      if (createdMs > 0 && (nowMs - createdMs) > 86400000) return false;
-      return true;
-    }));
-    const groupedStoryCategories = groupStoriesByCategoryCircles(activeStories);
+    const activeStories = getActiveDailyDoseStories();
     const pinnedNotifs = (state.notifications || []).filter((n) => n.isPinned);
 
     root.innerHTML = `
@@ -815,41 +810,8 @@
         </div>
       ` : ''}
 
-      <!-- Daily Dose Strip (Instagram-Style Category Story Circles + Daily Dose Quiz) -->
-      <div class="card">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
-          <h2 style="font-size:1.02rem;font-weight:800;">Daily Dose</h2>
-          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-            ${isCurrentUserAdmin() ? `<button class="btn btn-outline btn-sm" id="homeAdminPostStoryBtn">➕ Post Story</button>` : ''}
-            <button class="btn btn-primary btn-sm" id="homeLaunchDailyCaQuizBtn">Daily Dose Quiz</button>
-          </div>
-        </div>
-        ${activeStories.length === 0 ? `
-          <div style="font-size:0.83rem;color:var(--text-muted);padding:6px 0;">
-            आज का करंट अफेयर्स डाइजेस्ट एवं क्विज़ तैयार है — ऊपर <strong>Daily Dose Quiz</strong> पर क्लिक करें।
-          </div>
-        ` : `
-          <div class="stories-strip" style="gap:18px;padding:4px 2px;">
-            ${groupedStoryCategories.map((catGroup) => {
-              const latestStory = catGroup.stories[0];
-              const thumbUrl = getStoryImageUrl(latestStory);
-              return `
-                <div class="story-item" data-open-story-category="${esc(catGroup.category)}" style="min-width:86px;cursor:pointer;">
-                  <div class="story-ring" style="position:relative;width:68px;height:68px;background:linear-gradient(45deg,#f09433 0%,#e6683c 25%,#dc2743 50%,#cc2366 75%,#bc1888 100%);padding:3px;border-radius:50%;">
-                    <div class="story-ring-inner" style="width:100%;height:100%;border-radius:50%;overflow:hidden;position:relative;background:#0F2557;display:flex;align-items:center;justify-content:center;">
-                      ${thumbUrl ? `<img src="${esc(thumbUrl)}" alt="${esc(catGroup.labelEn)}" style="width:100%;height:100%;object-fit:cover;display:block;" />` : `<span style="font-size:1.55rem;">${catGroup.icon}</span>`}
-                      <span style="position:absolute;inset:0;background:rgba(8,15,38,0.28);display:flex;align-items:center;justify-content:center;font-size:1.25rem;text-shadow:0 2px 6px rgba(0,0,0,0.65);">${catGroup.icon}</span>
-                    </div>
-                    <span style="position:absolute;bottom:-2px;right:-2px;background:#EA580C;color:#fff;font-size:0.66rem;font-weight:800;min-width:20px;height:20px;padding:0 5px;border-radius:99px;display:flex;align-items:center;justify-content:center;border:2px solid var(--surface);box-shadow:0 2px 6px rgba(0,0,0,0.3);">${catGroup.stories.length}</span>
-                  </div>
-                  <span class="story-caption" style="font-weight:800;font-size:0.77rem;margin-top:5px;">${esc(catGroup.labelEn)}</span>
-                  <span style="font-size:0.66rem;color:var(--text-muted);line-height:1.1;">${esc(formatStoryUploadTimeShort(latestStory))}</span>
-                </div>
-              `;
-            }).join('')}
-          </div>
-        `}
-      </div>
+      <!-- Daily Dose Strip (WhatsApp-Style Category Story Circles, Seen/Unseen Rings & Language Switch) -->
+      ${renderDailyDoseStoryStripHtml(activeStories, 'home')}
 
       <!-- Multi-Exam Category Selector Chips -->
       <div style="margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;">
@@ -1051,21 +1013,7 @@
       };
     });
 
-    const dailyQuizBtn = document.getElementById('homeLaunchDailyCaQuizBtn');
-    if (dailyQuizBtn) {
-      dailyQuizBtn.onclick = () => launchInstantDailyQuiz();
-    }
-
-    const groupedByCat = groupStoriesByCategoryCircles(activeStories);
-    document.querySelectorAll('[data-open-story-category]').forEach((item) => {
-      item.onclick = () => {
-        const catKey = item.getAttribute('data-open-story-category');
-        const foundGroup = groupedByCat.find((g) => g.category === catKey);
-        if (foundGroup && foundGroup.stories.length > 0) {
-          openStoryViewerModal(0, foundGroup.stories);
-        }
-      };
-    });
+    bindDailyDoseStoryStripEvents(document, activeStories, 'home');
   }
 
   // =========================================================================
@@ -1722,17 +1670,15 @@
   }
 
   function renderCurrentAffairsView(root) {
-    const allStories = (state.stories || []).slice().sort((a, b) => {
-      const ta = Number(a.createdAtMs || (a.createdAtIso ? Date.parse(a.createdAtIso) : 0) || 0);
-      const tb = Number(b.createdAtMs || (b.createdAtIso ? Date.parse(b.createdAtIso) : 0) || 0);
-      return tb - ta;
-    });
+    const allStories = getCanonicalCurrentAffairsList();
+    const lang = getCaLangMode();
+    const isHi = lang === 'hi';
 
     const nowDate = new Date();
     const currentMonthKey = `${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, '0')}`;
     const currentYearKey = String(nowDate.getFullYear());
 
-    // Build list of available months (always include current month + past 11 months so student can jump to any month)
+    // Build list of available months (always include current month + past 11 months)
     const monthSet = new Set([currentMonthKey]);
     for (let i = 1; i <= 11; i++) {
       const d = new Date(nowDate.getFullYear(), nowDate.getMonth() - i, 1);
@@ -1747,103 +1693,80 @@
 
     const activeMonthKey = state.selectedCaMonthKey && monthSet.has(state.selectedCaMonthKey)
       ? state.selectedCaMonthKey
-      : sortedMonths[0];
+      : currentMonthKey;
 
-    const monthlyStories = allStories.filter((st) => getStoryMonthKey(st) === activeMonthKey);
+    const selectedCaCategory = state.caCategoryFilter || 'ALL';
+    const allMonthlyStories = sortStoriesLatestFirst(
+      allStories.filter((st) => getStoryMonthKey(st) === activeMonthKey)
+    );
+    // Keep Daily Dose and Current Affairs synchronized from the exact same database
+    const dailyDoseStories = activeMonthKey === currentMonthKey
+      ? allMonthlyStories
+      : getActiveDailyDoseStories();
+
+    const cgCount = allMonthlyStories.filter((s) => normalizeStoryCategory(s.category) === 'chhattisgarh').length;
+    const natCount = allMonthlyStories.filter((s) => normalizeStoryCategory(s.category) === 'national').length;
+    const intCount = allMonthlyStories.filter((s) => normalizeStoryCategory(s.category) === 'international').length;
+
+    const monthlyStories = selectedCaCategory === 'ALL'
+      ? allMonthlyStories
+      : allMonthlyStories.filter((s) => normalizeStoryCategory(s.category) === selectedCaCategory);
+
     const quizScope = state.caQuizScope || 'recent';
     const quizMonth = state.caQuizMonth || activeMonthKey;
     const quizYear = state.caQuizYear || currentYearKey;
     const quizCount = Number(state.caQuizQuestionCount || 10);
     const quizDuration = Number(state.caQuizDurationMinutes || 12);
 
-    const nowMs = Date.now();
-    const recent24hStories = sortStoriesLatestFirst(allStories.filter((s) => {
-      if (s.expiresAtMs && Number(s.expiresAtMs) <= nowMs) return false;
-      const createdMs = getStoryTimestampMs(s);
-      return createdMs > 0 && (nowMs - createdMs) <= 86400000;
-    }));
-    const groupedRecentCategories = groupStoriesByCategoryCircles(recent24hStories);
-
     root.innerHTML = `
-      <!-- Top Story Strip for Daily Dose -->
-      ${(recent24hStories.length > 0 || isCurrentUserAdmin()) ? `
-        <div class="card" style="margin-bottom:14px;">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
-            <h2 style="font-size:1.02rem;font-weight:800;">Daily Dose</h2>
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-              ${isCurrentUserAdmin() ? `<button class="btn btn-outline btn-sm" id="caAdminPostStoryBtn">➕ Post Story</button>` : ''}
-              <button class="btn btn-primary btn-sm" id="caLaunchDailyDoseQuizBtn">Daily Dose Quiz</button>
-            </div>
-          </div>
-          ${recent24hStories.length === 0 ? `
-            <div style="font-size:0.82rem;color:var(--text-muted);padding:4px 0;">अभी कोई सक्रिय स्टोरी नहीं है। नया करंट अफेयर्स स्टोरी पोस्ट करने के लिए <strong>➕ Post Story</strong> पर क्लिक करें।</div>
-          ` : `
-            <div class="stories-strip" style="gap:18px;padding:4px 2px;">
-              ${groupedRecentCategories.map((catGroup) => {
-                const latestStory = catGroup.stories[0];
-                const thumbUrl = getStoryImageUrl(latestStory);
-                return `
-                  <div class="story-item" data-ca-open-story-cat="${esc(catGroup.category)}" style="min-width:86px;cursor:pointer;">
-                    <div class="story-ring" style="position:relative;width:68px;height:68px;background:linear-gradient(45deg,#f09433 0%,#e6683c 25%,#dc2743 50%,#cc2366 75%,#bc1888 100%);padding:3px;border-radius:50%;">
-                      <div class="story-ring-inner" style="width:100%;height:100%;border-radius:50%;overflow:hidden;position:relative;background:#0F2557;display:flex;align-items:center;justify-content:center;">
-                        ${thumbUrl ? `<img src="${esc(thumbUrl)}" alt="${esc(catGroup.labelEn)}" style="width:100%;height:100%;object-fit:cover;display:block;" />` : `<span style="font-size:1.55rem;">${catGroup.icon}</span>`}
-                        <span style="position:absolute;inset:0;background:rgba(8,15,38,0.28);display:flex;align-items:center;justify-content:center;font-size:1.25rem;text-shadow:0 2px 6px rgba(0,0,0,0.65);">${catGroup.icon}</span>
-                      </div>
-                      <span style="position:absolute;bottom:-2px;right:-2px;background:#EA580C;color:#fff;font-size:0.66rem;font-weight:800;min-width:20px;height:20px;padding:0 5px;border-radius:99px;display:flex;align-items:center;justify-content:center;border:2px solid var(--surface);box-shadow:0 2px 6px rgba(0,0,0,0.3);">${catGroup.stories.length}</span>
-                    </div>
-                    <span class="story-caption" style="font-weight:800;font-size:0.77rem;margin-top:5px;">${esc(catGroup.labelEn)}</span>
-                    <span style="font-size:0.66rem;color:var(--text-muted);line-height:1.1;">${esc(formatStoryUploadTimeShort(latestStory))}</span>
-                  </div>
-                `;
-              }).join('')}
-            </div>
-          `}
-        </div>
-      ` : ''}
+      <!-- Top Story Strip for Daily Dose (Synchronized with Current Affairs Database) -->
+      ${renderDailyDoseStoryStripHtml(dailyDoseStories, 'ca')}
 
       <!-- Customizable Current Affairs Quiz Maker -->
       <div class="card" style="border-left:5px solid var(--primary);margin-bottom:16px;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
           <div>
             <span class="badge badge-exam">🎯 CUSTOM CURRENT AFFAIRS QUIZ MAKER</span>
-            <h2 style="font-size:1.1rem;font-weight:800;margin-top:4px;">समसामयिकी टेस्ट एवं क्विज़ मेकर (Current Affairs Quiz Maker)</h2>
+            <h2 style="font-size:1.1rem;font-weight:800;margin-top:4px;">${isHi ? 'समसामयिकी टेस्ट एवं क्विज़ मेकर' : 'Current Affairs Quiz Maker'}</h2>
             <p style="font-size:0.8rem;color:var(--text-secondary);">
-              अपनी पसंद के अनुसार हालिया (Recent), मासिक (Monthly) या वार्षिक (Yearly) करंट अफेयर्स चुनें तथा प्रश्नों की संख्या और समय निर्धारित करें।
+              ${isHi
+                ? 'अपनी पसंद के अनुसार हालिया (Recent), मासिक (Monthly) या वार्षिक (Yearly) करंट अफेयर्स चुनें तथा प्रश्नों की संख्या और समय निर्धारित करें।'
+                : 'Select Recent, Monthly, or Yearly Current Affairs and customize question count and duration.'}
             </p>
           </div>
         </div>
 
         <div class="grid-3" style="gap:10px;align-items:end;">
           <div class="form-group" style="margin-bottom:0;">
-            <label class="form-label">1. Quiz Period / करंट अफेयर्स अवधि</label>
+            <label class="form-label">${isHi ? '1. करंट अफेयर्स अवधि' : '1. Quiz Period'}</label>
             <select class="form-select" id="caQuizScopeSelect">
-              <option value="recent" ${quizScope === 'recent' ? 'selected' : ''}>⚡ Recent Current Affairs (हालिया समसामयिकी)</option>
-              <option value="monthly" ${quizScope === 'monthly' ? 'selected' : ''}>📅 Monthly Current Affairs (मासिक समसामयिकी)</option>
-              <option value="yearly" ${quizScope === 'yearly' ? 'selected' : ''}>🗓️ Yearly Current Affairs (वार्षिक समसामयिकी)</option>
+              <option value="recent" ${quizScope === 'recent' ? 'selected' : ''}>⚡ ${isHi ? 'हालिया समसामयिकी (Recent)' : 'Recent Current Affairs'}</option>
+              <option value="monthly" ${quizScope === 'monthly' ? 'selected' : ''}>📅 ${isHi ? 'मासिक समसामयिकी (Monthly)' : 'Monthly Current Affairs'}</option>
+              <option value="yearly" ${quizScope === 'yearly' ? 'selected' : ''}>🗓️ ${isHi ? 'वार्षिक समसामयिकी (Yearly)' : 'Yearly Current Affairs'}</option>
             </select>
           </div>
 
           <div class="form-group" id="caQuizMonthSelectWrap" style="margin-bottom:0;display:${quizScope === 'monthly' ? 'block' : 'none'};">
-            <label class="form-label">Select Month / महीना चुनें</label>
+            <label class="form-label">${isHi ? 'महीना चुनें' : 'Select Month'}</label>
             <select class="form-select" id="caQuizMonthSelect">
               ${sortedMonths.map((m) => `<option value="${esc(m)}" ${quizMonth === m ? 'selected' : ''}>${esc(formatMonthKeyDisplay(m))}</option>`).join('')}
             </select>
           </div>
 
           <div class="form-group" id="caQuizYearSelectWrap" style="margin-bottom:0;display:${quizScope === 'yearly' ? 'block' : 'none'};">
-            <label class="form-label">Select Year / वर्ष चुनें</label>
+            <label class="form-label">${isHi ? 'वर्ष चुनें' : 'Select Year'}</label>
             <select class="form-select" id="caQuizYearSelect">
-              ${sortedYears.map((y) => `<option value="${esc(y)}" ${quizYear === y ? 'selected' : ''}>वर्ष ${esc(y)} (Year ${esc(y)} Complete)</option>`).join('')}
+              ${sortedYears.map((y) => `<option value="${esc(y)}" ${quizYear === y ? 'selected' : ''}>${isHi ? `वर्ष ${esc(y)}` : `Year ${esc(y)} Complete`}</option>`).join('')}
             </select>
           </div>
 
           <div class="form-group" style="margin-bottom:0;">
-            <label class="form-label">2. Number of Questions / कुल प्रश्न</label>
+            <label class="form-label">${isHi ? '2. कुल प्रश्न' : '2. Number of Questions'}</label>
             <input type="number" min="5" max="100" step="1" class="form-input" id="caQuizQuestionCountInput" value="${quizCount}" placeholder="e.g. 10, 20, 50" />
           </div>
 
           <div class="form-group" style="margin-bottom:0;">
-            <label class="form-label">3. Duration (Minutes) / समय (मिनट में)</label>
+            <label class="form-label">${isHi ? '3. समय (मिनट में)' : '3. Duration (Minutes)'}</label>
             <input type="number" min="3" max="180" step="1" class="form-input" id="caQuizDurationInput" value="${quizDuration}" placeholder="e.g. 10, 15, 30" />
           </div>
         </div>
@@ -1856,56 +1779,106 @@
             <button type="button" class="btn btn-outline btn-sm" data-ca-preset="30-30">30 Q • 30 Min</button>
             <button type="button" class="btn btn-outline btn-sm" data-ca-preset="50-45">50 Q • 45 Min</button>
           </div>
-          <button class="btn btn-primary" id="caPageLaunchCustomQuizBtn">🎯 Start Custom Current Affairs Quiz</button>
+          <button class="btn btn-primary" id="caPageLaunchCustomQuizBtn">🎯 ${isHi ? 'कस्टम करंट अफेयर्स क्विज़ प्रारंभ करें' : 'Start Custom Current Affairs Quiz'}</button>
         </div>
       </div>
 
-      <!-- Monthly Current Affairs Digest Section -->
+      <!-- Current Affairs Digest Section with 3 Category Tabs & Language Switch -->
       <div class="card">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
           <div>
-            <span class="badge badge-free">📅 MONTHLY CURRENT AFFAIRS ARCHIVE</span>
-            <h1 style="font-size:1.15rem;font-weight:800;margin-top:4px;">⚡ मासिक समसामयिकी: ${esc(formatMonthKeyDisplay(activeMonthKey))}</h1>
-            <p style="font-size:0.8rem;color:var(--text-secondary);">Chhattisgarh • National (PIB) • International, Economy &amp; Science (${monthlyStories.length} Updates)</p>
+            <span class="badge badge-free">📅 ${isHi ? 'समसामयिकी संग्रह' : 'CURRENT AFFAIRS ARCHIVE'}</span>
+            <h1 style="font-size:1.15rem;font-weight:800;margin-top:4px;">
+              ⚡ ${isHi ? `समसामयिकी: ${esc(formatMonthKeyDisplay(activeMonthKey))}` : `Current Affairs: ${esc(formatMonthKeyDisplay(activeMonthKey))}`}
+            </h1>
+            <p style="font-size:0.8rem;color:var(--text-secondary);">
+              ${isHi
+                ? `कुल अपडेट्स: ${allMonthlyStories.length} (Daily Dose: ${dailyDoseStories.length} के साथ पूर्णतः सिंक)`
+                : `Total Updates: ${allMonthlyStories.length} (Synced with Daily Dose: ${dailyDoseStories.length})`}
+            </p>
           </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <div style="display:inline-flex;border-radius:99px;border:1px solid var(--border-strong);overflow:hidden;background:var(--surface-alt);">
+              <button type="button" data-set-ca-lang="hi" style="padding:5px 12px;font-size:0.76rem;font-weight:800;border:none;cursor:pointer;background:${isHi ? 'var(--secondary)' : 'transparent'};color:${isHi ? '#fff' : 'var(--text)'};">हिंदी</button>
+              <button type="button" data-set-ca-lang="en" style="padding:5px 12px;font-size:0.76rem;font-weight:800;border:none;cursor:pointer;background:${!isHi ? 'var(--secondary)' : 'transparent'};color:${!isHi ? '#fff' : 'var(--text)'};">English</button>
+            </div>
             ${activeMonthKey !== sortedMonths[0] ? `
-              <button class="btn btn-outline btn-sm" id="caBackToLatestMonthBtn">⬆️ Latest Month (${esc(formatMonthKeyDisplay(sortedMonths[0]))})</button>
+              <button class="btn btn-outline btn-sm" id="caBackToLatestMonthBtn">⬆️ ${isHi ? 'नवीनतम महीना' : 'Latest Month'}</button>
             ` : ''}
-            <button class="btn btn-primary btn-sm" id="caMonthQuickQuizBtn">🎯 Practice ${esc(activeMonthKey)} Quiz</button>
+            <button class="btn btn-primary btn-sm" id="caMonthQuickQuizBtn">🎯 ${isHi ? `${esc(activeMonthKey)} क्विज़` : `Practice ${esc(activeMonthKey)} Quiz`}</button>
           </div>
+        </div>
+
+        <!-- Three Clearly Separated Category Filter Tabs -->
+        <div class="chip-row" style="margin-bottom:14px;">
+          <button type="button" class="filter-chip ${selectedCaCategory === 'ALL' ? 'active' : ''}" data-ca-cat-filter="ALL">
+            🌟 ${isHi ? 'सभी श्रेणियां' : 'All Categories'} (${allMonthlyStories.length})
+          </button>
+          <button type="button" class="filter-chip ${selectedCaCategory === 'chhattisgarh' ? 'active' : ''}" data-ca-cat-filter="chhattisgarh">
+            🌾 ${isHi ? '1. छत्तीसगढ़' : '1. Chhattisgarh'} (${cgCount})
+          </button>
+          <button type="button" class="filter-chip ${selectedCaCategory === 'national' ? 'active' : ''}" data-ca-cat-filter="national">
+            🇮🇳 ${isHi ? '2. राष्ट्रीय' : '2. National'} (${natCount})
+          </button>
+          <button type="button" class="filter-chip ${selectedCaCategory === 'international' ? 'active' : ''}" data-ca-cat-filter="international">
+            🌍 ${isHi ? '3. अंतर्राष्ट्रीय' : '3. International'} (${intCount})
+          </button>
         </div>
 
         ${monthlyStories.length === 0 ? `
           <div style="padding:20px;border:1px dashed var(--border-strong);border-radius:12px;text-align:center;background:var(--surface-alt);margin-bottom:14px;">
-            <div style="font-weight:800;font-size:0.95rem;margin-bottom:6px;">इस महीने (${esc(formatMonthKeyDisplay(activeMonthKey))}) में अभी कोई करंट अफेयर्स कार्ड सेव नहीं है।</div>
-            <p style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:12px;">
-              आप ऊपर दिए गए <strong>Quiz Maker</strong> या नीचे के बटन से इस महीने का समसामयिकी क्विज़ तुरंत हल कर सकते हैं, अथवा नीचे से किसी दूसरे महीने पर जा सकते हैं।
-            </p>
-            <button class="btn btn-primary btn-sm" id="caEmptyMonthQuizBtn">🎯 Start ${esc(formatMonthKeyDisplay(activeMonthKey))} Quiz Now</button>
+            <div style="font-weight:800;font-size:0.95rem;margin-bottom:6px;">
+              ${isHi ? 'इस श्रेणी/महीने में अभी कोई करंट अफेयर्स उपलब्ध नहीं है।' : 'No Current Affairs updates found in this category/month.'}
+            </div>
+            <button class="btn btn-primary btn-sm" id="caEmptyMonthQuizBtn">🎯 ${isHi ? 'समसामयिकी क्विज़ प्रारंभ करें' : 'Start Current Affairs Quiz Now'}</button>
           </div>
         ` : `
           <div class="grid-2" style="margin-bottom:18px;">
-            ${monthlyStories.map((st, idx) => `
-              <div class="card" style="margin-bottom:0;background:var(--surface-alt);display:flex;flex-direction:column;justify-content:space-between;">
-                <div>
-                  <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;">
-                    <span class="badge badge-exam">${esc(st.category || 'Current Affairs').toUpperCase()}</span>
-                    <span style="font-size:0.72rem;color:var(--text-muted);">${esc(st.createdAtIso ? new Date(st.createdAtIso).toLocaleDateString('hi-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : activeMonthKey)}</span>
+            ${monthlyStories.map((st, idx) => {
+              const normCat = normalizeStoryCategory(st.category);
+              const catLabel = getStoryCategoryLabel(normCat, lang);
+              const headlineText = getStoryLocalizedHeadline(st, lang);
+              const summaryText = getStoryLocalizedSummary(st, lang);
+              const imgUrl = getStoryImageUrl(st);
+              const isAiImg = isStoryImageAiGenerated(st);
+              const isSeen = isStorySeenByStudent(st.id);
+              const dateDisplay = st.createdAtIso
+                ? new Date(st.createdAtIso).toLocaleDateString(isHi ? 'hi-IN' : 'en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+                : activeMonthKey;
+              return `
+                <div class="card" style="margin-bottom:0;background:var(--surface-alt);display:flex;flex-direction:column;justify-content:space-between;overflow:hidden;">
+                  <div>
+                    ${imgUrl ? `
+                      <div style="position:relative;width:100%;height:175px;border-radius:12px;overflow:hidden;margin-bottom:10px;border:1px solid var(--border);background:#091534;">
+                        <img src="${esc(imgUrl)}" alt="${esc(headlineText)}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;" />
+                        ${isAiImg ? `
+                          <span style="position:absolute;top:8px;right:8px;background:rgba(15,23,42,0.86);color:#FDE68A;border:1px solid rgba(253,230,138,0.45);font-size:0.68rem;font-weight:800;padding:3px 9px;border-radius:99px;backdrop-filter:blur(4px);">
+                            ✨ AI Generated Image
+                          </span>
+                        ` : ''}
+                        <span style="position:absolute;bottom:8px;left:8px;background:${isSeen ? 'rgba(15,23,42,0.78)' : 'rgba(16,185,129,0.92)'};color:#fff;font-size:0.66rem;font-weight:800;padding:2px 8px;border-radius:99px;">
+                          ${isSeen ? (isHi ? '✓ देखा गया' : '✓ Seen') : (isHi ? '● नया (अनदेखा)' : '● Unseen')}
+                        </span>
+                      </div>
+                    ` : ''}
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;">
+                      <span class="badge badge-exam">${esc(catLabel)}</span>
+                      <span style="font-size:0.72rem;color:var(--text-muted);">${esc(dateDisplay)} • ${esc(formatStoryUploadTimeShort(st))}</span>
+                    </div>
+                    <h3 style="font-size:1rem;font-weight:800;margin-top:8px;line-height:1.42;color:var(--text);">${esc(headlineText)}</h3>
+                    <p style="font-size:0.85rem;line-height:1.62;color:var(--text-secondary);margin-top:6px;">${esc(summaryText)}</p>
                   </div>
-                  <h3 style="font-size:0.98rem;font-weight:800;margin-top:8px;">${esc(st.headlineHi || st.titleHi)}</h3>
-                  <div style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:8px;">${esc(st.headlineEn || st.titleEn)}</div>
-                  <p style="font-size:0.83rem;line-height:1.58;">${esc(st.summaryHi)}</p>
-                  ${st.summaryEn && st.summaryEn !== st.summaryHi ? `
-                    <p style="font-size:0.78rem;line-height:1.5;color:var(--text-secondary);margin-top:6px;">${esc(st.summaryEn)}</p>
-                  ` : ''}
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding-top:8px;border-top:1px solid var(--border);gap:8px;flex-wrap:wrap;">
+                    <span style="font-size:0.72rem;color:var(--text-muted);">
+                      ${isHi ? 'स्रोत' : 'Source'}: ${st.sourceUrl ? `<a href="${esc(st.sourceUrl)}" target="_blank" rel="noopener noreferrer" style="color:var(--secondary);font-weight:700;text-decoration:none;">${esc(st.sourceName || 'Official Portal')} ↗</a>` : esc(st.sourceName || 'Official PIB / DPR')}
+                    </span>
+                    <button class="btn btn-outline btn-sm" data-open-monthly-story="${idx}" style="padding:4px 10px;font-size:0.74rem;">
+                      📖 ${isHi ? 'स्टोरी देखें' : 'View Story'}
+                    </button>
+                  </div>
                 </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:8px;border-top:1px solid var(--border);">
-                  <span style="font-size:0.72rem;color:var(--text-muted);">Source: ${esc(st.sourceName || 'Official PIB / DPR')}</span>
-                  <button class="btn btn-outline btn-sm" data-open-monthly-story="${idx}" style="padding:3px 9px;font-size:0.73rem;">📖 View Story</button>
-                </div>
-              </div>
-            `).join('')}
+              `;
+            }).join('')}
           </div>
         `}
 
@@ -1913,14 +1886,14 @@
         <div style="padding:14px;border-radius:12px;border:1px solid var(--border-strong);background:var(--surface-alt);margin-top:8px;">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
             <div>
-              <h3 style="font-size:0.95rem;font-weight:800;">📅 पुराने महीनों के करंट अफेयर्स देखें (Jump to Another Month)</h3>
-              <p style="font-size:0.78rem;color:var(--text-secondary);">नीचे किसी भी महीने पर क्लिक करें या महीना चुनकर पुराने करंट अफेयर्स पढ़ें:</p>
+              <h3 style="font-size:0.95rem;font-weight:800;">📅 ${isHi ? 'पुराने महीनों के करंट अफेयर्स देखें' : 'Jump to Another Month'}</h3>
+              <p style="font-size:0.78rem;color:var(--text-secondary);">${isHi ? 'नीचे किसी भी महीने पर क्लिक करें या महीना चुनकर पुराने करंट अफेयर्स पढ़ें:' : 'Select any month below to browse archived Current Affairs:'}</p>
             </div>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
               <select class="form-select" id="caBottomMonthJumpSelect" style="width:auto;min-width:210px;">
                 ${sortedMonths.map((m) => `<option value="${esc(m)}" ${activeMonthKey === m ? 'selected' : ''}>📅 ${esc(formatMonthKeyDisplay(m))}</option>`).join('')}
               </select>
-              <button class="btn btn-primary btn-sm" id="caBottomMonthJumpBtn">📂 Open Selected Month</button>
+              <button class="btn btn-primary btn-sm" id="caBottomMonthJumpBtn">📂 ${isHi ? 'चयनित महीना खोलें' : 'Open Selected Month'}</button>
             </div>
           </div>
           <div class="chip-row" style="margin-bottom:0;">
@@ -1935,33 +1908,37 @@
     `;
 
     // Bind Story strip on Current Affairs page
-    root.querySelectorAll('[data-ca-open-story-cat]').forEach((el) => {
-      el.onclick = () => {
-        const catKey = el.getAttribute('data-ca-open-story-cat');
-        const foundGroup = groupedRecentCategories.find((g) => g.category === catKey);
-        if (foundGroup && foundGroup.stories.length > 0) {
-          openStoryViewerModal(0, foundGroup.stories);
-        }
+    bindDailyDoseStoryStripEvents(root, dailyDoseStories, 'ca');
+
+    // Bind Language Switch buttons
+    root.querySelectorAll('[data-set-ca-lang]').forEach((btn) => {
+      btn.onclick = () => {
+        const nextLang = btn.getAttribute('data-set-ca-lang');
+        setCaLangMode(nextLang);
+        renderCurrentAffairsView(root);
       };
     });
 
-    const caDailyDoseQuizBtn = document.getElementById('caLaunchDailyDoseQuizBtn');
-    if (caDailyDoseQuizBtn) {
-      caDailyDoseQuizBtn.onclick = () => launchInstantDailyQuiz();
-    }
-
-    const caAdminPostBtn = document.getElementById('caAdminPostStoryBtn');
-    if (caAdminPostBtn) {
-      caAdminPostBtn.onclick = () => {
-        openQuickAdminPostStoryModal();
+    // Bind Category Filter chips
+    root.querySelectorAll('[data-ca-cat-filter]').forEach((chip) => {
+      chip.onclick = () => {
+        state.caCategoryFilter = chip.getAttribute('data-ca-cat-filter') || 'ALL';
+        saveState();
+        renderCurrentAffairsView(root);
       };
-    }
+    });
 
-    // Bind Monthly Story Card reader
+    // Bind Monthly Story Card reader (opens in chronological order starting at clicked item)
     root.querySelectorAll('[data-open-monthly-story]').forEach((el) => {
       el.onclick = () => {
         const idx = Number(el.getAttribute('data-open-monthly-story'));
-        if (monthlyStories[idx]) openStoryViewerModal(idx, monthlyStories);
+        const clickedStory = monthlyStories[idx];
+        if (clickedStory) {
+          const catStories = sortStoriesOldestToNewest(
+            monthlyStories.filter((s) => normalizeStoryCategory(s.category) === normalizeStoryCategory(clickedStory.category))
+          );
+          openStoryViewerModal(clickedStory, catStories.length > 0 ? catStories : [clickedStory], { autoStartUnseen: false });
+        }
       };
     });
 
@@ -2273,6 +2250,18 @@
             if (Array.isArray(cloudData.profile.mistakes) && state.mistakes.length === 0) {
               state.mistakes = cloudData.profile.mistakes;
             }
+            if (Array.isArray(cloudData.profile.seenStoryIds)) {
+              const mergedSeen = new Set([
+                ...(Array.isArray(state.student.seenStoryIds) ? state.student.seenStoryIds : []),
+                ...cloudData.profile.seenStoryIds.map((id) => String(id))
+              ]);
+              state.student.seenStoryIds = Array.from(mergedSeen);
+              saveSeenStoriesToLocal(targetUid, state.student.seenStoryIds);
+            }
+            if (cloudData.profile.caLangMode === 'hi' || cloudData.profile.caLangMode === 'en') {
+              state.student.caLangMode = cloudData.profile.caLangMode;
+              state.caLangMode = cloudData.profile.caLangMode;
+            }
           }
           if (Array.isArray(cloudData.attempts) && cloudData.attempts.length > 0) {
             const existingIds = new Set((state.attempts || []).map((a) => a.id));
@@ -2296,6 +2285,8 @@
           leaderboardPublic: state.student.leaderboardPublic,
           bookmarks: state.bookmarks,
           mistakes: state.mistakes,
+          seenStoryIds: Array.isArray(state.student.seenStoryIds) ? state.student.seenStoryIds : [],
+          caLangMode: getCaLangMode(),
           role: isCurrentUserAdmin() ? 'admin' : 'student'
         });
       } catch (_) {}
@@ -4478,11 +4469,132 @@
 
   let activeStoryTimerId = null;
 
-  function normalizeStoryCategory(rawCat) {
+  function getCaLangMode() {
+    if (state && state.student && (state.student.caLangMode === 'en' || state.student.caLangMode === 'hi')) {
+      return state.student.caLangMode;
+    }
+    if (state && (state.caLangMode === 'en' || state.caLangMode === 'hi')) {
+      return state.caLangMode;
+    }
+    return 'hi';
+  }
+
+  function setCaLangMode(nextMode) {
+    const mode = nextMode === 'en' ? 'en' : 'hi';
+    state.caLangMode = mode;
+    if (state.student) {
+      state.student.caLangMode = mode;
+    }
+    saveState();
+    if (window.CGpediaCloud && state.student && state.student.uid) {
+      window.CGpediaCloud.saveCloudDoc('users', state.student.uid, {
+        userId: state.student.uid,
+        caLangMode: mode,
+        seenStoryIds: Array.from(getSeenStoryIdsSet()),
+        updatedAtIso: new Date().toISOString()
+      }).catch(() => {});
+    }
+  }
+
+  function getSeenStoriesStorageKey(uid) {
+    const cleanUid = String(uid || (state && state.student && state.student.uid) || 'guest').trim();
+    return `cgpedia_seen_stories_v2_${cleanUid}`;
+  }
+
+  function loadSeenStoriesFromLocal(uid) {
+    try {
+      const raw = localStorage.getItem(getSeenStoriesStorageKey(uid));
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.map((id) => String(id)) : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function saveSeenStoriesToLocal(uid, list) {
+    try {
+      const unique = Array.from(new Set((Array.isArray(list) ? list : []).map((id) => String(id))));
+      localStorage.setItem(getSeenStoriesStorageKey(uid), JSON.stringify(unique));
+    } catch (_) {}
+  }
+
+  function getSeenStoryIdsSet() {
+    const uid = (state && state.student && state.student.uid) || 'guest';
+    const fromStudent = (state && state.student && Array.isArray(state.student.seenStoryIds))
+      ? state.student.seenStoryIds
+      : [];
+    const fromState = (state && Array.isArray(state.seenStoryIds))
+      ? state.seenStoryIds
+      : [];
+    const fromLocal = loadSeenStoriesFromLocal(uid);
+    return new Set([...fromStudent, ...fromState, ...fromLocal].filter(Boolean).map((id) => String(id)));
+  }
+
+  function isStorySeenByStudent(storyId) {
+    if (!storyId) return false;
+    return getSeenStoryIdsSet().has(String(storyId));
+  }
+
+  function markStorySeenByStudent(storyId) {
+    if (!storyId) return;
+    const sid = String(storyId);
+    const set = getSeenStoryIdsSet();
+    if (set.has(sid)) return;
+    set.add(sid);
+    const updatedArr = Array.from(set);
+    state.seenStoryIds = updatedArr;
+    if (state.student) {
+      state.student.seenStoryIds = updatedArr;
+    }
+    const uid = (state && state.student && state.student.uid) || 'guest';
+    saveSeenStoriesToLocal(uid, updatedArr);
+    saveState();
+
+    // Persist story viewing progress per student in Firebase across devices and sessions
+    if (window.CGpediaCloud && state.student && state.student.uid) {
+      window.CGpediaCloud.saveCloudDoc('users', state.student.uid, {
+        userId: state.student.uid,
+        seenStoryIds: updatedArr,
+        caLangMode: getCaLangMode(),
+        updatedAtIso: new Date().toISOString()
+      }).catch(() => {});
+    }
+  }
+
+  function normalizeStoryCategory(rawCat, fallbackText) {
     const c = String(rawCat || '').trim().toLowerCase();
-    if (c === 'chhattisgarh' || c.includes('chhattisgarh') || c.includes('cg')) return 'chhattisgarh';
+    if (c === 'chhattisgarh' || c.includes('chhattisgarh') || c === 'cg') return 'chhattisgarh';
     if (c === 'national' || c.includes('national') || c.includes('india') || c.includes('pib')) return 'national';
-    return 'international';
+    if (c === 'international' || c.includes('international') || c.includes('world') || c.includes('global')) return 'international';
+    const text = String(fallbackText || '').toLowerCase();
+    if (/छत्तीसगढ़|रायपुर|बस्तर|बिलासपुर|सरगुजा|chhattisgarh|raipur|bastar|surguja/.test(text)) return 'chhattisgarh';
+    if (/विश्व|अंतर्राष्ट्रीय|संयुक्त राष्ट्र|world|international|global|un |unesco|cop-|spadex|docking/.test(text)) return 'international';
+    return 'national';
+  }
+
+  function getStoryCategoryLabel(cat, lang) {
+    const norm = normalizeStoryCategory(cat);
+    const isHi = (lang || getCaLangMode()) === 'hi';
+    if (norm === 'chhattisgarh') return isHi ? 'छत्तीसगढ़' : 'Chhattisgarh';
+    if (norm === 'national') return isHi ? 'राष्ट्रीय' : 'National';
+    return isHi ? 'अंतर्राष्ट्रीय' : 'International';
+  }
+
+  function getStoryLocalizedHeadline(st, lang) {
+    if (!st) return '';
+    const isHi = (lang || getCaLangMode()) === 'hi';
+    const hi = String(st.headlineHi || st.titleHi || '').trim();
+    const en = String(st.headlineEn || st.titleEn || '').trim();
+    return isHi ? (hi || en) : (en || hi);
+  }
+
+  function getStoryLocalizedSummary(st, lang) {
+    if (!st) return '';
+    const isHi = (lang || getCaLangMode()) === 'hi';
+    const hi = String(st.summaryHi || '').trim();
+    const en = String(st.summaryEn || '').trim();
+    return isHi ? (hi || en) : (en || hi);
   }
 
   function getStoryTimestampMs(st) {
@@ -4497,6 +4609,171 @@
     });
   }
 
+  function sortStoriesOldestToNewest(list) {
+    return (Array.isArray(list) ? list.slice() : []).sort((a, b) => {
+      return getStoryTimestampMs(a) - getStoryTimestampMs(b);
+    });
+  }
+
+  function normalizeTextTokensForDedup(str) {
+    return String(str || '')
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function computeStoryTextSimilarity(a, b) {
+    const na = normalizeTextTokensForDedup(a);
+    const nb = normalizeTextTokensForDedup(b);
+    if (!na || !nb) return 0;
+    if (na === nb) return 1;
+    const setA = new Set(na.split(' ').filter((w) => w.length > 2));
+    const setB = new Set(nb.split(' ').filter((w) => w.length > 2));
+    if (setA.size === 0 || setB.size === 0) return 0;
+    let inter = 0;
+    setA.forEach((w) => {
+      if (setB.has(w)) inter += 1;
+    });
+    const union = setA.size + setB.size - inter;
+    return union > 0 ? inter / union : 0;
+  }
+
+  // Unified, deduplicated Current Affairs & Daily Dose content database
+  function getCanonicalCurrentAffairsList() {
+    const rawList = Array.isArray(state.stories) ? state.stories : [];
+    const nowMs = Date.now();
+    const nowDate = new Date(nowMs);
+    const currentMonthKey = `${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, '0')}`;
+    const currentYearKey = String(nowDate.getFullYear());
+
+    // Ensure baseline verified items across Chhattisgarh, National, and International exist if empty
+    const baselineVerifiedItems = [
+      {
+        id: 'ca_verified_cg_ind_policy',
+        category: 'chhattisgarh',
+        headlineHi: 'छत्तीसगढ़ औद्योगिक विकास नीति 2024-30: बस्तर एवं सरगुजा में विशेष निवेश प्रोत्साहन',
+        headlineEn: 'Chhattisgarh Industrial Development Policy 2024-30: Special Investment Incentives in Bastar & Surguja',
+        summaryHi: 'राज्य सरकार ने नई औद्योगिक नीति 2024-30 के अंतर्गत अनुसूचित क्षेत्रों, बस्तर और सरगुजा संभाग में एमएसएमई, कृषि प्रसंस्करण एवं हरित उद्योग स्थापित करने पर अतिरिक्त पूंजी अनुदान तथा स्टाम्प शुल्क छूट का प्रावधान किया है।',
+        summaryEn: 'Under the Industrial Policy 2024-30, Chhattisgarh provides enhanced capital subsidies and stamp duty exemptions for MSMEs, agro-processing, and green industries in Bastar and Surguja divisions.',
+        sourceName: 'DPR Chhattisgarh',
+        sourceUrl: 'https://dprcg.gov.in',
+        createdAtMs: nowMs - 7200000
+      },
+      {
+        id: 'ca_verified_nat_vidyalaxmi',
+        category: 'national',
+        headlineHi: 'पीएम विद्यालक्ष्मी योजना: मेधावी छात्रों को उच्च शिक्षा हेतु बिना गारंटी 10 लाख रुपये तक शिक्षा ऋण',
+        headlineEn: 'PM Vidyalaxmi Scheme: Collateral-Free Education Loans up to ₹10 Lakh for Meritorious Students',
+        summaryHi: 'केंद्रीय मंत्रिमंडल द्वारा स्वीकृत पीएम विद्यालक्ष्मी योजना के अंतर्गत देश के शीर्ष 860 उच्च शिक्षण संस्थानों (NIRF रैंकिंग आधारित) में प्रवेश लेने वाले छात्रों को बिना किसी जमानत या गारंटर के शिक्षा ऋण तथा 3% ब्याज अनुदान प्रदान किया जा रहा है।',
+        summaryEn: 'Approved by the Union Cabinet, PM Vidyalaxmi provides collateral-free, guarantor-free education loans with 3% interest subvention for students admitted to top 860 NIRF-ranked institutions.',
+        sourceName: 'PIB India',
+        sourceUrl: 'https://pib.gov.in',
+        createdAtMs: nowMs - 5400000
+      },
+      {
+        id: 'ca_verified_int_spadex',
+        category: 'international',
+        headlineHi: 'इसरो (ISRO) स्पैडेक्स (SpaDeX) मिशन: अंतरिक्ष में डॉकिंग तकनीक सिद्ध करने वाला भारत चौथा देश बना',
+        headlineEn: 'ISRO SpaDeX Mission: India Becomes 4th Country to Demonstrate In-Space Autonomous Docking',
+        summaryHi: 'भारतीय अंतरिक्ष अनुसंधान संगठन (ISRO) ने PSLV-C60 द्वारा प्रक्षेपित SpaDeX (SDX01 चेज़र और SDX02 टारगेट) उपग्रहों की सफल अंतरिक्ष डॉकिंग पूर्ण की, जिससे अमेरिका, रूस और चीन के बाद भारत विश्व का चौथा देश बन गया है।',
+        summaryEn: 'ISRO successfully executed autonomous orbital docking with the SpaDeX satellites (SDX01 and SDX02) launched aboard PSLV-C60, making India the 4th nation globally after the US, Russia, and China.',
+        sourceName: 'ISRO / Global Space Desk',
+        sourceUrl: 'https://www.isro.gov.in',
+        createdAtMs: nowMs - 3600000
+      }
+    ];
+
+    const combinedInput = rawList.length > 0 ? rawList.slice() : baselineVerifiedItems;
+    // Also ensure International category has at least 1 verified item if missing
+    const hasInt = combinedInput.some((s) => s && normalizeStoryCategory(s.category, `${s.headlineHi || ''} ${s.headlineEn || ''}`) === 'international');
+    if (!hasInt) {
+      combinedInput.push(baselineVerifiedItems[2]);
+    }
+    const hasNat = combinedInput.some((s) => s && normalizeStoryCategory(s.category, `${s.headlineHi || ''} ${s.headlineEn || ''}`) === 'national');
+    if (!hasNat) {
+      combinedInput.push(baselineVerifiedItems[1]);
+    }
+    const hasCg = combinedInput.some((s) => s && normalizeStoryCategory(s.category, `${s.headlineHi || ''} ${s.headlineEn || ''}`) === 'chhattisgarh');
+    if (!hasCg) {
+      combinedInput.push(baselineVerifiedItems[0]);
+    }
+
+    const deduplicated = [];
+    const seenIds = new Set();
+
+    combinedInput.forEach((raw, idx) => {
+      if (!raw || typeof raw !== 'object') return;
+      if (raw.isDeleted === true || raw.status === 'deleted') return;
+      const headHi = String(raw.headlineHi || raw.titleHi || raw.headlineEn || raw.titleEn || '').trim();
+      const headEn = String(raw.headlineEn || raw.titleEn || headHi).trim();
+      const sumHi = String(raw.summaryHi || headHi).trim();
+      const sumEn = String(raw.summaryEn || sumHi).trim();
+      if (!headHi && !headEn) return;
+
+      const id = String(raw.id || (`ca_${nowMs}_${idx}`)).trim();
+      if (seenIds.has(id)) return;
+
+      // Prevent duplicate copies of the same news via similarity check
+      const isDup = deduplicated.some((ex) => {
+        const simHi = computeStoryTextSimilarity(headHi, ex.headlineHi || ex.titleHi || '');
+        const simEn = computeStoryTextSimilarity(headEn, ex.headlineEn || ex.titleEn || '');
+        return simHi >= 0.68 || simEn >= 0.68;
+      });
+      if (isDup) return;
+
+      seenIds.add(id);
+      const ts = getStoryTimestampMs(raw) || (nowMs - (idx * 60000));
+      const d = new Date(ts);
+      const derivedMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      // Align monthKey with current month if the item is recent (within 48h) so Daily Dose and Current Affairs counts always match
+      const monthKey = (nowMs - ts) <= 172800000
+        ? currentMonthKey
+        : (/^\d{4}-\d{2}$/.test(String(raw.monthKey || '')) ? String(raw.monthKey) : derivedMonth);
+      const yearKey = monthKey.slice(0, 4) || currentYearKey;
+      const cat = normalizeStoryCategory(raw.category, `${headHi} ${headEn} ${sumHi}`);
+      const defaultSourceUrl = cat === 'chhattisgarh'
+        ? 'https://dprcg.gov.in'
+        : (cat === 'national' ? 'https://pib.gov.in' : 'https://news.un.org');
+      const rawImg = String(raw.imageUrl || '').trim();
+      const isAiImg = raw.isAiGeneratedImage !== undefined
+        ? Boolean(raw.isAiGeneratedImage)
+        : (!rawImg || rawImg.startsWith('data:image/svg+xml'));
+
+      const normalizedItem = Object.assign({}, raw, {
+        id,
+        category: cat,
+        titleHi: headHi,
+        titleEn: headEn,
+        headlineHi: headHi,
+        headlineEn: headEn,
+        summaryHi: sumHi,
+        summaryEn: sumEn,
+        sourceName: String(raw.sourceName || (cat === 'chhattisgarh' ? 'DPR Chhattisgarh' : (cat === 'national' ? 'PIB India' : 'Global Official Desk'))).trim(),
+        sourceUrl: String(raw.sourceUrl || defaultSourceUrl).trim(),
+        createdAtMs: ts,
+        createdAtIso: raw.createdAtIso || new Date(ts).toISOString(),
+        publishedDateIso: raw.publishedDateIso || raw.dateIso || new Date(ts).toISOString().slice(0, 10),
+        monthKey,
+        yearKey,
+        isAiGeneratedImage: isAiImg
+      });
+      normalizedItem.imageUrl = getStoryImageUrl(normalizedItem);
+      deduplicated.push(normalizedItem);
+    });
+
+    state.stories = deduplicated;
+    return deduplicated;
+  }
+
+  function getActiveDailyDoseStories() {
+    const all = getCanonicalCurrentAffairsList();
+    const nowDate = new Date();
+    const currentMonthKey = `${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, '0')}`;
+    const currentMonthItems = all.filter((s) => getStoryMonthKey(s) === currentMonthKey);
+    return currentMonthItems.length > 0 ? currentMonthItems : all;
+  }
+
   function formatStoryUploadTimeShort(st) {
     const ms = getStoryTimestampMs(st);
     if (!ms) return 'Just now';
@@ -4506,14 +4783,15 @@
 
   function formatStoryUploadTimeFull(st) {
     const ms = getStoryTimestampMs(st);
-    if (!ms) return 'Uploaded recently';
+    const isHi = getCaLangMode() === 'hi';
+    if (!ms) return isHi ? 'हाल ही में प्रकाशित' : 'Uploaded recently';
     const d = new Date(ms);
     const now = new Date();
     const isToday = d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-    const timeStr = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+    const timeStr = d.toLocaleTimeString(isHi ? 'hi-IN' : 'en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
     const dateStr = isToday
-      ? `Today, ${timeStr}`
-      : `${d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}, ${timeStr}`;
+      ? `${isHi ? 'आज' : 'Today'}, ${timeStr}`
+      : `${d.toLocaleDateString(isHi ? 'hi-IN' : 'en-IN', { day: 'numeric', month: 'short' })}, ${timeStr}`;
     const diffMin = Math.max(1, Math.floor((Date.now() - ms) / 60000));
     const relStr = diffMin < 60
       ? `${diffMin}m ago`
@@ -4521,24 +4799,37 @@
     return `${dateStr} • ${relStr}`;
   }
 
+  function isStoryImageAiGenerated(st) {
+    if (!st) return true;
+    if (st.isAiGeneratedImage === false) return false;
+    if (st.isAiGeneratedImage === true) return true;
+    const url = String(st.imageUrl || '').trim();
+    return !url || url.startsWith('data:image/svg+xml');
+  }
+
   function getStoryImageUrl(st) {
     if (!st) return '';
-    if (st.imageUrl && String(st.imageUrl).trim()) {
+    if (st.imageUrl && String(st.imageUrl).trim() && !String(st.imageUrl).startsWith('data:image/svg+xml')) {
       return String(st.imageUrl).trim();
+    }
+    if (st.imageUrl && String(st.imageUrl).startsWith('data:image/svg+xml') && String(st.imageUrl).includes('AI Generated Image')) {
+      st.isAiGeneratedImage = true;
+      return String(st.imageUrl);
     }
     if (window.CGpediaAdmin && typeof window.CGpediaAdmin.generateAutoStoryImageUrl === 'function') {
       const generated = window.CGpediaAdmin.generateAutoStoryImageUrl(st);
       if (generated) {
         st.imageUrl = generated;
+        st.isAiGeneratedImage = true;
         return generated;
       }
     }
     const cat = normalizeStoryCategory(st.category);
     const palette = cat === 'chhattisgarh'
-      ? { bg1: '#064E3B', bg2: '#047857', accent: '#34D399', badge: 'CHHATTISGARH DAILY DOSE', icon: '🌾' }
+      ? { bg1: '#064E3B', bg2: '#047857', accent: '#34D399', badge: 'CHHATTISGARH CURRENT AFFAIRS', icon: '🌾' }
       : cat === 'national'
-        ? { bg1: '#1E3A8A', bg2: '#1D4ED8', accent: '#FBBF24', badge: 'NATIONAL DAILY DOSE', icon: '🇮🇳' }
-        : { bg1: '#311042', bg2: '#6D28D9', accent: '#38BDF8', badge: 'INTERNATIONAL DAILY DOSE', icon: '🌍' };
+        ? { bg1: '#1E3A8A', bg2: '#1D4ED8', accent: '#FBBF24', badge: 'NATIONAL CURRENT AFFAIRS', icon: '🇮🇳' }
+        : { bg1: '#311042', bg2: '#6D28D9', accent: '#38BDF8', badge: 'INTERNATIONAL CURRENT AFFAIRS', icon: '🌍' };
     const headline = String(st.headlineEn || st.titleEn || st.headlineHi || st.titleHi || 'Daily Current Affairs').replace(/[<>&"']/g, ' ').slice(0, 72);
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 420" width="800" height="420">
       <defs>
@@ -4550,33 +4841,167 @@
       <rect width="800" height="420" rx="22" fill="url(#g)"/>
       <circle cx="700" cy="80" r="130" fill="${palette.accent}" opacity="0.14"/>
       <circle cx="100" cy="360" r="160" fill="#ffffff" opacity="0.06"/>
-      <rect x="38" y="34" width="290" height="38" rx="19" fill="rgba(255,255,255,0.16)"/>
-      <text x="56" y="59" fill="#ffffff" font-family="sans-serif" font-size="16" font-weight="bold">${palette.icon} ${palette.badge}</text>
-      <text x="42" y="195" fill="#ffffff" font-family="sans-serif" font-size="28" font-weight="bold">${headline}</text>
-      <text x="42" y="370" fill="${palette.accent}" font-family="sans-serif" font-size="16" font-weight="bold">⚡ AI Curated Visual • CGPSC &amp; UPSC Exam Fact</text>
+      <rect x="38" y="34" width="320" height="38" rx="19" fill="rgba(255,255,255,0.16)"/>
+      <text x="56" y="59" fill="#ffffff" font-family="sans-serif" font-size="15" font-weight="bold">${palette.icon} ${palette.badge}</text>
+      <rect x="556" y="34" width="206" height="36" rx="18" fill="rgba(15,23,42,0.75)"/>
+      <text x="659" y="57" text-anchor="middle" fill="#FDE68A" font-family="sans-serif" font-size="14" font-weight="bold">✨ AI Generated Image</text>
+      <text x="42" y="195" fill="#ffffff" font-family="sans-serif" font-size="27" font-weight="bold">${headline}</text>
+      <text x="42" y="370" fill="${palette.accent}" font-family="sans-serif" font-size="16" font-weight="bold">⚡ AI Generated Image • Exam Fact</text>
     </svg>`;
     const url = 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
     st.imageUrl = url;
+    st.isAiGeneratedImage = true;
     return url;
   }
 
+  // Group stories into the 3 categories ordered Oldest -> Newest (chronological order)
   function groupStoriesByCategoryCircles(stories) {
-    const sorted = sortStoriesLatestFirst(stories || []);
+    const chronological = sortStoriesOldestToNewest(stories || []);
+    const lang = getCaLangMode();
+    const isHi = lang === 'hi';
     const categoriesMeta = [
-      { category: 'chhattisgarh', labelEn: 'Chhattisgarh', labelHi: 'छत्तीसगढ़ करंट अफेयर्स', icon: '🌾' },
-      { category: 'national', labelEn: 'National', labelHi: 'राष्ट्रीय करंट अफेयर्स', icon: '🇮🇳' },
-      { category: 'international', labelEn: 'International', labelHi: 'अंतर्राष्ट्रीय करंट अफेयर्स', icon: '🌍' }
+      { category: 'chhattisgarh', labelEn: 'Chhattisgarh', labelHi: 'छत्तीसगढ़', icon: '🌾' },
+      { category: 'national', labelEn: 'National', labelHi: 'राष्ट्रीय', icon: '🇮🇳' },
+      { category: 'international', labelEn: 'International', labelHi: 'अंतर्राष्ट्रीय', icon: '🌍' }
     ];
     return categoriesMeta.map((meta) => {
-      const catStories = sorted.filter((st) => normalizeStoryCategory(st.category) === meta.category);
+      const catStories = chronological.filter((st) => normalizeStoryCategory(st.category) === meta.category);
+      const seenCount = catStories.filter((st) => isStorySeenByStudent(st.id)).length;
+      const unseenCount = catStories.length - seenCount;
+      const firstUnseenIdx = catStories.findIndex((st) => !isStorySeenByStudent(st.id));
       return {
         ...meta,
-        stories: catStories
+        displayLabel: isHi ? meta.labelHi : meta.labelEn,
+        stories: catStories,
+        seenCount,
+        unseenCount,
+        firstUnseenIndex: firstUnseenIdx !== -1 ? firstUnseenIdx : 0
       };
     }).filter((grp) => grp.stories.length > 0);
   }
 
-  function openStoryViewerModal(storyOrIndex, optionalStoryList) {
+  // Build WhatsApp-style segmented SVG ring indicating seen (grey) vs unseen (emerald green) stories
+  function buildWhatsAppStoryRingSvg(storiesInCategory) {
+    const list = Array.isArray(storiesInCategory) ? storiesInCategory : [];
+    const total = list.length;
+    const size = 74;
+    const r = 33.5;
+    const c = size / 2;
+    const circumference = 2 * Math.PI * r;
+
+    if (total <= 1) {
+      const seen = total === 1 && isStorySeenByStudent(list[0].id);
+      const color = seen ? '#94A3B8' : '#10B981';
+      return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="position:absolute;inset:0;transform:rotate(-90deg);pointer-events:none;">
+        <circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${color}" stroke-width="3.2" stroke-linecap="round" />
+      </svg>`;
+    }
+
+    const gapLen = Math.min(7, circumference / (total * 3.2));
+    const segLen = Math.max(4, (circumference / total) - gapLen);
+
+    const segmentsSvg = list.map((st, idx) => {
+      const seen = isStorySeenByStudent(st.id);
+      const strokeColor = seen ? '#94A3B8' : '#10B981';
+      const offset = -(idx * (segLen + gapLen));
+      return `<circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${strokeColor}" stroke-width="3.2" stroke-linecap="round" stroke-dasharray="${segLen.toFixed(2)} ${(circumference - segLen).toFixed(2)}" stroke-dashoffset="${offset.toFixed(2)}" />`;
+    }).join('');
+
+    return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="position:absolute;inset:0;transform:rotate(-90deg);pointer-events:none;">
+      ${segmentsSvg}
+    </svg>`;
+  }
+
+  function renderDailyDoseStoryStripHtml(storiesList, prefix) {
+    const lang = getCaLangMode();
+    const isHi = lang === 'hi';
+    const groupedCategories = groupStoriesByCategoryCircles(storiesList);
+    const totalStories = (storiesList || []).length;
+    const totalSeen = (storiesList || []).filter((s) => isStorySeenByStudent(s.id)).length;
+    const totalUnseen = Math.max(0, totalStories - totalSeen);
+
+    return `
+      <div class="card" style="margin-bottom:14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <h2 style="font-size:1.04rem;font-weight:800;margin:0;">Daily Dose</h2>
+            <span style="font-size:0.73rem;font-weight:700;padding:2px 9px;border-radius:99px;background:var(--surface-alt);border:1px solid var(--border);color:var(--text-secondary);">
+              ${isHi
+                ? `अनदेखे: ${totalUnseen} • देखे गए: ${totalSeen}`
+                : `Unseen: ${totalUnseen} • Seen: ${totalSeen}`}
+            </span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <div style="display:inline-flex;border-radius:99px;border:1px solid var(--border-strong);overflow:hidden;background:var(--surface-alt);">
+              <button type="button" data-strip-lang="${prefix}" data-lang-val="hi" style="padding:4px 10px;font-size:0.73rem;font-weight:800;border:none;cursor:pointer;background:${isHi ? 'var(--secondary)' : 'transparent'};color:${isHi ? '#fff' : 'var(--text)'};">हिंदी</button>
+              <button type="button" data-strip-lang="${prefix}" data-lang-val="en" style="padding:4px 10px;font-size:0.73rem;font-weight:800;border:none;cursor:pointer;background:${!isHi ? 'var(--secondary)' : 'transparent'};color:${!isHi ? '#fff' : 'var(--text)'};">English</button>
+            </div>
+            ${isCurrentUserAdmin() ? `<button class="btn btn-outline btn-sm" id="${prefix}AdminPostStoryBtn">➕ Post Story</button>` : ''}
+          </div>
+        </div>
+        ${groupedCategories.length === 0 ? `
+          <div style="font-size:0.83rem;color:var(--text-muted);padding:6px 0;">
+            ${isHi ? 'अभी कोई सक्रिय करंट अफेयर्स स्टोरी उपलब्ध नहीं है।' : 'No active Current Affairs stories available right now.'}
+          </div>
+        ` : `
+          <div class="stories-strip" style="gap:22px;padding:6px 4px;">
+            ${groupedCategories.map((catGroup) => {
+              const targetPreviewStory = catGroup.stories[catGroup.firstUnseenIndex] || catGroup.stories[catGroup.stories.length - 1];
+              const thumbUrl = getStoryImageUrl(targetPreviewStory);
+              const ringSvg = buildWhatsAppStoryRingSvg(catGroup.stories);
+              const statusText = catGroup.unseenCount > 0
+                ? (isHi ? `● ${catGroup.unseenCount} अनदेखे` : `● ${catGroup.unseenCount} Unseen`)
+                : (isHi ? '✓ सभी देखे गए' : '✓ All Seen');
+              const statusColor = catGroup.unseenCount > 0 ? '#059669' : 'var(--text-muted)';
+              return `
+                <div class="story-item" data-open-whatsapp-cat="${esc(catGroup.category)}" data-strip-prefix="${esc(prefix)}" style="min-width:92px;cursor:pointer;display:flex;flex-direction:column;align-items:center;">
+                  <div style="position:relative;width:74px;height:74px;display:flex;align-items:center;justify-content:center;">
+                    ${ringSvg}
+                    <div style="width:62px;height:62px;border-radius:50%;overflow:hidden;position:relative;background:#0F2557;display:flex;align-items:center;justify-content:center;">
+                      ${thumbUrl ? `<img src="${esc(thumbUrl)}" alt="${esc(catGroup.displayLabel)}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;" />` : `<span style="font-size:1.55rem;">${catGroup.icon}</span>`}
+                      <span style="position:absolute;inset:0;background:rgba(8,15,38,0.28);display:flex;align-items:center;justify-content:center;font-size:1.25rem;text-shadow:0 2px 6px rgba(0,0,0,0.65);">${catGroup.icon}</span>
+                    </div>
+                  </div>
+                  <span class="story-caption" style="font-weight:800;font-size:0.79rem;margin-top:6px;color:var(--text);">${esc(catGroup.displayLabel)}</span>
+                  <span style="font-size:0.68rem;font-weight:700;color:${statusColor};line-height:1.2;margin-top:2px;">${esc(statusText)}</span>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        `}
+      </div>
+    `;
+  }
+
+  function bindDailyDoseStoryStripEvents(containerEl, storiesList, prefix) {
+    if (!containerEl) return;
+    const groupedByCat = groupStoriesByCategoryCircles(storiesList);
+    containerEl.querySelectorAll(`[data-open-whatsapp-cat][data-strip-prefix="${prefix}"]`).forEach((item) => {
+      item.onclick = () => {
+        const catKey = item.getAttribute('data-open-whatsapp-cat');
+        const foundGroup = groupedByCat.find((g) => g.category === catKey);
+        if (foundGroup && foundGroup.stories.length > 0) {
+          // Open stories in chronological order (oldest -> newest) starting directly from the first unseen story
+          openStoryViewerModal(foundGroup.firstUnseenIndex, foundGroup.stories, { autoStartUnseen: true });
+        }
+      };
+    });
+
+    containerEl.querySelectorAll(`[data-strip-lang="${prefix}"]`).forEach((btn) => {
+      btn.onclick = () => {
+        const nextLang = btn.getAttribute('data-lang-val');
+        setCaLangMode(nextLang);
+        renderApp();
+      };
+    });
+
+    const postBtn = document.getElementById(`${prefix}AdminPostStoryBtn`);
+    if (postBtn) {
+      postBtn.onclick = () => openQuickAdminPostStoryModal();
+    }
+  }
+
+  function openStoryViewerModal(storyOrIndex, optionalStoryList, viewerOpts) {
     const storyRoot = document.getElementById('storyModalContainer');
     if (!storyRoot) return;
 
@@ -4585,29 +5010,31 @@
       activeStoryTimerId = null;
     }
 
-    const nowMs = Date.now();
-    const defaultList = sortStoriesLatestFirst((state.stories || []).filter((s) => {
-      if (s.expiresAtMs && Number(s.expiresAtMs) <= nowMs) return false;
-      const createdMs = getStoryTimestampMs(s);
-      return createdMs === 0 || (nowMs - createdMs) <= 86400000;
-    }));
+    const opts = viewerOpts || {};
+    const defaultList = sortStoriesOldestToNewest(getActiveDailyDoseStories());
 
     const rawList = Array.isArray(optionalStoryList) && optionalStoryList.length > 0
       ? optionalStoryList
       : (typeof storyOrIndex === 'object' && storyOrIndex ? [storyOrIndex] : defaultList);
 
-    // Ensure stories are always sorted Latest First, Oldest Last
+    // Always display stories in chronological order: Oldest to Newest within their sequence
     const targetStoryObj = typeof storyOrIndex === 'number' && rawList[storyOrIndex]
       ? rawList[storyOrIndex]
       : (typeof storyOrIndex === 'object' ? storyOrIndex : null);
-    const storiesList = sortStoriesLatestFirst(rawList);
+    const storiesList = sortStoriesOldestToNewest(rawList);
 
     if (!storiesList.length) return;
 
     let currentIndex = 0;
-    if (targetStoryObj && targetStoryObj.id) {
+    if (opts.autoStartUnseen !== false && typeof storyOrIndex === 'number') {
+      const firstUnseenIdx = storiesList.findIndex((s) => !isStorySeenByStudent(s.id));
+      currentIndex = firstUnseenIdx !== -1 ? firstUnseenIdx : 0;
+    } else if (targetStoryObj && targetStoryObj.id) {
       const matchedIdx = storiesList.findIndex((s) => s.id === targetStoryObj.id);
       if (matchedIdx !== -1) currentIndex = matchedIdx;
+    } else {
+      const firstUnseenIdx = storiesList.findIndex((s) => !isStorySeenByStudent(s.id));
+      currentIndex = firstUnseenIdx !== -1 ? firstUnseenIdx : 0;
     }
 
     let progressPct = 0;
@@ -4621,105 +5048,130 @@
         activeStoryTimerId = null;
       }
       storyRoot.innerHTML = '';
+      // Refresh underlying strip so seen/unseen ring indicators update immediately
+      renderApp();
     }
 
-    function renderCurrentStorySlide() {
+    function renderCurrentStorySlide(preserveProgress) {
       const storyObj = storiesList[currentIndex];
       if (!storyObj) {
         closeViewer();
         return;
       }
+      if (!preserveProgress) {
+        // Mark current story as seen in local state + Firebase Cloud
+        markStorySeenByStudent(storyObj.id);
+      }
+
+      const lang = getCaLangMode();
+      const isHi = lang === 'hi';
       const normCat = normalizeStoryCategory(storyObj.category);
       const catIcon = normCat === 'chhattisgarh' ? '🌾' : normCat === 'national' ? '🇮🇳' : '🌍';
-      const catName = normCat === 'chhattisgarh'
-        ? 'Chhattisgarh'
-        : normCat === 'national'
-          ? 'National'
-          : 'International';
+      const catName = getStoryCategoryLabel(normCat, lang);
       const adminUser = isCurrentUserAdmin();
       const imageUrl = getStoryImageUrl(storyObj);
+      const isAiImg = isStoryImageAiGenerated(storyObj);
       const uploadTimeFormatted = formatStoryUploadTimeFull(storyObj);
+      const headlineText = getStoryLocalizedHeadline(storyObj, lang);
+      const summaryText = getStoryLocalizedSummary(storyObj, lang);
+
+      const seenCountInSeq = storiesList.filter((s) => isStorySeenByStudent(s.id)).length;
+      const unseenCountInSeq = Math.max(0, storiesList.length - seenCountInSeq);
 
       storyRoot.innerHTML = `
         <div class="modal-backdrop" id="instaStoryBackdrop" style="position:fixed;inset:0;width:100vw;height:100dvh;background:#040918;padding:0;margin:0;z-index:9999;display:flex;align-items:stretch;justify-content:center;">
           <div style="width:100vw;height:100dvh;max-width:100vw;max-height:100dvh;background:linear-gradient(165deg,#07122E 0%,#0F2557 52%,#1B1440 100%);color:#fff;border-radius:0;border:none;display:flex;flex-direction:column;justify-content:space-between;position:relative;overflow:hidden;user-select:none;">
 
-            <!-- Top Segmented Instagram/WhatsApp Full-Screen Story Progress Bars -->
-            <div style="padding:max(14px, env(safe-area-inset-top, 14px)) 16px 10px 16px;background:linear-gradient(180deg,rgba(4,9,24,0.85) 0%,rgba(4,9,24,0) 100%);z-index:4;">
+            <!-- Top Segmented WhatsApp-Style Story Progress Bars -->
+            <div style="padding:max(14px, env(safe-area-inset-top, 14px)) 16px 10px 16px;background:linear-gradient(180deg,rgba(4,9,24,0.88) 0%,rgba(4,9,24,0) 100%);z-index:4;">
               <div style="display:flex;gap:5px;margin-bottom:12px;">
-                ${storiesList.map((_, idx) => {
+                ${storiesList.map((stItem, idx) => {
                   const fill = idx < currentIndex ? 100 : (idx === currentIndex ? progressPct : 0);
+                  const isItemSeen = isStorySeenByStudent(stItem.id);
+                  const trackBg = isItemSeen ? 'rgba(148,163,184,0.38)' : 'rgba(16,185,129,0.35)';
+                  const barBg = idx === currentIndex ? '#10B981' : (isItemSeen ? '#E2E8F0' : '#10B981');
                   return `
-                    <div style="flex:1;height:3.5px;background:rgba(255,255,255,0.28);border-radius:99px;overflow:hidden;">
-                      <div id="instaStoryProgBar_${idx}" style="width:${fill}%;height:100%;background:#fff;border-radius:99px;transition:width 0.08s linear;"></div>
+                    <div style="flex:1;height:4px;background:${trackBg};border-radius:99px;overflow:hidden;">
+                      <div id="instaStoryProgBar_${idx}" style="width:${fill}%;height:100%;background:${barBg};border-radius:99px;transition:width 0.08s linear;"></div>
                     </div>
                   `;
                 }).join('')}
               </div>
 
-              <!-- Story Category Circle + Upload Time + Admin Post/Delete Controls -->
-              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+              <!-- Story Category Header + Seen/Unseen Indicator + Language Switch + Admin Controls -->
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
                 <div style="display:flex;align-items:center;gap:10px;min-width:0;">
-                  <div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(45deg,#f09433,#dc2743,#bc1888);padding:2.5px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                  <div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(45deg,#10B981,#059669);padding:2.5px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
                     <div style="width:100%;height:100%;border-radius:50%;background:#0F2557;display:flex;align-items:center;justify-content:center;font-size:1.15rem;">${catIcon}</div>
                   </div>
                   <div style="min-width:0;">
-                    <div style="font-size:0.92rem;font-weight:800;line-height:1.2;display:flex;align-items:center;gap:6px;">
+                    <div style="font-size:0.92rem;font-weight:800;line-height:1.2;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                       <span>${esc(catName)}</span>
-                      <span style="font-size:0.72rem;font-weight:700;padding:1px 7px;border-radius:99px;background:rgba(255,255,255,0.16);">${currentIndex + 1}/${storiesList.length}</span>
+                      <span style="font-size:0.68rem;font-weight:700;padding:2px 8px;border-radius:99px;background:rgba(16,185,129,0.22);color:#6EE7B7;">
+                        ${isHi ? `देखे: ${seenCountInSeq} • अनदेखे: ${unseenCountInSeq}` : `Seen: ${seenCountInSeq} • Unseen: ${unseenCountInSeq}`}
+                      </span>
                     </div>
-                    <div style="font-size:0.74rem;color:#BFDBFE;margin-top:2px;">🕒 ${esc(uploadTimeFormatted)}</div>
+                    <div style="font-size:0.73rem;color:#BFDBFE;margin-top:2px;">🕒 ${esc(uploadTimeFormatted)}</div>
                   </div>
                 </div>
                 <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+                  <!-- Language Switch inside Story Viewer (Preserves Progress) -->
+                  <div style="display:inline-flex;border-radius:99px;border:1px solid rgba(255,255,255,0.28);overflow:hidden;background:rgba(15,23,42,0.65);">
+                    <button type="button" data-story-viewer-lang="hi" style="padding:4px 9px;font-size:0.72rem;font-weight:800;border:none;cursor:pointer;background:${isHi ? '#EA580C' : 'transparent'};color:#fff;">हिंदी</button>
+                    <button type="button" data-story-viewer-lang="en" style="padding:4px 9px;font-size:0.72rem;font-weight:800;border:none;cursor:pointer;background:${!isHi ? '#EA580C' : 'transparent'};color:#fff;">English</button>
+                  </div>
                   ${adminUser ? `
-                    <button type="button" class="btn btn-header-chip" id="instaAdminPostStoryBtn" title="Post New Story" style="padding:5px 10px;font-size:0.75rem;background:rgba(37,99,235,0.9);color:#fff;">➕ Post</button>
-                    <button type="button" class="btn btn-header-chip" id="instaAdminDeleteStoryBtn" title="Delete This Story" style="padding:5px 10px;font-size:0.75rem;background:rgba(220,38,38,0.9);color:#fff;">🗑️ Delete</button>
+                    <button type="button" class="btn btn-header-chip" id="instaAdminPostStoryBtn" title="Post New Story" style="padding:5px 10px;font-size:0.74rem;background:rgba(37,99,235,0.9);color:#fff;">➕ Post</button>
+                    <button type="button" class="btn btn-header-chip" id="instaAdminDeleteStoryBtn" title="Delete This Story" style="padding:5px 10px;font-size:0.74rem;background:rgba(220,38,38,0.9);color:#fff;">🗑️ Delete</button>
                   ` : ''}
                   <button type="button" class="btn btn-header-chip" id="closeStoryModalBtn" style="padding:5px 12px;font-size:0.9rem;background:rgba(255,255,255,0.16);color:#fff;">✕</button>
                 </div>
               </div>
             </div>
 
-            <!-- Full-Screen Story Body with Image + Headlines + Summary (Tap Left = Prev, Tap Right = Next, Hold = Pause) -->
+            <!-- Full-Screen Story Body (Single Language Only + Relevant Image / AI Generated Image Label) -->
             <div id="instaStoryContentArea" style="flex:1;width:100%;max-width:680px;margin:0 auto;padding:10px 20px 18px 20px;display:flex;flex-direction:column;justify-content:center;position:relative;overflow-y:auto;cursor:pointer;">
               ${imageUrl ? `
-                <div style="width:100%;max-height:240px;border-radius:16px;overflow:hidden;margin-bottom:14px;border:1px solid rgba(255,255,255,0.18);box-shadow:0 12px 30px rgba(0,0,0,0.4);background:#091534;flex-shrink:0;">
-                  <img src="${esc(imageUrl)}" alt="${esc(storyObj.headlineHi || storyObj.titleHi || 'Story Visual')}" style="width:100%;height:210px;object-fit:cover;display:block;" />
+                <div style="position:relative;width:100%;max-height:245px;border-radius:16px;overflow:hidden;margin-bottom:14px;border:1px solid rgba(255,255,255,0.18);box-shadow:0 12px 30px rgba(0,0,0,0.4);background:#091534;flex-shrink:0;">
+                  <img src="${esc(imageUrl)}" alt="${esc(headlineText)}" style="width:100%;height:215px;object-fit:cover;display:block;" />
+                  ${isAiImg ? `
+                    <span style="position:absolute;top:10px;right:10px;background:rgba(15,23,42,0.88);color:#FDE68A;border:1px solid rgba(253,230,138,0.5);font-size:0.72rem;font-weight:800;padding:4px 10px;border-radius:99px;backdrop-filter:blur(4px);">
+                      ✨ AI Generated Image
+                    </span>
+                  ` : ''}
                 </div>
               ` : ''}
 
               <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
                 <span class="badge" style="background:rgba(234,88,12,0.95);color:#fff;font-size:0.72rem;padding:4px 11px;border-radius:99px;">
-                  ${catIcon} ${esc(catName.toUpperCase())}
+                  ${catIcon} ${esc(catName)}
                 </span>
                 <span style="font-size:0.74rem;color:#93C5FD;font-weight:600;">
-                  📅 ${esc(uploadTimeFormatted)}
+                  ${isHi ? 'स्रोत' : 'Source'}: ${esc(storyObj.sourceName || 'Official PIB / DPR')}
                 </span>
               </div>
 
-              <h2 style="font-size:1.26rem;font-weight:800;line-height:1.38;margin-bottom:6px;color:#FFFFFF;">
-                ${esc(storyObj.headlineHi || storyObj.titleHi)}
+              <h2 style="font-size:1.28rem;font-weight:800;line-height:1.42;margin-bottom:12px;color:#FFFFFF;">
+                ${esc(headlineText)}
               </h2>
-              <div style="font-size:0.9rem;font-weight:600;color:#93C5FD;margin-bottom:12px;line-height:1.38;">
-                ${esc(storyObj.headlineEn || storyObj.titleEn)}
-              </div>
-              <div style="padding:14px 16px;border-radius:16px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.16);backdrop-filter:blur(8px);">
-                <p style="font-size:0.94rem;line-height:1.62;color:#F8FAFC;margin-bottom:${storyObj.summaryEn && storyObj.summaryEn !== storyObj.summaryHi ? '10px' : '0'};">
-                  ${esc(storyObj.summaryHi)}
+
+              <div style="padding:15px 17px;border-radius:16px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.16);backdrop-filter:blur(8px);">
+                <p style="font-size:0.96rem;line-height:1.68;color:#F8FAFC;margin:0;">
+                  ${esc(summaryText)}
                 </p>
-                ${storyObj.summaryEn && storyObj.summaryEn !== storyObj.summaryHi ? `
-                  <p style="font-size:0.82rem;line-height:1.52;color:#DBEAFE;margin:0;">
-                    ${esc(storyObj.summaryEn)}
-                  </p>
-                ` : ''}
               </div>
             </div>
 
-            <!-- Story Footer Daily Dose Quiz Action -->
+            <!-- Story Footer Navigation Hint Only (Quiz Button Removed as Requested) -->
             <div style="padding:12px 18px max(18px, env(safe-area-inset-bottom, 18px)) 18px;background:rgba(4,9,24,0.82);border-top:1px solid rgba(255,255,255,0.12);display:flex;align-items:center;justify-content:space-between;gap:10px;z-index:4;">
-              <span style="font-size:0.74rem;color:#93C5FD;">Tap left/right to switch story • Hold to pause</span>
-              <button class="btn btn-warning btn-sm" id="storyTakeQuizBtn" style="font-weight:800;padding:7px 14px;">Daily Dose Quiz</button>
+              <span style="font-size:0.74rem;color:#93C5FD;">
+                ${isHi ? 'बाएं/दाएं टैप कर स्टोरी बदलें • रोकने के लिए दबाए रखें' : 'Tap left/right to navigate • Hold to pause'}
+              </span>
+              ${storyObj.sourceUrl ? `
+                <a href="${esc(storyObj.sourceUrl)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();" style="font-size:0.74rem;color:#6EE7B7;font-weight:700;text-decoration:none;">
+                  🔗 ${isHi ? 'आधिकारिक स्रोत' : 'Official Source'} ↗
+                </a>
+              ` : ''}
             </div>
           </div>
         </div>
@@ -4727,6 +5179,16 @@
 
       const closeBtn = document.getElementById('closeStoryModalBtn');
       if (closeBtn) closeBtn.onclick = closeViewer;
+
+      // Language switch inside Story Viewer preserves currentIndex & progressPct
+      storyRoot.querySelectorAll('[data-story-viewer-lang]').forEach((btn) => {
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          const nextLang = btn.getAttribute('data-story-viewer-lang');
+          setCaLangMode(nextLang);
+          renderCurrentStorySlide(true);
+        };
+      });
 
       const postBtn = document.getElementById('instaAdminPostStoryBtn');
       if (postBtn && adminUser) {
@@ -4744,7 +5206,7 @@
           isPaused = true;
           confirmUserAction({
             title: 'Delete Current Affairs Story?',
-            message: `क्या आप वाकई इस करंट अफेयर्स स्टोरी ("${storyObj.headlineHi || storyObj.titleHi || storyObj.id}") को हटाना चाहते हैं?`,
+            message: `क्या आप वाकई इस करंट अफेयर्स स्टोरी ("${headlineText || storyObj.id}") को हटाना चाहते हैं?`,
             confirmText: '🗑️ Yes, Delete Story',
             cancelText: 'Cancel'
           }, async () => {
@@ -4757,7 +5219,6 @@
               await window.CGpediaCloud.deleteCloudDoc('current_affairs', delId);
             }
             toast('🗑️ Current Affairs Story deleted.');
-            renderApp();
             if (storiesList.length === 0) {
               closeViewer();
             } else {
@@ -4815,15 +5276,6 @@
           }
         };
       }
-
-      const quizBtn = document.getElementById('storyTakeQuizBtn');
-      if (quizBtn) {
-        quizBtn.onclick = (e) => {
-          e.stopPropagation();
-          closeViewer();
-          launchInstantDailyQuiz();
-        };
-      }
     }
 
     renderCurrentStorySlide();
@@ -4869,7 +5321,7 @@
           </div>
 
           <div class="form-group">
-            <label class="form-label">Category Circle (Instagram Style Group)</label>
+            <label class="form-label">Category Circle (Chhattisgarh / National / International)</label>
             <select class="form-select" id="quickStoryCatInput">
               <option value="chhattisgarh">🌾 Chhattisgarh</option>
               <option value="national">🇮🇳 National</option>
@@ -4893,10 +5345,10 @@
             <textarea class="form-textarea" id="quickStorySummaryEn" rows="2" placeholder="Exam-relevant key facts in English..."></textarea>
           </div>
           <div class="form-group">
-            <label class="form-label">🖼️ Attach Story Image (Optional — Google AI auto-attaches if left blank)</label>
+            <label class="form-label">🖼️ Attach Story Image (Optional — Gemini AI generates &amp; labels "AI Generated Image" if blank)</label>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
               <input type="file" accept="image/*" class="form-input" id="quickStoryImageFileInput" style="flex:1;min-width:190px;padding:6px;" />
-              <input type="url" class="form-input" id="quickStoryImageUrlInput" placeholder="Or paste Image URL (https://...)" style="flex:1;min-width:190px;" />
+              <input type="url" class="form-input" id="quickStoryImageUrlInput" placeholder="Or paste Original Photo URL (https://...)" style="flex:1;min-width:190px;" />
             </div>
             <div id="quickStoryImagePreviewWrap" style="display:none;margin-top:8px;">
               <img id="quickStoryImagePreviewEl" src="" alt="Preview" style="max-height:110px;border-radius:10px;border:1px solid var(--border);" />
@@ -4960,10 +5412,17 @@
         toast('⚠️ कृपया स्टोरी का शीर्षक (Headline) और मुख्य बिंदु (Summary) दर्ज करें।');
         return;
       }
+      // Prevent duplicate story creation
+      const existingAll = getCanonicalCurrentAffairsList();
+      if (existingAll.some((ex) => computeStoryTextSimilarity(headHi, ex.headlineHi) >= 0.68 || computeStoryTextSimilarity(headEn, ex.headlineEn) >= 0.68)) {
+        toast('⚠️ यह करंट अफेयर्स पहले से प्रकाशित है (Duplicate prevented).');
+        return;
+      }
       const now = new Date();
       const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const hasAuthenticCustomPhoto = Boolean(customImgUrl && !customImgUrl.startsWith('data:image/svg+xml'));
       const newStory = {
-        id: 'story_' + Date.now(),
+        id: 'ca_' + now.getTime(),
         category: cat,
         titleHi: headHi,
         titleEn: headEn,
@@ -4972,21 +5431,24 @@
         summaryHi: sumHi,
         summaryEn: sumEn,
         sourceName: 'Official Admin Desk',
+        sourceUrl: cat === 'chhattisgarh' ? 'https://dprcg.gov.in' : (cat === 'national' ? 'https://pib.gov.in' : 'https://news.un.org'),
         createdAtIso: now.toISOString(),
+        publishedDateIso: now.toISOString().slice(0, 10),
         createdAtMs: now.getTime(),
         expiresAtMs: now.getTime() + 86400000,
         monthKey,
-        yearKey: String(now.getFullYear())
+        yearKey: String(now.getFullYear()),
+        isAiGeneratedImage: !hasAuthenticCustomPhoto
       };
-      newStory.imageUrl = customImgUrl || getStoryImageUrl(newStory);
-      state.stories = sortStoriesLatestFirst([newStory, ...(state.stories || [])]);
+      newStory.imageUrl = hasAuthenticCustomPhoto ? customImgUrl : getStoryImageUrl(newStory);
+      state.stories = [newStory, ...existingAll];
       saveState(true);
       if (window.CGpediaCloud && typeof window.CGpediaCloud.saveCloudDoc === 'function') {
         await window.CGpediaCloud.saveCloudDoc('current_affairs', newStory.id, newStory);
       }
       closeModal();
       renderApp();
-      toast('✅ Daily Dose Story published live!');
+      toast('✅ Daily Dose & Current Affairs Story published live!');
     };
   }
 
@@ -5294,8 +5756,32 @@
       }
     }
 
+    if (key === 'stories') {
+      getCanonicalCurrentAffairsList();
+    }
+
+    if (key === 'registeredStudents' && isStudentAuthenticated() && state.student && state.student.uid) {
+      const myCloudDoc = activeCloudDocs.find((u) => String(u.id || u.userId) === String(state.student.uid));
+      if (myCloudDoc) {
+        if (Array.isArray(myCloudDoc.seenStoryIds) && myCloudDoc.seenStoryIds.length > 0) {
+          const mergedSeen = new Set([
+            ...Array.from(getSeenStoryIdsSet()),
+            ...myCloudDoc.seenStoryIds.map((id) => String(id))
+          ]);
+          const nextArr = Array.from(mergedSeen);
+          state.seenStoryIds = nextArr;
+          state.student.seenStoryIds = nextArr;
+          saveSeenStoriesToLocal(state.student.uid, nextArr);
+        }
+        if (myCloudDoc.caLangMode === 'hi' || myCloudDoc.caLangMode === 'en') {
+          state.caLangMode = myCloudDoc.caLangMode;
+          state.student.caLangMode = myCloudDoc.caLangMode;
+        }
+      }
+    }
+
     if (key === 'tests' || key === 'notifications' || key === 'stories') {
-      checkAndDispatchCloudUpdateNotifications(key, activeCloudDocs);
+      checkAndDispatchCloudUpdateNotifications(key, state[key] || activeCloudDocs);
     }
 
     saveState();
@@ -6401,7 +6887,7 @@
       }, 600);
     }
 
-    // Connect Firebase Cloud Sync & Hourly Online Current Affairs Auto-Updater
+    // Connect Firebase Cloud Sync & Intelligent Verified Current Affairs Sync
     let hourlyCaSyncInProgress = false;
     async function runHourlyCurrentAffairsAutoUpdate(forceNow) {
       if (hourlyCaSyncInProgress || navigator.onLine === false) return;
@@ -6410,32 +6896,33 @@
       const LAST_HOURLY_CA_KEY = 'cgpedia_last_hourly_ca_sync_ms_v1';
       const lastSyncMs = Number(localStorage.getItem(LAST_HOURLY_CA_KEY) || 0);
       const nowMs = Date.now();
-      const recentStoriesCount = (state.stories || []).filter((s) => {
-        const createdMs = Number(s.createdAtMs || (s.createdAtIso ? Date.parse(s.createdAtIso) : 0) || 0);
-        return createdMs > 0 && (nowMs - createdMs) < 86400000;
-      }).length;
+      const canonicalStories = getCanonicalCurrentAffairsList();
+      const hasAllThreeCategories =
+        canonicalStories.some((s) => normalizeStoryCategory(s.category) === 'chhattisgarh') &&
+        canonicalStories.some((s) => normalizeStoryCategory(s.category) === 'national') &&
+        canonicalStories.some((s) => normalizeStoryCategory(s.category) === 'international');
 
-      if (!forceNow && (nowMs - lastSyncMs) < 3600000 && recentStoriesCount >= 3) {
+      if (!forceNow && (nowMs - lastSyncMs) < 3600000 && canonicalStories.length >= 3 && hasAllThreeCategories) {
         return;
       }
 
       hourlyCaSyncInProgress = true;
       try {
-        const dateLabel = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
         const generated = await window.CGpediaAdmin.generateCurrentAffairsWithAi({
-          mode: 'topic',
-          topicPrompt: `Latest high-yield Chhattisgarh DPR, PIB National, Economy, Science & International Current Affairs for ${dateLabel} (CGPSC & CG Vyapam Exam Focus)`,
-          category: 'chhattisgarh',
-          sourceName: 'CG DPR / PIB Hourly Auto-Sync',
+          mode: 'intelligent_sync',
+          category: 'ALL',
+          existingStories: canonicalStories,
+          sourceName: 'PIB / DPR Chhattisgarh / Official Desk',
           count: 3
         });
         if (Array.isArray(generated) && generated.length > 0 && typeof window.CGpediaAdmin.enrichAndDeduplicateCurrentAffairsItems === 'function') {
-          const uniqueItems = window.CGpediaAdmin.enrichAndDeduplicateCurrentAffairsItems(generated, state.stories || [], {
-            category: 'chhattisgarh',
-            sourceName: 'CG DPR / PIB Hourly Auto-Sync'
+          const uniqueItems = window.CGpediaAdmin.enrichAndDeduplicateCurrentAffairsItems(generated, canonicalStories, {
+            category: 'ALL',
+            sourceName: 'PIB / DPR Chhattisgarh / Official Desk'
           });
           if (uniqueItems.length > 0) {
-            state.stories = [...uniqueItems, ...(state.stories || [])];
+            state.stories = [...uniqueItems, ...canonicalStories];
+            getCanonicalCurrentAffairsList();
             saveState();
             localStorage.setItem(LAST_HOURLY_CA_KEY, String(Date.now()));
             if (window.CGpediaCloud && typeof window.CGpediaCloud.saveCloudDoc === 'function') {
