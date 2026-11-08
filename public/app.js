@@ -1715,72 +1715,128 @@
     const quizScope = state.caQuizScope || 'recent';
     const quizMonth = state.caQuizMonth || activeMonthKey;
     const quizYear = state.caQuizYear || currentYearKey;
-    const quizCount = Number(state.caQuizQuestionCount || 10);
-    const quizDuration = Number(state.caQuizDurationMinutes || 12);
+    const availablePoolForScope = getAvailableCurrentAffairsQuestionsForPeriod(quizScope, quizMonth, quizYear);
+    const maxAvailQuestions = Math.max(1, availablePoolForScope.length);
+    const quizCount = Math.max(1, Math.min(maxAvailQuestions, Number(state.caQuizQuestionCount || 10)));
+    const quizDuration = Math.max(1, Math.min(180, Number(state.caQuizDurationMinutes || 10)));
+    const quizPosMarks = state.caQuizPositiveMarks !== undefined && Number(state.caQuizPositiveMarks) > 0
+      ? Number(state.caQuizPositiveMarks)
+      : 2;
+    const quizNegMarks = state.caQuizNegativeMarks !== undefined && Number(state.caQuizNegativeMarks) >= 0
+      ? Number(state.caQuizNegativeMarks)
+      : 0.66;
+    const isQuizPanelOpen = state.caQuizPanelExpanded === true;
 
     root.innerHTML = `
       <!-- Top Story Strip for Daily Dose (Synchronized with Current Affairs Database) -->
       ${renderDailyDoseStoryStripHtml(dailyDoseStories, 'ca')}
 
-      <!-- Customizable Current Affairs Quiz Maker -->
-      <div class="card" style="border-left:5px solid var(--primary);margin-bottom:16px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
-          <div>
-            <span class="badge badge-exam">🎯 CUSTOM CURRENT AFFAIRS QUIZ MAKER</span>
-            <h2 style="font-size:1.1rem;font-weight:800;margin-top:4px;">${isHi ? 'समसामयिकी टेस्ट एवं क्विज़ मेकर' : 'Current Affairs Quiz Maker'}</h2>
-            <p style="font-size:0.8rem;color:var(--text-secondary);">
-              ${isHi
-                ? 'अपनी पसंद के अनुसार हालिया (Recent), मासिक (Monthly) या वार्षिक (Yearly) करंट अफेयर्स चुनें तथा प्रश्नों की संख्या और समय निर्धारित करें।'
-                : 'Select Recent, Monthly, or Yearly Current Affairs and customize question count and duration.'}
-            </p>
-          </div>
+      <!-- Compact Custom Current Affairs Quiz Interface -->
+      <div style="margin-bottom:14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+          <button
+            type="button"
+            id="caToggleCustomQuizPanelBtn"
+            style="display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px 18px;border-radius:10px;border:1.5px solid #0F2557;background:${isQuizPanelOpen ? '#1E3A8A' : '#0F2557'};color:#FFFFFF;font-size:0.88rem;font-weight:800;cursor:pointer;box-shadow:0 3px 10px rgba(15,37,87,0.18);transition:all 0.18s ease;"
+          >
+            <span>🎯 Custom Current Affairs Quiz</span>
+            <span style="font-size:0.75rem;opacity:0.9;margin-left:4px;">${isQuizPanelOpen ? '▲' : '▼'}</span>
+          </button>
         </div>
 
-        <div class="grid-3" style="gap:10px;align-items:end;">
-          <div class="form-group" style="margin-bottom:0;">
-            <label class="form-label">${isHi ? '1. करंट अफेयर्स अवधि' : '1. Quiz Period'}</label>
-            <select class="form-select" id="caQuizScopeSelect">
-              <option value="recent" ${quizScope === 'recent' ? 'selected' : ''}>⚡ ${isHi ? 'हालिया समसामयिकी (Recent)' : 'Recent Current Affairs'}</option>
-              <option value="monthly" ${quizScope === 'monthly' ? 'selected' : ''}>📅 ${isHi ? 'मासिक समसामयिकी (Monthly)' : 'Monthly Current Affairs'}</option>
-              <option value="yearly" ${quizScope === 'yearly' ? 'selected' : ''}>🗓️ ${isHi ? 'वार्षिक समसामयिकी (Yearly)' : 'Yearly Current Affairs'}</option>
-            </select>
-          </div>
+        ${isQuizPanelOpen ? `
+          <div id="caCustomQuizConfigPanel" style="margin-top:10px;padding:14px 16px;border-radius:12px;background:#FFFFFF;border:1.5px solid #CBD5E1;border-top:4px solid #0F2557;box-shadow:0 4px 14px rgba(15,37,87,0.08);">
+            <!-- Quick Presets -->
+            <div style="margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid #E2E8F0;">
+              <div style="font-size:0.75rem;font-weight:800;color:#0F2557;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.03em;">
+                ⚡ Quick Presets
+              </div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                <button type="button" class="btn btn-outline btn-sm" data-ca-preset="10-10" style="padding:5px 10px;font-size:0.75rem;border-color:#0F2557;color:${quizCount === 10 && quizDuration === 10 ? '#FFFFFF' : '#0F2557'};background:${quizCount === 10 && quizDuration === 10 ? '#0F2557' : '#F8FAFC'};font-weight:700;">10 Questions – 10 Minutes</button>
+                <button type="button" class="btn btn-outline btn-sm" data-ca-preset="20-20" style="padding:5px 10px;font-size:0.75rem;border-color:#0F2557;color:${quizCount === 20 && quizDuration === 20 ? '#FFFFFF' : '#0F2557'};background:${quizCount === 20 && quizDuration === 20 ? '#0F2557' : '#F8FAFC'};font-weight:700;">20 Questions – 20 Minutes</button>
+                <button type="button" class="btn btn-outline btn-sm" data-ca-preset="30-30" style="padding:5px 10px;font-size:0.75rem;border-color:#0F2557;color:${quizCount === 30 && quizDuration === 30 ? '#FFFFFF' : '#0F2557'};background:${quizCount === 30 && quizDuration === 30 ? '#0F2557' : '#F8FAFC'};font-weight:700;">30 Questions – 30 Minutes</button>
+                <button type="button" class="btn btn-outline btn-sm" data-ca-preset="50-45" style="padding:5px 10px;font-size:0.75rem;border-color:#0F2557;color:${quizCount === 50 && quizDuration === 45 ? '#FFFFFF' : '#0F2557'};background:${quizCount === 50 && quizDuration === 45 ? '#0F2557' : '#F8FAFC'};font-weight:700;">50 Questions – 45 Minutes</button>
+              </div>
+            </div>
 
-          <div class="form-group" id="caQuizMonthSelectWrap" style="margin-bottom:0;display:${quizScope === 'monthly' ? 'block' : 'none'};">
-            <label class="form-label">${isHi ? 'महीना चुनें' : 'Select Month'}</label>
-            <select class="form-select" id="caQuizMonthSelect">
-              ${sortedMonths.map((m) => `<option value="${esc(m)}" ${quizMonth === m ? 'selected' : ''}>${esc(formatMonthKeyDisplay(m))}</option>`).join('')}
-            </select>
-          </div>
+            <!-- Customization Controls Grid -->
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:10px;align-items:start;">
+              <!-- A. Quiz Period -->
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" style="font-size:0.76rem;font-weight:800;color:#0F2557;margin-bottom:4px;">Quiz Period</label>
+                <select class="form-select" id="caQuizScopeSelect" style="height:38px;font-size:0.82rem;padding:6px 10px;">
+                  <option value="recent" ${quizScope === 'recent' ? 'selected' : ''}>Recent Current Affairs</option>
+                  <option value="monthly" ${quizScope === 'monthly' ? 'selected' : ''}>Monthly</option>
+                  <option value="yearly" ${quizScope === 'yearly' ? 'selected' : ''}>Yearly</option>
+                </select>
+              </div>
 
-          <div class="form-group" id="caQuizYearSelectWrap" style="margin-bottom:0;display:${quizScope === 'yearly' ? 'block' : 'none'};">
-            <label class="form-label">${isHi ? 'वर्ष चुनें' : 'Select Year'}</label>
-            <select class="form-select" id="caQuizYearSelect">
-              ${sortedYears.map((y) => `<option value="${esc(y)}" ${quizYear === y ? 'selected' : ''}>${isHi ? `वर्ष ${esc(y)}` : `Year ${esc(y)} Complete`}</option>`).join('')}
-            </select>
-          </div>
+              <!-- Month Selector (shown when Monthly is active) -->
+              <div class="form-group" id="caQuizMonthSelectWrap" style="margin-bottom:0;display:${quizScope === 'monthly' ? 'block' : 'none'};">
+                <label class="form-label" style="font-size:0.76rem;font-weight:800;color:#0F2557;margin-bottom:4px;">Select Month</label>
+                <select class="form-select" id="caQuizMonthSelect" style="height:38px;font-size:0.82rem;padding:6px 10px;">
+                  ${sortedMonths.map((m) => `<option value="${esc(m)}" ${quizMonth === m ? 'selected' : ''}>${esc(formatMonthKeyDisplay(m))}</option>`).join('')}
+                </select>
+              </div>
 
-          <div class="form-group" style="margin-bottom:0;">
-            <label class="form-label">${isHi ? '2. कुल प्रश्न' : '2. Number of Questions'}</label>
-            <input type="number" min="5" max="100" step="1" class="form-input" id="caQuizQuestionCountInput" value="${quizCount}" placeholder="e.g. 10, 20, 50" />
-          </div>
+              <!-- Year Selector (shown when Yearly is active) -->
+              <div class="form-group" id="caQuizYearSelectWrap" style="margin-bottom:0;display:${quizScope === 'yearly' ? 'block' : 'none'};">
+                <label class="form-label" style="font-size:0.76rem;font-weight:800;color:#0F2557;margin-bottom:4px;">Select Year</label>
+                <select class="form-select" id="caQuizYearSelect" style="height:38px;font-size:0.82rem;padding:6px 10px;">
+                  ${sortedYears.map((y) => `<option value="${esc(y)}" ${quizYear === y ? 'selected' : ''}>${esc(y)}</option>`).join('')}
+                </select>
+              </div>
 
-          <div class="form-group" style="margin-bottom:0;">
-            <label class="form-label">${isHi ? '3. समय (मिनट में)' : '3. Duration (Minutes)'}</label>
-            <input type="number" min="3" max="180" step="1" class="form-input" id="caQuizDurationInput" value="${quizDuration}" placeholder="e.g. 10, 15, 30" />
-          </div>
-        </div>
+              <!-- B. Number of Questions -->
+              <div class="form-group" style="margin-bottom:0;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+                  <label class="form-label" style="font-size:0.76rem;font-weight:800;color:#0F2557;margin-bottom:0;">Number of Questions</label>
+                  <span id="caQuizAvailableCountBadge" style="font-size:0.68rem;font-weight:700;color:#1E3A8A;background:#EFF6FF;padding:1px 6px;border-radius:6px;border:1px solid #BFDBFE;">Max: ${maxAvailQuestions}</span>
+                </div>
+                <input type="number" min="1" max="${maxAvailQuestions}" step="1" class="form-input" id="caQuizQuestionCountInput" value="${quizCount}" style="height:38px;font-size:0.84rem;padding:6px 10px;" />
+              </div>
 
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
-          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-            <span style="font-size:0.75rem;color:var(--text-secondary);font-weight:700;">Quick Presets:</span>
-            <button type="button" class="btn btn-outline btn-sm" data-ca-preset="10-10">10 Q • 10 Min</button>
-            <button type="button" class="btn btn-outline btn-sm" data-ca-preset="20-20">20 Q • 20 Min</button>
-            <button type="button" class="btn btn-outline btn-sm" data-ca-preset="30-30">30 Q • 30 Min</button>
-            <button type="button" class="btn btn-outline btn-sm" data-ca-preset="50-45">50 Q • 45 Min</button>
+              <!-- C. Duration (Minutes) -->
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" style="font-size:0.76rem;font-weight:800;color:#0F2557;margin-bottom:4px;">Duration (Minutes)</label>
+                <input type="number" min="1" max="180" step="1" class="form-input" id="caQuizDurationInput" value="${quizDuration}" style="height:38px;font-size:0.84rem;padding:6px 10px;" />
+              </div>
+
+              <!-- D. Positive Marks -->
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" style="font-size:0.76rem;font-weight:800;color:#0F2557;margin-bottom:4px;">Positive Marks (+)</label>
+                <input type="number" min="0.25" max="10" step="0.25" class="form-input" id="caQuizPositiveMarksInput" value="${quizPosMarks}" style="height:38px;font-size:0.84rem;padding:6px 10px;" />
+              </div>
+
+              <!-- E. Negative Marks -->
+              <div class="form-group" style="margin-bottom:0;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+                  <label class="form-label" style="font-size:0.76rem;font-weight:800;color:#0F2557;margin-bottom:0;">Negative Marks (-)</label>
+                  <div style="display:inline-flex;gap:3px;">
+                    <button type="button" data-ca-neg-quick="0" style="padding:1px 6px;font-size:0.66rem;font-weight:800;border-radius:4px;border:1px solid #0F2557;cursor:pointer;background:${quizNegMarks === 0 ? '#0F2557' : '#FFFFFF'};color:${quizNegMarks === 0 ? '#FFFFFF' : '#0F2557'};" title="Zero Negative Marking">0 (None)</button>
+                    <button type="button" data-ca-neg-quick="0.25" style="padding:1px 5px;font-size:0.66rem;font-weight:700;border-radius:4px;border:1px solid #CBD5E1;cursor:pointer;background:${quizNegMarks === 0.25 ? '#0F2557' : '#F8FAFC'};color:${quizNegMarks === 0.25 ? '#FFFFFF' : '#334155'};">0.25</button>
+                    <button type="button" data-ca-neg-quick="0.33" style="padding:1px 5px;font-size:0.66rem;font-weight:700;border-radius:4px;border:1px solid #CBD5E1;cursor:pointer;background:${quizNegMarks === 0.33 ? '#0F2557' : '#F8FAFC'};color:${quizNegMarks === 0.33 ? '#FFFFFF' : '#334155'};">0.33</button>
+                    <button type="button" data-ca-neg-quick="0.66" style="padding:1px 5px;font-size:0.66rem;font-weight:700;border-radius:4px;border:1px solid #CBD5E1;cursor:pointer;background:${quizNegMarks === 0.66 ? '#0F2557' : '#F8FAFC'};color:${quizNegMarks === 0.66 ? '#FFFFFF' : '#334155'};">0.66</button>
+                  </div>
+                </div>
+                <input type="number" min="0" max="10" step="0.01" class="form-input" id="caQuizNegativeMarksInput" value="${quizNegMarks}" style="height:38px;font-size:0.84rem;padding:6px 10px;" />
+              </div>
+            </div>
+
+            <div id="caQuizValidationMsg" style="display:none;margin-top:8px;padding:6px 10px;border-radius:8px;background:#FEF2F2;border:1px solid #FECACA;color:#B91C1C;font-size:0.76rem;font-weight:700;"></div>
+
+            <!-- Start Quiz Action -->
+            <div style="margin-top:12px;padding-top:10px;border-top:1px solid #E2E8F0;display:flex;justify-content:flex-end;">
+              <button
+                type="button"
+                id="caPageLaunchCustomQuizBtn"
+                style="width:100%;max-width:240px;padding:10px 20px;border-radius:9px;border:none;background:#0F2557;color:#FFFFFF;font-size:0.9rem;font-weight:800;cursor:pointer;box-shadow:0 3px 10px rgba(15,37,87,0.22);"
+              >
+                Start Quiz
+              </button>
+            </div>
           </div>
-          <button class="btn btn-primary" id="caPageLaunchCustomQuizBtn">🎯 ${isHi ? 'कस्टम करंट अफेयर्स क्विज़ प्रारंभ करें' : 'Start Custom Current Affairs Quiz'}</button>
-        </div>
+        ` : ''}
       </div>
 
       <!-- Current Affairs Digest Section with 3 Category Tabs & Language Switch -->
@@ -1942,6 +1998,39 @@
       };
     });
 
+    // Toggle compact Custom Current Affairs Quiz customization panel
+    const toggleQuizPanelBtn = document.getElementById('caToggleCustomQuizPanelBtn');
+    if (toggleQuizPanelBtn) {
+      toggleQuizPanelBtn.onclick = () => {
+        state.caQuizPanelExpanded = !state.caQuizPanelExpanded;
+        saveState();
+        renderCurrentAffairsView(root);
+      };
+    }
+
+    const refreshAvailableCountUI = () => {
+      const scEl = document.getElementById('caQuizScopeSelect');
+      const mEl = document.getElementById('caQuizMonthSelect');
+      const yEl = document.getElementById('caQuizYearSelect');
+      const qInp = document.getElementById('caQuizQuestionCountInput');
+      const badgeEl = document.getElementById('caQuizAvailableCountBadge');
+      const valMsgEl = document.getElementById('caQuizValidationMsg');
+      const scVal = (scEl && scEl.value) || 'recent';
+      const mVal = (mEl && mEl.value) || activeMonthKey;
+      const yVal = (yEl && yEl.value) || currentYearKey;
+      const pool = getAvailableCurrentAffairsQuestionsForPeriod(scVal, mVal, yVal);
+      const avail = Math.max(1, pool.length);
+      if (badgeEl) badgeEl.textContent = `Max: ${avail}`;
+      if (qInp) {
+        qInp.max = String(avail);
+        if (Number(qInp.value) > avail) {
+          qInp.value = String(avail);
+        }
+      }
+      if (valMsgEl) valMsgEl.style.display = 'none';
+      return avail;
+    };
+
     // Scope selector toggle
     const scopeSel = document.getElementById('caQuizScopeSelect');
     if (scopeSel) {
@@ -1951,41 +2040,134 @@
         const yWrap = document.getElementById('caQuizYearSelectWrap');
         if (mWrap) mWrap.style.display = scopeSel.value === 'monthly' ? 'block' : 'none';
         if (yWrap) yWrap.style.display = scopeSel.value === 'yearly' ? 'block' : 'none';
+        refreshAvailableCountUI();
       };
     }
 
-    // Presets
+    const monthSelEl = document.getElementById('caQuizMonthSelect');
+    if (monthSelEl) {
+      monthSelEl.onchange = () => {
+        state.caQuizMonth = monthSelEl.value;
+        refreshAvailableCountUI();
+      };
+    }
+
+    const yearSelEl = document.getElementById('caQuizYearSelect');
+    if (yearSelEl) {
+      yearSelEl.onchange = () => {
+        state.caQuizYear = yearSelEl.value;
+        refreshAvailableCountUI();
+      };
+    }
+
+    // Quick Presets (10-10, 20-20, 30-30, 50-45)
     root.querySelectorAll('[data-ca-preset]').forEach((btn) => {
       btn.onclick = () => {
         const parts = String(btn.getAttribute('data-ca-preset') || '10-10').split('-');
+        const avail = refreshAvailableCountUI();
+        const targetQ = Math.min(avail, Number(parts[0] || 10));
+        const targetD = Number(parts[1] || 10);
         const qInp = document.getElementById('caQuizQuestionCountInput');
         const dInp = document.getElementById('caQuizDurationInput');
-        if (qInp) qInp.value = Number(parts[0] || 10);
-        if (dInp) dInp.value = Number(parts[1] || 10);
+        if (qInp) qInp.value = String(targetQ);
+        if (dInp) dInp.value = String(targetD);
+        state.caQuizQuestionCount = targetQ;
+        state.caQuizDurationMinutes = targetD;
+        root.querySelectorAll('[data-ca-preset]').forEach((b) => {
+          const isAct = b === btn;
+          b.style.background = isAct ? '#0F2557' : '#F8FAFC';
+          b.style.color = isAct ? '#FFFFFF' : '#0F2557';
+        });
       };
     });
 
-    // Launch custom quiz button
+    // Quick Negative Marking selector pills (including 0 for zero negative marking)
+    root.querySelectorAll('[data-ca-neg-quick]').forEach((btn) => {
+      btn.onclick = () => {
+        const negVal = Number(btn.getAttribute('data-ca-neg-quick') || 0);
+        const negInp = document.getElementById('caQuizNegativeMarksInput');
+        if (negInp) negInp.value = String(negVal);
+        state.caQuizNegativeMarks = negVal;
+        root.querySelectorAll('[data-ca-neg-quick]').forEach((b) => {
+          const active = b === btn;
+          b.style.background = active ? '#0F2557' : '#F8FAFC';
+          b.style.color = active ? '#FFFFFF' : '#0F2557';
+        });
+      };
+    });
+
+    // Start Quiz button with full validation
     const launchCustomBtn = document.getElementById('caPageLaunchCustomQuizBtn');
     if (launchCustomBtn) {
       launchCustomBtn.onclick = () => {
         const scope = (document.getElementById('caQuizScopeSelect') && document.getElementById('caQuizScopeSelect').value) || 'recent';
         const mKey = (document.getElementById('caQuizMonthSelect') && document.getElementById('caQuizMonthSelect').value) || activeMonthKey;
         const yKey = (document.getElementById('caQuizYearSelect') && document.getElementById('caQuizYearSelect').value) || currentYearKey;
-        const qCount = Math.max(5, Math.min(100, Number((document.getElementById('caQuizQuestionCountInput') && document.getElementById('caQuizQuestionCountInput').value) || 10)));
-        const durMin = Math.max(3, Math.min(180, Number((document.getElementById('caQuizDurationInput') && document.getElementById('caQuizDurationInput').value) || 12)));
+        const rawQ = Number(document.getElementById('caQuizQuestionCountInput') && document.getElementById('caQuizQuestionCountInput').value);
+        const rawDur = Number(document.getElementById('caQuizDurationInput') && document.getElementById('caQuizDurationInput').value);
+        const rawPos = Number(document.getElementById('caQuizPositiveMarksInput') && document.getElementById('caQuizPositiveMarksInput').value);
+        const negInputEl = document.getElementById('caQuizNegativeMarksInput');
+        const rawNeg = negInputEl && negInputEl.value !== '' ? Number(negInputEl.value) : 0;
+        const valMsgEl = document.getElementById('caQuizValidationMsg');
+
+        const showValidationErr = (msg) => {
+          if (valMsgEl) {
+            valMsgEl.textContent = msg;
+            valMsgEl.style.display = 'block';
+          }
+          toast(msg);
+        };
+
+        const availPool = getAvailableCurrentAffairsQuestionsForPeriod(scope, mKey, yKey);
+        const maxAvail = Math.max(1, availPool.length);
+
+        if (!Number.isFinite(rawQ) || rawQ < 1) {
+          showValidationErr('⚠️ Please enter at least 1 question.');
+          return;
+        }
+        if (rawQ > maxAvail) {
+          const qInp = document.getElementById('caQuizQuestionCountInput');
+          if (qInp) qInp.value = String(maxAvail);
+          showValidationErr(`⚠️ Only ${maxAvail} unique questions are available for the selected period.`);
+          return;
+        }
+        if (!Number.isFinite(rawDur) || rawDur < 1 || rawDur > 180) {
+          showValidationErr('⚠️ Please enter a valid duration between 1 and 180 minutes.');
+          return;
+        }
+        if (!Number.isFinite(rawPos) || rawPos <= 0) {
+          showValidationErr('⚠️ Positive marks per question must be greater than 0.');
+          return;
+        }
+        if (!Number.isFinite(rawNeg) || rawNeg < 0) {
+          showValidationErr('⚠️ Negative marks cannot be less than 0.');
+          return;
+        }
+
+        if (valMsgEl) valMsgEl.style.display = 'none';
+
+        const qCount = Math.floor(rawQ);
+        const durMin = Math.floor(rawDur);
+        const posMarks = +rawPos.toFixed(2);
+        const negMarks = +rawNeg.toFixed(2);
+
         state.caQuizScope = scope;
         state.caQuizMonth = mKey;
         state.caQuizYear = yKey;
         state.caQuizQuestionCount = qCount;
         state.caQuizDurationMinutes = durMin;
+        state.caQuizPositiveMarks = posMarks;
+        state.caQuizNegativeMarks = negMarks;
         saveState();
+
         launchCustomCurrentAffairsQuiz({
           scopeType: scope,
           monthKey: mKey,
           yearKey: yKey,
           questionCount: qCount,
           durationMinutes: durMin,
+          positiveMarks: posMarks,
+          negativeMarks: negMarks,
           buttonEl: launchCustomBtn
         });
       };
@@ -1999,7 +2181,9 @@
           monthKey: activeMonthKey,
           yearKey: activeMonthKey.slice(0, 4),
           questionCount: Number(state.caQuizQuestionCount || 10),
-          durationMinutes: Number(state.caQuizDurationMinutes || 12),
+          durationMinutes: Number(state.caQuizDurationMinutes || 10),
+          positiveMarks: state.caQuizPositiveMarks !== undefined ? Number(state.caQuizPositiveMarks) : 2,
+          negativeMarks: state.caQuizNegativeMarks !== undefined ? Number(state.caQuizNegativeMarks) : 0.66,
           buttonEl: monthQuickQuizBtn
         });
       };
@@ -2013,7 +2197,9 @@
           monthKey: activeMonthKey,
           yearKey: activeMonthKey.slice(0, 4),
           questionCount: Number(state.caQuizQuestionCount || 10),
-          durationMinutes: Number(state.caQuizDurationMinutes || 12),
+          durationMinutes: Number(state.caQuizDurationMinutes || 10),
+          positiveMarks: state.caQuizPositiveMarks !== undefined ? Number(state.caQuizPositiveMarks) : 2,
+          negativeMarks: state.caQuizNegativeMarks !== undefined ? Number(state.caQuizNegativeMarks) : 0.66,
           buttonEl: emptyMonthQuizBtn
         });
       };
@@ -4329,6 +4515,363 @@
     }
   }
 
+  // Build a strictly deduplicated pool of Current Affairs questions for the selected period (recent, monthly, yearly)
+  function getAvailableCurrentAffairsQuestionsForPeriod(scopeType, monthKey, yearKey) {
+    const scope = scopeType || 'recent';
+    const nowDate = new Date();
+    const defMonth = `${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, '0')}`;
+    const mKey = monthKey || defMonth;
+    const yKey = String(yearKey || mKey.slice(0, 4) || nowDate.getFullYear());
+
+    const canonicalStories = sortStoriesLatestFirst(getCanonicalCurrentAffairsList());
+    let targetStories = [];
+
+    if (scope === 'monthly') {
+      targetStories = canonicalStories.filter((st) => getStoryMonthKey(st) === mKey);
+      if (targetStories.length === 0) targetStories = canonicalStories.slice();
+    } else if (scope === 'yearly') {
+      targetStories = canonicalStories.filter((st) => getStoryYearKey(st) === yKey);
+      if (targetStories.length === 0) targetStories = canonicalStories.slice();
+    } else {
+      const nowMs = Date.now();
+      targetStories = canonicalStories.filter((s) => {
+        const createdMs = getStoryTimestampMs(s);
+        return createdMs > 0 && (nowMs - createdMs) <= 7 * 86400000;
+      });
+      if (targetStories.length < canonicalStories.length) {
+        canonicalStories.forEach((s) => {
+          if (!targetStories.some((t) => t.id === s.id)) targetStories.push(s);
+        });
+      }
+    }
+
+    // Verified Current Affairs quiz knowledge items across Chhattisgarh, National & International
+    // so presets (10, 20, 30, 50) always have sufficient unique, non-duplicate questions
+    const verifiedQuizSupplementTopics = [
+      {
+        id: 'ca_qpool_cg_mahtari_vandan',
+        category: 'chhattisgarh',
+        monthKey: mKey,
+        headlineHi: 'महतारी वंदन योजना (छत्तीसगढ़): विवाहित महिलाओं को ₹1,000 मासिक प्रत्यक्ष लाभ अंतरण (DBT)',
+        headlineEn: 'Mahtari Vandan Yojana (Chhattisgarh): ₹1,000 Monthly Direct Benefit Transfer for Married Women',
+        summaryHi: 'छत्तीसगढ़ शासन द्वारा महिला सशक्तिकरण, पोषण एवं आर्थिक स्वावलंबन हेतु पात्र विवाहित महिलाओं के बैंक खातों में प्रति माह ₹1,000 (वार्षिक ₹12,000) की राशि DBT के माध्यम से अंतरित की जाती है।',
+        summaryEn: 'Implemented by the Government of Chhattisgarh for women empowerment and nutrition, transferring ₹1,000 per month (₹12,000 annually) via DBT to eligible married women.',
+        sourceName: 'DPR Chhattisgarh'
+      },
+      {
+        id: 'ca_qpool_cg_krishak_unnati',
+        category: 'chhattisgarh',
+        monthKey: mKey,
+        headlineHi: 'कृषक उन्नति योजना: छत्तीसगढ़ में धान उत्पादक किसानों को ₹3,100 प्रति क्विंटल एवं 21 क्विंटल प्रति एकड़ खरीदी',
+        headlineEn: 'Krishak Unnati Yojana: Paddy Procurement at ₹3,100/Quintal and 21 Quintals/Acre in Chhattisgarh',
+        summaryHi: 'छत्तीसगढ़ सरकार द्वारा कृषक उन्नति योजना के अंतर्गत पंजीकृत किसानों से प्रति एकड़ 21 क्विंटल धान की खरीदी तथा समर्थन मूल्य के अतिरिक्त आदान सहायता राशि प्रदान कर ₹3,100 प्रति क्विंटल का मूल्य सुनिश्चित किया गया है।',
+        summaryEn: 'Under Krishak Unnati Yojana, Chhattisgarh procures up to 21 quintals of paddy per acre from registered farmers, ensuring a total realization of ₹3,100 per quintal.',
+        sourceName: 'Department of Agriculture, CG'
+      },
+      {
+        id: 'ca_qpool_cg_niyad_nellanar',
+        category: 'chhattisgarh',
+        monthKey: mKey,
+        headlineHi: 'नियद नेल्लानार योजना (आपका अच्छा गाँव): बस्तर संभाग के दूरस्थ अंचलों में 5 किमी परिधि में समग्र विकास',
+        headlineEn: 'Niyad Nellanar Scheme (Your Good Village): Holistic Development within 5 km of Security Camps in Bastar',
+        summaryHi: 'बस्तर संभाग के नक्सल प्रभावित क्षेत्रों में सुरक्षा कैंपों के 5 किलोमीटर के दायरे में स्थित गांवों में आवास, सड़क, पेयजल, बिजली, स्वास्थ्य, शिक्षा और राशन कार्ड जैसी 50+ मूलभूत सुविधाएं संतृप्ति मोड (Saturation Mode) में उपलब्ध कराई जा रही हैं।',
+        summaryEn: 'Provides over 50 essential government schemes and infrastructure facilities in saturation mode to villages located within a 5 km radius of security camps in Bastar division.',
+        sourceName: 'DPR Chhattisgarh'
+      },
+      {
+        id: 'ca_qpool_cg_guru_ghasidas_tiger',
+        category: 'chhattisgarh',
+        monthKey: mKey,
+        headlineHi: 'गुरु घासीदास-तमोर पिंगला टाइगर रिजर्व: देश का 56वां तथा छत्तीसगढ़ का चौथा टाइगर रिजर्व अधिसूचित',
+        headlineEn: 'Guru Ghasidas-Tamor Pingla Tiger Reserve Notified as India’s 56th and Chhattisgarh’s 4th Tiger Reserve',
+        summaryHi: 'मनेंद्रगढ़-चिरमिरी-भरतपुर, कोरिया, सूरजपुर और बलरामपुर जिलों में विस्तृत 2,829 वर्ग किमी क्षेत्रफल वाले गुरु घासीदास-तमोर पिंगला टाइगर रिजर्व को देश के तीसरे सबसे बड़े टाइगर रिजर्व के रूप में अधिसूचित किया गया है।',
+        summaryEn: 'Spanning 2,829 sq km across MCB, Korea, Surajpur, and Balrampur districts, Guru Ghasidas-Tamor Pingla is India’s 56th and 3rd largest Tiger Reserve.',
+        sourceName: 'NTCA / Forest Dept CG'
+      },
+      {
+        id: 'ca_qpool_cg_tendupatta',
+        category: 'chhattisgarh',
+        monthKey: mKey,
+        headlineHi: 'छत्तीसगढ़ में तेंदूपत्ता संग्रहण पारिश्रमिक दर ₹4,000 से बढ़ाकर ₹5,500 प्रति मानक बोरा निर्धारित',
+        headlineEn: 'Tendu Leaf Collection Remuneration Raised from ₹4,000 to ₹5,500 per Standard Bag in Chhattisgarh',
+        summaryHi: 'वनवासी एवं जनजातीय संग्राहकों की आय में वृद्धि हेतु छत्तीसगढ़ शासन ने तेंदूपत्ता संग्रहण पारिश्रमिक दर ₹5,500 प्रति मानक बोरा कर दी है जिससे लगभग 12.50 लाख संग्राहक परिवार लाभान्वित हो रहे हैं।',
+        summaryEn: 'Chhattisgarh increased the Tendu leaf collection wage rate to ₹5,500 per standard bag, directly benefiting around 12.50 lakh tribal and forest-dwelling families.',
+        sourceName: 'CG Minor Forest Produce Federation'
+      },
+      {
+        id: 'ca_qpool_nat_pm_surya_ghar',
+        category: 'national',
+        monthKey: mKey,
+        headlineHi: 'पीएम सूर्य घर मुफ्त बिजली योजना: 1 करोड़ परिवारों को प्रतिमाह 300 यूनिट तक निःशुल्क सौर बिजली',
+        headlineEn: 'PM Surya Ghar Muft Bijli Yojana: Rooftop Solar for 1 Crore Households with up to 300 Units Free Electricity',
+        summaryHi: 'केंद्र सरकार की ₹75,021 करोड़ परिव्यय वाली इस योजना के अंतर्गत 3 किलोवाट तक के रूफटॉप सोलर प्लांट पर ₹78,000 तक की केंद्रीय सब्सिडी और 300 यूनिट तक मुफ्त मासिक बिजली का प्रावधान है।',
+        summaryEn: 'With an outlay of ₹75,021 crore, the scheme provides central financial assistance up to ₹78,000 for rooftop solar installations and up to 300 units of free electricity per month.',
+        sourceName: 'MNRE / PIB India'
+      },
+      {
+        id: 'ca_qpool_nat_classical_languages',
+        category: 'national',
+        monthKey: mKey,
+        headlineHi: 'मराठी, पाली, प्राकृत, असमिया और बंगाली को शास्त्रीय भाषा का दर्जा: कुल शास्त्रीय भाषाओं की संख्या 11 हुई',
+        headlineEn: 'Classical Language Status Granted to Marathi, Pali, Prakrit, Assamese & Bengali; Total Reaches 11',
+        summaryHi: 'केंद्रीय मंत्रिमंडल ने मराठी, पाली, प्राकृत, असमिया और बंगाली को शास्त्रीय भाषा (Classical Language) घोषित किया है; इससे पूर्व तमिल, संस्कृत, कन्नड़, तेलुगु, मलयालम और ओड़िया शामिल थीं।',
+        summaryEn: 'The Union Cabinet approved Classical Language status for five more languages (Marathi, Pali, Prakrit, Assamese, Bengali), taking India’s total classical languages from 6 to 11.',
+        sourceName: 'Ministry of Culture / PIB'
+      },
+      {
+        id: 'ca_qpool_nat_ayushman_vaya_vandana',
+        category: 'national',
+        monthKey: mKey,
+        headlineHi: 'आयुष्मान वय वंदना कार्ड: 70 वर्ष और उससे अधिक आयु के सभी वरिष्ठ नागरिकों को ₹5 लाख का निःशुल्क स्वास्थ्य कवच',
+        headlineEn: 'Ayushman Vaya Vandana Card: Universal ₹5 Lakh Free Health Coverage for All Senior Citizens Aged 70+',
+        summaryHi: 'आयुष्मान भारत प्रधानमंत्री जन आरोग्य योजना (AB PM-JAY) के विस्तार के तहत आय की सीमा के बिना 70 वर्ष या उससे अधिक आयु के प्रत्येक वरिष्ठ नागरिक को प्रति वर्ष ₹5 लाख तक का कैशलेस उपचार प्रदान किया गया है।',
+        summaryEn: 'Under the expanded AB PM-JAY, every senior citizen aged 70 years and above receives ₹5 lakh annual cashless health cover irrespective of socio-economic status.',
+        sourceName: 'National Health Authority / PIB'
+      },
+      {
+        id: 'ca_qpool_int_cop29_baku',
+        category: 'international',
+        monthKey: mKey,
+        headlineHi: 'संयुक्त राष्ट्र जलवायु परिवर्तन सम्मेलन (UNFCCC COP-29): बाकू (अज़रबैजान) में 300 अरब डॉलर का नया जलवायु वित्त लक्ष्य',
+        headlineEn: 'UNFCCC COP-29 Summit in Baku (Azerbaijan) Adopts $300 Billion Annual New Collective Quantified Goal (NCQG)',
+        summaryHi: 'अज़रबैजान की राजधानी बाकू में आयोजित COP-29 सम्मेलन में विकसित देशों द्वारा विकासशील देशों को वर्ष 2035 तक प्रति वर्ष 300 बिलियन अमेरिकी डॉलर का जलवायु वित्त उपलब्ध कराने पर सहमति बनी।',
+        summaryEn: 'Hosted in Baku, Azerbaijan, COP-29 agreed on the New Collective Quantified Goal (NCQG) of $300 billion annually by 2035 for developing nations’ climate action.',
+        sourceName: 'UNFCCC / Global Climate Desk'
+      },
+      {
+        id: 'ca_qpool_int_g20_rio',
+        category: 'international',
+        monthKey: mKey,
+        headlineHi: '19वां G20 शिखर सम्मेलन (रियो डी जनेरियो, ब्राज़ील): "भुखमरी और गरीबी के विरुद्ध वैश्विक गठबंधन" का शुभारंभ',
+        headlineEn: '19th G20 Summit in Rio de Janeiro (Brazil) Launches Global Alliance Against Hunger and Poverty',
+        summaryHi: 'ब्राज़ील की अध्यक्षता में रियो डी जनेरियो में संपन्न G20 शिखर सम्मेलन का मुख्य विषय "Building a Just World and a Sustainable Planet" रहा तथा इसमें भुखमरी एवं गरीबी उन्मूलन हेतु वैश्विक गठबंधन प्रारंभ किया गया।',
+        summaryEn: 'Chaired by Brazil in Rio de Janeiro under the theme "Building a Just World and a Sustainable Planet", the G20 Summit launched the Global Alliance Against Hunger and Poverty.',
+        sourceName: 'MEA India / G20 Desk'
+      }
+    ];
+
+    verifiedQuizSupplementTopics.forEach((supp) => {
+      if (!targetStories.some((t) => t.id === supp.id)) {
+        targetStories.push(supp);
+      }
+    });
+
+    const uniquePool = [];
+    const seenStems = new Set();
+
+    const addUniqueQuestion = (qObj) => {
+      if (!qObj || (!qObj.questionHi && !qObj.questionEn)) return false;
+      const normHi = normalizeStemTextForSelection(qObj.questionHi || '');
+      const normEn = normalizeStemTextForSelection(qObj.questionEn || '');
+      const key = normHi || normEn;
+      if (!key || seenStems.has(key)) return false;
+      const nearDup = uniquePool.some((existing) => {
+        const sHi = (normHi && existing.questionHi) ? computeStemSimilarityForSelection(qObj.questionHi, existing.questionHi) : 0;
+        const sEn = (normEn && existing.questionEn) ? computeStemSimilarityForSelection(qObj.questionEn, existing.questionEn) : 0;
+        return Math.max(sHi, sEn) >= 0.88;
+      });
+      if (nearDup) return false;
+      seenStems.add(key);
+      uniquePool.push(qObj);
+      return true;
+    };
+
+    // 1. Pull period-matched Current Affairs questions from Central Question Bank first
+    const allBank = Array.isArray(state.questionBank) ? state.questionBank : [];
+    const caBankQuestions = allBank.filter((q) => {
+      if (!isQuestionEligibleForAutoSelection(q)) return false;
+      const isCa = q.subjectId === 'sub_current_affairs' ||
+        String(q.subjectTag || '').toLowerCase().includes('current affairs') ||
+        String(q.topic || '').toLowerCase().includes('current affairs');
+      if (!isCa) return false;
+      if (scope === 'monthly' && q.monthKey && q.monthKey !== mKey) return false;
+      if (scope === 'yearly') {
+        const qYear = String(q.yearKey || (q.monthKey || '').slice(0, 4));
+        if (qYear && qYear !== yKey) return false;
+      }
+      return true;
+    });
+
+    caBankQuestions.forEach((q, idx) => {
+      const optsHi = Array.isArray(q.optionsHi) && q.optionsHi.length === 4
+        ? [...q.optionsHi]
+        : [q.optA_Hi, q.optB_Hi, q.optC_Hi, q.optD_Hi].map((o, i) => String(o || ['A', 'B', 'C', 'D'][i]));
+      const optsEn = Array.isArray(q.optionsEn) && q.optionsEn.length === 4
+        ? [...q.optionsEn]
+        : [q.optA_En, q.optB_En, q.optC_En, q.optD_En].map((o, i) => String(o || optsHi[i] || ['A', 'B', 'C', 'D'][i]));
+      addUniqueQuestion({
+        id: q.id || `ca_bank_${idx}`,
+        subjectId: 'sub_current_affairs',
+        subjectTag: 'Current Affairs',
+        monthKey: q.monthKey || mKey,
+        questionHi: q.questionHi || q.questionEn,
+        questionEn: q.questionEn || q.questionHi,
+        optionsHi: optsHi,
+        optionsEn: optsEn,
+        correctOptionIndex: Math.max(0, Math.min(3, Number(q.correctOptionIndex != null ? q.correctOptionIndex : (q.correctIndex || 0)))),
+        explanationHi: q.explanationHi || q.explanationEn || '',
+        explanationEn: q.explanationEn || q.explanationHi || ''
+      });
+    });
+
+    // 2. Synthesize strictly distinct, non-duplicate multi-angle questions from each unique story
+    const catLabelsHi = {
+      chhattisgarh: 'छत्तीसगढ़ राज्य समसामयिकी एवं शासन नीति',
+      national: 'राष्ट्रीय समसामयिकी एवं केंद्रीय योजनाएं',
+      international: 'अंतर्राष्ट्रीय संबंध, विज्ञान एवं वैश्विक घटनाक्रम'
+    };
+    const catLabelsEn = {
+      chhattisgarh: 'Chhattisgarh State Current Affairs & Governance',
+      national: 'National Current Affairs & Union Initiatives',
+      international: 'International Relations, Science & Global Affairs'
+    };
+
+    for (let angle = 0; angle < 5; angle++) {
+      targetStories.forEach((st, sIdx) => {
+        const other1 = targetStories[(sIdx + 1) % targetStories.length] || st;
+        const other2 = targetStories[(sIdx + 2) % targetStories.length] || st;
+        const other3 = targetStories[(sIdx + 3) % targetStories.length] || st;
+        const headHi = st.headlineHi || st.titleHi || 'समसामयिकी अपडेट';
+        const headEn = st.headlineEn || st.titleEn || headHi;
+        const sumHi = st.summaryHi || headHi;
+        const sumEn = st.summaryEn || sumHi;
+        const stMonth = st.monthKey || mKey;
+        const srcName = st.sourceName || 'PIB / DPR Chhattisgarh';
+        const normCat = normalizeStoryCategory(st.category, `${headHi} ${headEn}`);
+        const corrPos = (sIdx + angle) % 4;
+
+        let qHi = '';
+        let qEn = '';
+        let corrHi = '';
+        let corrEn = '';
+        let distHi = [];
+        let distEn = [];
+
+        if (angle === 0) {
+          qHi = `समसामयिकी (${stMonth}) के संदर्भ में "${headHi}" के विषय में कौन-सा मुख्य कथन सही है?`;
+          qEn = `With reference to Current Affairs (${stMonth}) regarding "${headEn}", which key statement is correct?`;
+          corrHi = sumHi.slice(0, 170);
+          corrEn = sumEn.slice(0, 170);
+          distHi = [
+            other1 !== st && other1.summaryHi ? other1.summaryHi.slice(0, 160) : 'यह योजना केवल निजी औद्योगिक इकाइयों के लिए सीमित है',
+            other2 !== st && other2.summaryHi ? other2.summaryHi.slice(0, 160) : 'इसे पूर्णतः समाप्त कर दिया गया है और कोई बजट आवंटित नहीं है',
+            'उपर्युक्त में से कोई नहीं'
+          ];
+          distEn = [
+            other1 !== st && other1.summaryEn ? other1.summaryEn.slice(0, 160) : 'This initiative is restricted exclusively to private industrial units',
+            other2 !== st && other2.summaryEn ? other2.summaryEn.slice(0, 160) : 'It has been completely discontinued without budget allocation',
+            'None of the above'
+          ];
+        } else if (angle === 1) {
+          qHi = `हाल ही में चर्चा में रहे प्रावधान — "${sumHi.slice(0, 155)}" — का संबंध निम्नलिखित में से किस समसामयिकी विषय से है?`;
+          qEn = `Which recent Current Affairs topic corresponds to the provision — "${sumEn.slice(0, 155)}"?`;
+          corrHi = headHi;
+          corrEn = headEn;
+          distHi = [
+            other1 !== st ? (other1.headlineHi || 'राष्ट्रीय डिजिटल लॉजिस्टिक्स सुधार मिशन') : 'राष्ट्रीय डिजिटल लॉजिस्टिक्स सुधार मिशन',
+            other2 !== st ? (other2.headlineHi || 'अंतर्राष्ट्रीय समुद्री व्यापार समझौता') : 'अंतर्राष्ट्रीय समुद्री व्यापार समझौता',
+            other3 !== st ? (other3.headlineHi || 'केंद्रीय कराधान संशोधन विधेयक') : 'केंद्रीय कराधान संशोधन विधेयक'
+          ];
+          distEn = [
+            other1 !== st ? (other1.headlineEn || 'National Digital Logistics Reform Mission') : 'National Digital Logistics Reform Mission',
+            other2 !== st ? (other2.headlineEn || 'International Maritime Trade Pact') : 'International Maritime Trade Pact',
+            other3 !== st ? (other3.headlineEn || 'Central Taxation Amendment Bill') : 'Central Taxation Amendment Bill'
+          ];
+        } else if (angle === 2) {
+          qHi = `समसामयिकी विषय "${headHi}" (${srcName}) को किस श्रेणी में वर्गीकृत किया गया है और इसका मुख्य फोकस क्या है?`;
+          qEn = `Under which category is "${headEn}" (${srcName}) classified and what is its core focus?`;
+          corrHi = `${catLabelsHi[normCat]} — ${sumHi.slice(0, 110)}`;
+          corrEn = `${catLabelsEn[normCat]} — ${sumEn.slice(0, 110)}`;
+          distHi = [
+            'प्राचीन भारतीय स्थापत्य एवं पुरातत्व सर्वेक्षण अभिलेख',
+            'मध्यकालीन राजस्व प्रशासन एवं सैन्य संगठन प्रणाली',
+            'केवल विदेशी निजी बैंकों के आंतरिक ऑडिट नियम'
+          ];
+          distEn = [
+            'Ancient Indian Architecture & Archaeological Survey Records',
+            'Medieval Revenue Administration & Military Organization',
+            'Internal Audit Rules of Foreign Private Banks Only'
+          ];
+        } else if (angle === 3) {
+          qHi = `कथन-आधारित प्रश्न (${stMonth}):\nकथन-I: "${headHi}" समसामयिकी का एक महत्वपूर्ण अपडेट है।\nकथन-II: ${sumHi.slice(0, 145)}\nसही विकल्प चुनिए:`;
+          qEn = `Statement-Based Question (${stMonth}):\nStatement-I: "${headEn}" is a significant Current Affairs update.\nStatement-II: ${sumEn.slice(0, 145)}\nSelect the correct option:`;
+          corrHi = 'कथन-I और कथन-II दोनों सही हैं तथा कथन-II, कथन-I की सही व्याख्या करता है';
+          corrEn = 'Both Statement-I and Statement-II are correct and Statement-II accurately explains Statement-I';
+          distHi = [
+            'कथन-I सही है किंतु कथन-II असत्य है',
+            'कथन-I असत्य है किंतु कथन-II सही है',
+            'कथन-I और कथन-II दोनों असत्य हैं'
+          ];
+          distEn = [
+            'Statement-I is correct but Statement-II is false',
+            'Statement-I is false but Statement-II is correct',
+            'Both Statement-I and Statement-II are false'
+          ];
+        } else {
+          qHi = `आधिकारिक स्रोत (${srcName}) के अनुसार "${headHi}" के प्रमुख तथ्य की पहचान कीजिए:`;
+          qEn = `According to official sources (${srcName}), identify the accurate highlight of "${headEn}":`;
+          corrHi = `${sumHi.slice(0, 160)} (${srcName})`;
+          corrEn = `${sumEn.slice(0, 160)} (${srcName})`;
+          distHi = [
+            'इसमें किसी भी सरकारी मंत्रालय या राज्य विभाग की भूमिका नहीं है',
+            'यह केवल वर्ष 1995 से पूर्व पंजीकृत संस्थाओं पर लागू है',
+            'उपर्युक्त सभी कथन असत्य हैं'
+          ];
+          distEn = [
+            'It involves no government ministry or state department',
+            'It applies exclusively to entities registered before 1995',
+            'All statements above are incorrect'
+          ];
+        }
+
+        const optsHi = [...distHi];
+        const optsEn = [...distEn];
+        optsHi.splice(corrPos, 0, corrHi);
+        optsEn.splice(corrPos, 0, corrEn);
+
+        addUniqueQuestion({
+          id: `ca_story_${st.id}_a${angle}`,
+          subjectId: 'sub_current_affairs',
+          subjectTag: 'Current Affairs',
+          monthKey: stMonth,
+          questionHi: qHi,
+          questionEn: qEn,
+          optionsHi: optsHi.slice(0, 4),
+          optionsEn: optsEn.slice(0, 4),
+          correctOptionIndex: corrPos,
+          explanationHi: `${headHi}: ${sumHi}`,
+          explanationEn: `${headEn}: ${sumEn}`
+        });
+      });
+    }
+
+    // 3. Supplement with remaining verified General Studies / Chhattisgarh questions from Question Bank without duplicates
+    allBank.forEach((q, idx) => {
+      if (!isQuestionEligibleForAutoSelection(q)) return;
+      const optsHi = Array.isArray(q.optionsHi) && q.optionsHi.length === 4
+        ? [...q.optionsHi]
+        : [q.optA_Hi, q.optB_Hi, q.optC_Hi, q.optD_Hi].map((o, i) => String(o || ['A', 'B', 'C', 'D'][i]));
+      const optsEn = Array.isArray(q.optionsEn) && q.optionsEn.length === 4
+        ? [...q.optionsEn]
+        : [q.optA_En, q.optB_En, q.optC_En, q.optD_En].map((o, i) => String(o || optsHi[i] || ['A', 'B', 'C', 'D'][i]));
+      addUniqueQuestion({
+        id: q.id || `ca_supp_${idx}`,
+        subjectId: q.subjectId || 'sub_current_affairs',
+        subjectTag: q.subjectTag || 'Current Affairs',
+        monthKey: q.monthKey || mKey,
+        questionHi: q.questionHi || q.questionEn,
+        questionEn: q.questionEn || q.questionHi,
+        optionsHi: optsHi,
+        optionsEn: optsEn,
+        correctOptionIndex: Math.max(0, Math.min(3, Number(q.correctOptionIndex != null ? q.correctOptionIndex : (q.correctIndex || 0)))),
+        explanationHi: q.explanationHi || q.explanationEn || '',
+        explanationEn: q.explanationEn || q.explanationHi || ''
+      });
+    });
+
+    return uniquePool;
+  }
+
   async function launchCustomCurrentAffairsQuiz(opts) {
     const options = opts || {};
     const scopeType = options.scopeType || 'recent';
@@ -4336,16 +4879,20 @@
     const defaultMonthKey = `${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, '0')}`;
     const monthKey = options.monthKey || defaultMonthKey;
     const yearKey = options.yearKey || String(nowDate.getFullYear());
-    const questionCount = Math.max(5, Math.min(100, Number(options.questionCount || 10)));
-    const durationMinutes = Math.max(3, Math.min(180, Number(options.durationMinutes || 12)));
+
+    const basePool = getAvailableCurrentAffairsQuestionsForPeriod(scopeType, monthKey, yearKey);
+    const maxAvail = Math.max(1, basePool.length);
+    const questionCount = Math.max(1, Math.min(maxAvail, Number(options.questionCount || 10)));
+    const durationMinutes = Math.max(1, Math.min(180, Number(options.durationMinutes || 10)));
+    const positiveMarks = options.positiveMarks !== undefined && Number(options.positiveMarks) > 0
+      ? Number(options.positiveMarks)
+      : (state.caQuizPositiveMarks !== undefined && Number(state.caQuizPositiveMarks) > 0 ? Number(state.caQuizPositiveMarks) : 2);
+    const negativeMarks = options.negativeMarks !== undefined && Number(options.negativeMarks) >= 0
+      ? Number(options.negativeMarks)
+      : (state.caQuizNegativeMarks !== undefined && Number(state.caQuizNegativeMarks) >= 0 ? Number(state.caQuizNegativeMarks) : 0.66);
     const btnEl = options.buttonEl || null;
 
-    const allStories = (state.stories || []).slice().sort((a, b) => {
-      const ta = Number(a.createdAtMs || (a.createdAtIso ? Date.parse(a.createdAtIso) : 0) || 0);
-      const tb = Number(b.createdAtMs || (b.createdAtIso ? Date.parse(b.createdAtIso) : 0) || 0);
-      return tb - ta;
-    });
-
+    const allStories = sortStoriesLatestFirst(getCanonicalCurrentAffairsList());
     let targetStories = [];
     let scopeLabelHi = 'हालिया समसामयिकी (Recent Current Affairs)';
     let scopeLabelEn = 'Recent Current Affairs Quiz';
@@ -4361,8 +4908,8 @@
     } else {
       const nowMs = Date.now();
       targetStories = allStories.filter((s) => {
-        const createdMs = Number(s.createdAtMs || (s.createdAtIso ? Date.parse(s.createdAtIso) : 0) || 0);
-        return createdMs > 0 && (nowMs - createdMs) <= 86400000;
+        const createdMs = getStoryTimestampMs(s);
+        return createdMs > 0 && (nowMs - createdMs) <= 7 * 86400000;
       });
       if (targetStories.length === 0) {
         targetStories = allStories.slice(0, 12);
@@ -4372,15 +4919,31 @@
     const prevText = btnEl ? btnEl.textContent : '';
     if (btnEl) {
       btnEl.disabled = true;
-      btnEl.textContent = '⏳ Preparing Current Affairs Questions...';
+      btnEl.textContent = '⏳ Preparing Quiz...';
     } else {
       toast('⏳ करंट अफेयर्स प्रश्न तैयार किए जा रहे हैं...');
     }
 
-    let generatedQs = [];
+    let finalQuestions = [];
+    const seenFinalStems = new Set();
+
+    const pushIfUnique = (q) => {
+      if (!q || (!q.questionHi && !q.questionEn)) return;
+      const stemKey = normalizeStemTextForSelection(q.questionHi || q.questionEn || '');
+      if (!stemKey || seenFinalStems.has(stemKey)) return;
+      const dup = finalQuestions.some((ex) => {
+        const sHi = (q.questionHi && ex.questionHi) ? computeStemSimilarityForSelection(q.questionHi, ex.questionHi) : 0;
+        const sEn = (q.questionEn && ex.questionEn) ? computeStemSimilarityForSelection(q.questionEn, ex.questionEn) : 0;
+        return Math.max(sHi, sEn) >= 0.88;
+      });
+      if (dup) return;
+      seenFinalStems.add(stemKey);
+      finalQuestions.push(q);
+    };
+
     try {
       if (window.CGpediaAdmin && typeof window.CGpediaAdmin.generateCurrentAffairsQuizQuestionsWithAi === 'function') {
-        generatedQs = await window.CGpediaAdmin.generateCurrentAffairsQuizQuestionsWithAi({
+        const aiQs = await window.CGpediaAdmin.generateCurrentAffairsQuizQuestionsWithAi({
           stories: targetStories,
           scopeType,
           monthKey,
@@ -4389,62 +4952,29 @@
           stateRef: state,
           apiRef: publicApi
         });
+        if (Array.isArray(aiQs)) {
+          aiQs.forEach(pushIfUnique);
+        }
       }
     } catch (_) {}
 
     if (btnEl) {
       btnEl.disabled = false;
-      btnEl.textContent = prevText || '🎯 Start Current Affairs Quiz';
+      btnEl.textContent = prevText || 'Start Quiz';
     }
 
-    if (!Array.isArray(generatedQs) || generatedQs.length === 0) {
-      // Build fresh randomized questions from selected stories if offline or fallback needed
-      if (targetStories.length > 0) {
-        const shuffledStories = targetStories.slice().sort(() => Math.random() - 0.5);
-        generatedQs = [];
-        for (let i = 0; i < questionCount; i++) {
-          const st = shuffledStories[i % shuffledStories.length];
-          const other1 = shuffledStories[(i + 1) % shuffledStories.length];
-          const other2 = shuffledStories[(i + 2) % shuffledStories.length];
-          const headHi = st.headlineHi || st.titleHi || 'समसामयिकी अपडेट';
-          const headEn = st.headlineEn || st.titleEn || 'Current Affairs Update';
-          const sumHi = st.summaryHi || headHi;
-          const sumEn = st.summaryEn || headEn;
-          const correctPos = i % 4;
-          const distractorsHi = [
-            (other1 && other1 !== st && other1.summaryHi) ? other1.summaryHi.slice(0, 150) : 'यह योजना केवल निजी औद्योगिक इकाइयों के लिए सीमित है',
-            (other2 && other2 !== st && other2.summaryHi) ? other2.summaryHi.slice(0, 150) : 'इसे वर्ष 2014 में समाप्त कर दिया गया था',
-            'उपर्युक्त में से कोई नहीं'
-          ];
-          const distractorsEn = [
-            (other1 && other1 !== st && other1.summaryEn) ? other1.summaryEn.slice(0, 150) : 'This initiative is restricted exclusively to private corporations',
-            (other2 && other2 !== st && other2.summaryEn) ? other2.summaryEn.slice(0, 150) : 'It was discontinued in 2014',
-            'None of the above'
-          ];
-          const optsHi = [...distractorsHi];
-          const optsEn = [...distractorsEn];
-          optsHi.splice(correctPos, 0, sumHi.slice(0, 150));
-          optsEn.splice(correctPos, 0, sumEn.slice(0, 150));
-          generatedQs.push({
-            id: `ca_story_q_${Date.now()}_${i}`,
-            subjectId: 'sub_current_affairs',
-            subjectTag: 'Current Affairs',
-            monthKey: st.monthKey || monthKey,
-            questionHi: `हालिया समसामयिकी के संदर्भ में "${headHi}" के विषय में कौन-सा कथन सही है?`,
-            questionEn: `With reference to recent current affairs regarding "${headEn}", which statement is correct?`,
-            optionsHi: optsHi.slice(0, 4),
-            optionsEn: optsEn.slice(0, 4),
-            correctOptionIndex: correctPos,
-            explanationHi: `${headHi}: ${sumHi}`,
-            explanationEn: `${headEn}: ${sumEn}`
-          });
-        }
-        if (window.CGpediaAdmin && typeof window.CGpediaAdmin.saveGeneratedCaQuestionsToQuestionBank === 'function') {
-          window.CGpediaAdmin.saveGeneratedCaQuestionsToQuestionBank(generatedQs, state, publicApi, monthKey).catch(() => {});
-        }
-      } else {
-        generatedQs = generateHighYieldBilingualQuestions('daily_ca_' + Date.now(), 'Current Affairs & Chhattisgarh GS', questionCount, '');
+    // Fill any remaining requested slots from our deduplicated period pool without duplicates
+    if (finalQuestions.length < questionCount) {
+      const shuffledPool = basePool.slice().sort(() => Math.random() - 0.5);
+      for (const candidate of shuffledPool) {
+        if (finalQuestions.length >= questionCount) break;
+        pushIfUnique(candidate);
       }
+    }
+
+    if (finalQuestions.length === 0) {
+      toast('⚠️ No questions available for the selected period.');
+      return;
     }
 
     window.CGpediaCBT.openPreTestInstructions({
@@ -4454,16 +4984,18 @@
       titleEn: scopeLabelEn,
       topic: 'Chhattisgarh, National & International Current Affairs',
       durationMinutes,
-      marksPerQuestion: 2,
-      negativeMarking: 0.66
-    }, generatedQs.slice(0, questionCount), cbtCallbacks);
+      marksPerQuestion: positiveMarks,
+      negativeMarking: negativeMarks
+    }, finalQuestions.slice(0, questionCount), cbtCallbacks);
   }
 
   function launchInstantDailyQuiz() {
     launchCustomCurrentAffairsQuiz({
       scopeType: 'recent',
       questionCount: 10,
-      durationMinutes: 12
+      durationMinutes: 10,
+      positiveMarks: state.caQuizPositiveMarks !== undefined ? Number(state.caQuizPositiveMarks) : 2,
+      negativeMarks: state.caQuizNegativeMarks !== undefined ? Number(state.caQuizNegativeMarks) : 0.66
     });
   }
 
