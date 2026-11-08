@@ -268,7 +268,7 @@
           return;
         }
         const script = document.createElement('script');
-        script.src = 'admin-console.js?v=6.9';
+        script.src = 'admin-console.js?v=7.0';
         script.defer = true;
         script.setAttribute('data-admin-console-lazy', '1');
         script.onload = () => resolve(window.CGpediaAdmin || null);
@@ -1862,10 +1862,8 @@
     const allMonthlyStories = sortStoriesLatestFirst(
       allStories.filter((st) => getStoryMonthKey(st) === activeMonthKey)
     );
-    // Keep Daily Dose and Current Affairs synchronized from the exact same database
-    const dailyDoseStories = activeMonthKey === currentMonthKey
-      ? allMonthlyStories
-      : getActiveDailyDoseStories();
+    // Keep Daily Dose strictly filtered to active stories within the last 24 hours
+    const dailyDoseStories = getActiveDailyDoseStories();
 
     const cgCount = allMonthlyStories.filter((s) => normalizeStoryCategory(s.category) === 'chhattisgarh').length;
     const natCount = allMonthlyStories.filter((s) => normalizeStoryCategory(s.category) === 'national').length;
@@ -2072,11 +2070,6 @@
                     ${imgUrl ? `
                       <div style="position:relative;width:100%;height:175px;border-radius:12px;overflow:hidden;margin-bottom:10px;border:1px solid var(--border);background:#091534;">
                         <img src="${esc(imgUrl)}" alt="${esc(headlineText)}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;" />
-                        ${isAiImg ? `
-                          <span style="position:absolute;top:8px;right:8px;background:rgba(15,23,42,0.86);color:#FDE68A;border:1px solid rgba(253,230,138,0.45);font-size:0.68rem;font-weight:800;padding:3px 9px;border-radius:99px;backdrop-filter:blur(4px);">
-                            ✨ AI Generated Image
-                          </span>
-                        ` : ''}
                         <span style="position:absolute;bottom:8px;left:8px;background:${isSeen ? 'rgba(15,23,42,0.78)' : 'rgba(16,185,129,0.92)'};color:#fff;font-size:0.66rem;font-weight:800;padding:2px 8px;border-radius:99px;">
                           ${isSeen ? (isHi ? '✓ देखा गया' : '✓ Seen') : (isHi ? '● नया (अनदेखा)' : '● Unseen')}
                         </span>
@@ -4881,120 +4874,117 @@
       });
     });
 
-    // 2. Synthesize strictly distinct, non-duplicate multi-angle questions from each unique story
-    const catLabelsHi = {
-      chhattisgarh: 'छत्तीसगढ़ राज्य समसामयिकी एवं शासन नीति',
-      national: 'राष्ट्रीय समसामयिकी एवं केंद्रीय योजनाएं',
-      international: 'अंतर्राष्ट्रीय संबंध, विज्ञान एवं वैश्विक घटनाक्रम'
-    };
-    const catLabelsEn = {
-      chhattisgarh: 'Chhattisgarh State Current Affairs & Governance',
-      national: 'National Current Affairs & Union Initiatives',
-      international: 'International Relations, Science & Global Affairs'
-    };
-
+    // 2. Synthesize strictly distinct, non-duplicate CGPSC Prelims & CG Vyapam pattern questions from each unique story
     for (let angle = 0; angle < 5; angle++) {
       targetStories.forEach((st, sIdx) => {
         const other1 = targetStories[(sIdx + 1) % targetStories.length] || st;
         const other2 = targetStories[(sIdx + 2) % targetStories.length] || st;
         const other3 = targetStories[(sIdx + 3) % targetStories.length] || st;
-        const headHi = st.headlineHi || st.titleHi || 'समसामयिकी अपडेट';
+        const headHi = st.headlineHi || st.titleHi || 'छत्तीसगढ़ समसामयिकी अपडेट';
         const headEn = st.headlineEn || st.titleEn || headHi;
         const sumHi = st.summaryHi || headHi;
         const sumEn = st.summaryEn || sumHi;
         const stMonth = st.monthKey || mKey;
-        const srcName = st.sourceName || 'PIB / DPR Chhattisgarh';
-        const normCat = normalizeStoryCategory(st.category, `${headHi} ${headEn}`);
-        const corrPos = (sIdx + angle) % 4;
+        const srcName = st.sourceName || 'DPR Chhattisgarh / PIB';
 
         let qHi = '';
         let qEn = '';
-        let corrHi = '';
-        let corrEn = '';
-        let distHi = [];
-        let distEn = [];
+        let optsHi = [];
+        let optsEn = [];
+        let corrPos = 0;
 
         if (angle === 0) {
-          qHi = `समसामयिकी (${stMonth}) के संदर्भ में "${headHi}" के विषय में कौन-सा मुख्य कथन सही है?`;
-          qEn = `With reference to Current Affairs (${stMonth}) regarding "${headEn}", which key statement is correct?`;
-          corrHi = sumHi.slice(0, 170);
-          corrEn = sumEn.slice(0, 170);
-          distHi = [
-            other1 !== st && other1.summaryHi ? other1.summaryHi.slice(0, 160) : 'यह योजना केवल निजी औद्योगिक इकाइयों के लिए सीमित है',
-            other2 !== st && other2.summaryHi ? other2.summaryHi.slice(0, 160) : 'इसे पूर्णतः समाप्त कर दिया गया है और कोई बजट आवंटित नहीं है',
-            'उपर्युक्त में से कोई नहीं'
+          // CGPSC Prelims Signature 2-Statement Koot (कूट) Pattern
+          qHi = `[CGPSC कूट पैटर्न] समसामयिकी (${stMonth}) के संदर्भ में निम्नलिखित कथनों पर विचार कीजिए:\n1. ${headHi}।\n2. ${sumHi.slice(0, 170)}\nउपर्युक्त कथनों में से कौन-सा/से सही है/हैं?`;
+          qEn = `[CGPSC Code Pattern] With reference to Current Affairs (${stMonth}), consider the following statements:\n1. ${headEn}.\n2. ${sumEn.slice(0, 170)}\nWhich of the statements given above is/are correct?`;
+          optsHi = [
+            'केवल 1 सही है',
+            'केवल 2 सही है',
+            '1 और 2 दोनों सही हैं',
+            'न तो 1 और न ही 2 सही है'
           ];
-          distEn = [
-            other1 !== st && other1.summaryEn ? other1.summaryEn.slice(0, 160) : 'This initiative is restricted exclusively to private industrial units',
-            other2 !== st && other2.summaryEn ? other2.summaryEn.slice(0, 160) : 'It has been completely discontinued without budget allocation',
-            'None of the above'
+          optsEn = [
+            'Only 1 is correct',
+            'Only 2 is correct',
+            'Both 1 and 2 are correct',
+            'Neither 1 nor 2 is correct'
           ];
+          corrPos = 2;
         } else if (angle === 1) {
-          qHi = `हाल ही में चर्चा में रहे प्रावधान — "${sumHi.slice(0, 155)}" — का संबंध निम्नलिखित में से किस समसामयिकी विषय से है?`;
-          qEn = `Which recent Current Affairs topic corresponds to the provision — "${sumEn.slice(0, 155)}"?`;
-          corrHi = headHi;
-          corrEn = headEn;
-          distHi = [
+          // CGPSC Prelims 3-Statement Koot (कूट) Pattern
+          qHi = `[CGPSC प्रारंभिक परीक्षा कूट] "${headHi}" के संबंध में निम्नलिखित कथनों को पढ़कर सही विकल्प (कूट) चुनिए:\n1. ${sumHi.slice(0, 155)}\n2. इसका आधिकारिक संदर्भ स्रोत ${srcName} है।\n3. इस प्रावधान/योजना को पूर्णतः समाप्त कर दिया गया है और यह किसी भी जिले में लागू नहीं है।\nसही कूट (Code) का चयन कीजिए:`;
+          qEn = `[CGPSC Prelims Code] Read the following statements regarding "${headEn}" and select the correct code:\n1. ${sumEn.slice(0, 155)}\n2. Its official reference source is ${srcName}.\n3. This provision/scheme has been completely abolished and is not applicable in any district.\nSelect the correct code:`;
+          optsHi = [
+            'केवल 1 और 2 सही हैं',
+            'केवल 2 और 3 सही हैं',
+            'केवल 1 और 3 सही हैं',
+            '1, 2 और 3 तीनों सही हैं'
+          ];
+          optsEn = [
+            'Only 1 and 2 are correct',
+            'Only 2 and 3 are correct',
+            'Only 1 and 3 are correct',
+            'All 1, 2 and 3 are correct'
+          ];
+          corrPos = 0;
+        } else if (angle === 2) {
+          // CGPSC Assertion (A) & Reason (R) Pattern
+          qHi = `[CGPSC अभिकथन-कारण पैटर्न] नीचे दो कथन दिए गए हैं:\nअभिकथन (A): समसामयिकी में "${headHi}" विशेष रूप से चर्चा में रहा है।\nकारण (R): ${sumHi.slice(0, 165)}\nउपर्युक्त दोनों कथनों के संदर्भ में सही विकल्प चुनिए:`;
+          qEn = `[CGPSC Assertion-Reason Pattern] Given below are two statements:\nAssertion (A): "${headEn}" has been a major highlight in Current Affairs.\nReason (R): ${sumEn.slice(0, 165)}\nIn the context of the above two statements, select the correct option:`;
+          optsHi = [
+            '(A) और (R) दोनों सत्य हैं तथा (R), (A) की सही व्याख्या करता है',
+            '(A) और (R) दोनों सत्य हैं किंतु (R), (A) की सही व्याख्या नहीं करता है',
+            '(A) सत्य है किंतु (R) असत्य है',
+            '(A) असत्य है किंतु (R) सत्य है'
+          ];
+          optsEn = [
+            'Both (A) and (R) are true and (R) is the correct explanation of (A)',
+            'Both (A) and (R) are true but (R) is not the correct explanation of (A)',
+            '(A) is true but (R) is false',
+            '(A) is false but (R) is true'
+          ];
+          corrPos = 0;
+        } else if (angle === 3) {
+          // CG Vyapam Scheme / Provision Identification Pattern
+          corrPos = (sIdx + angle) % 4;
+          qHi = `[CG Vyapam परीक्षा पैटर्न] हाल ही में चर्चा में रहे प्रावधान — "${sumHi.slice(0, 155)}" — का संबंध निम्नलिखित में से किस योजना/समसामयिकी विषय से है?`;
+          qEn = `[CG Vyapam Exam Pattern] Which scheme or Current Affairs topic corresponds to the provision — "${sumEn.slice(0, 155)}"?`;
+          const distHi = [
             other1 !== st ? (other1.headlineHi || 'राष्ट्रीय डिजिटल लॉजिस्टिक्स सुधार मिशन') : 'राष्ट्रीय डिजिटल लॉजिस्टिक्स सुधार मिशन',
             other2 !== st ? (other2.headlineHi || 'अंतर्राष्ट्रीय समुद्री व्यापार समझौता') : 'अंतर्राष्ट्रीय समुद्री व्यापार समझौता',
             other3 !== st ? (other3.headlineHi || 'केंद्रीय कराधान संशोधन विधेयक') : 'केंद्रीय कराधान संशोधन विधेयक'
           ];
-          distEn = [
+          const distEn = [
             other1 !== st ? (other1.headlineEn || 'National Digital Logistics Reform Mission') : 'National Digital Logistics Reform Mission',
             other2 !== st ? (other2.headlineEn || 'International Maritime Trade Pact') : 'International Maritime Trade Pact',
             other3 !== st ? (other3.headlineEn || 'Central Taxation Amendment Bill') : 'Central Taxation Amendment Bill'
           ];
-        } else if (angle === 2) {
-          qHi = `समसामयिकी विषय "${headHi}" (${srcName}) को किस श्रेणी में वर्गीकृत किया गया है और इसका मुख्य फोकस क्या है?`;
-          qEn = `Under which category is "${headEn}" (${srcName}) classified and what is its core focus?`;
-          corrHi = `${catLabelsHi[normCat]} — ${sumHi.slice(0, 110)}`;
-          corrEn = `${catLabelsEn[normCat]} — ${sumEn.slice(0, 110)}`;
-          distHi = [
-            'प्राचीन भारतीय स्थापत्य एवं पुरातत्व सर्वेक्षण अभिलेख',
-            'मध्यकालीन राजस्व प्रशासन एवं सैन्य संगठन प्रणाली',
-            'केवल विदेशी निजी बैंकों के आंतरिक ऑडिट नियम'
-          ];
-          distEn = [
-            'Ancient Indian Architecture & Archaeological Survey Records',
-            'Medieval Revenue Administration & Military Organization',
-            'Internal Audit Rules of Foreign Private Banks Only'
-          ];
-        } else if (angle === 3) {
-          qHi = `कथन-आधारित प्रश्न (${stMonth}):\nकथन-I: "${headHi}" समसामयिकी का एक महत्वपूर्ण अपडेट है।\nकथन-II: ${sumHi.slice(0, 145)}\nसही विकल्प चुनिए:`;
-          qEn = `Statement-Based Question (${stMonth}):\nStatement-I: "${headEn}" is a significant Current Affairs update.\nStatement-II: ${sumEn.slice(0, 145)}\nSelect the correct option:`;
-          corrHi = 'कथन-I और कथन-II दोनों सही हैं तथा कथन-II, कथन-I की सही व्याख्या करता है';
-          corrEn = 'Both Statement-I and Statement-II are correct and Statement-II accurately explains Statement-I';
-          distHi = [
-            'कथन-I सही है किंतु कथन-II असत्य है',
-            'कथन-I असत्य है किंतु कथन-II सही है',
-            'कथन-I और कथन-II दोनों असत्य हैं'
-          ];
-          distEn = [
-            'Statement-I is correct but Statement-II is false',
-            'Statement-I is false but Statement-II is correct',
-            'Both Statement-I and Statement-II are false'
-          ];
+          optsHi = [...distHi];
+          optsEn = [...distEn];
+          optsHi.splice(corrPos, 0, headHi);
+          optsEn.splice(corrPos, 0, headEn);
         } else {
-          qHi = `आधिकारिक स्रोत (${srcName}) के अनुसार "${headHi}" के प्रमुख तथ्य की पहचान कीजिए:`;
-          qEn = `According to official sources (${srcName}), identify the accurate highlight of "${headEn}":`;
-          corrHi = `${sumHi.slice(0, 160)} (${srcName})`;
-          corrEn = `${sumEn.slice(0, 160)} (${srcName})`;
-          distHi = [
-            'इसमें किसी भी सरकारी मंत्रालय या राज्य विभाग की भूमिका नहीं है',
-            'यह केवल वर्ष 1995 से पूर्व पंजीकृत संस्थाओं पर लागू है',
-            'उपर्युक्त सभी कथन असत्य हैं'
+          // CGPSC Correctly Matched Pair (सुमेलित युग्म) Pattern
+          corrPos = (sIdx + angle) % 4;
+          qHi = `[CGPSC सुमेलित युग्म पैटर्न] समसामयिकी (${stMonth}) के अंतर्गत "${headHi}" के संदर्भ में निम्नलिखित में से कौन-सा तथ्य/प्रावधान सही सुमेलित है?`;
+          qEn = `[CGPSC Pair-Match Pattern] Under Current Affairs (${stMonth}), which of the following facts/provisions is accurately matched regarding "${headEn}"?`;
+          const corrHi = `${sumHi.slice(0, 160)} (${srcName})`;
+          const corrEn = `${sumEn.slice(0, 160)} (${srcName})`;
+          const distHi = [
+            other1 !== st && other1.summaryHi ? `केवल महानगरों हेतु सीमित — ${other1.headlineHi.slice(0, 80)}` : 'इसमें किसी भी सरकारी मंत्रालय या राज्य विभाग की भूमिका नहीं है',
+            'यह केवल वर्ष 1995 से पूर्व पंजीकृत निजी संस्थाओं पर लागू है',
+            'उपर्युक्त में से कोई नहीं (None of the above)'
           ];
-          distEn = [
-            'It involves no government ministry or state department',
-            'It applies exclusively to entities registered before 1995',
-            'All statements above are incorrect'
+          const distEn = [
+            other1 !== st && other1.summaryEn ? `Restricted to metro cities only — ${other1.headlineEn.slice(0, 80)}` : 'It involves no government ministry or state department',
+            'It applies exclusively to private entities registered before 1995',
+            'None of the above'
           ];
+          optsHi = [...distHi];
+          optsEn = [...distEn];
+          optsHi.splice(corrPos, 0, corrHi);
+          optsEn.splice(corrPos, 0, corrEn);
         }
-
-        const optsHi = [...distHi];
-        const optsEn = [...distEn];
-        optsHi.splice(corrPos, 0, corrHi);
-        optsEn.splice(corrPos, 0, corrEn);
 
         addUniqueQuestion({
           id: `ca_story_${st.id}_a${angle}`,
@@ -5395,6 +5385,17 @@
       return _canonicalStoriesCacheResult;
     }
 
+    let baselineSeedTs = 0;
+    try {
+      baselineSeedTs = Number(localStorage.getItem('cgpedia_baseline_ca_seed_ts_v2') || 0);
+      if (!baselineSeedTs || baselineSeedTs <= 0) {
+        baselineSeedTs = _sessionBootTimestampMs;
+        localStorage.setItem('cgpedia_baseline_ca_seed_ts_v2', String(baselineSeedTs));
+      }
+    } catch (_) {
+      baselineSeedTs = _sessionBootTimestampMs;
+    }
+
     // Ensure baseline verified items across Chhattisgarh, National, and International exist
     const baselineVerifiedItems = [
       {
@@ -5406,7 +5407,8 @@
         summaryEn: 'Under the Industrial Policy 2024-30, Chhattisgarh provides enhanced capital subsidies and stamp duty exemptions for MSMEs, agro-processing, and green industries in Bastar and Surguja divisions.',
         sourceName: 'DPR Chhattisgarh',
         sourceUrl: 'https://dprcg.gov.in',
-        createdAtMs: _sessionBootTimestampMs - 7200000
+        createdAtMs: baselineSeedTs - 7200000,
+        expiresAtMs: baselineSeedTs - 7200000 + 86400000
       },
       {
         id: 'ca_verified_nat_vidyalaxmi',
@@ -5417,7 +5419,8 @@
         summaryEn: 'Approved by the Union Cabinet, PM Vidyalaxmi provides collateral-free, guarantor-free education loans with 3% interest subvention for students admitted to top 860 NIRF-ranked institutions.',
         sourceName: 'PIB India',
         sourceUrl: 'https://pib.gov.in',
-        createdAtMs: _sessionBootTimestampMs - 5400000
+        createdAtMs: baselineSeedTs - 5400000,
+        expiresAtMs: baselineSeedTs - 5400000 + 86400000
       },
       {
         id: 'ca_verified_int_spadex',
@@ -5428,7 +5431,8 @@
         summaryEn: 'ISRO successfully executed autonomous orbital docking with the SpaDeX satellites (SDX01 and SDX02) launched aboard PSLV-C60, making India the 4th nation globally after the US, Russia, and China.',
         sourceName: 'ISRO / Global Space Desk',
         sourceUrl: 'https://www.isro.gov.in',
-        createdAtMs: _sessionBootTimestampMs - 3600000
+        createdAtMs: baselineSeedTs - 3600000,
+        expiresAtMs: baselineSeedTs - 3600000 + 86400000
       },
       {
         id: 'ca_verified_int_un_quantum_year',
@@ -5439,7 +5443,8 @@
         summaryEn: 'The UN General Assembly and UNESCO launched the International Year of Quantum Science and Technology to advance global research cooperation in quantum computing, cryptography, and sustainable development.',
         sourceName: 'United Nations / UNESCO',
         sourceUrl: 'https://news.un.org',
-        createdAtMs: _sessionBootTimestampMs - 1800000
+        createdAtMs: baselineSeedTs - 1800000,
+        expiresAtMs: baselineSeedTs - 1800000 + 86400000
       }
     ];
 
@@ -5471,7 +5476,7 @@
       const sumEn = String(raw.summaryEn || sumHi).trim();
       if (!headHi && !headEn) return;
 
-      const id = String(raw.id || (`ca_${_sessionBootTimestampMs}_${idx}`)).trim();
+      const id = String(raw.id || (`ca_${baselineSeedTs}_${idx}`)).trim();
       if (seenIds.has(id)) return;
 
       // Prevent duplicate copies of the same news via similarity check
@@ -5483,7 +5488,7 @@
       if (isDup) return;
 
       seenIds.add(id);
-      const ts = getStoryTimestampMs(raw) || (_sessionBootTimestampMs - (idx * 60000));
+      const ts = getStoryTimestampMs(raw) || (baselineSeedTs - (idx * 60000));
       const d = new Date(ts);
       const derivedMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       const monthKey = (_sessionBootTimestampMs - ts) <= 172800000
@@ -5494,10 +5499,6 @@
       const defaultSourceUrl = cat === 'chhattisgarh'
         ? 'https://dprcg.gov.in'
         : (cat === 'national' ? 'https://pib.gov.in' : 'https://news.un.org');
-      const rawImg = String(raw.imageUrl || '').trim();
-      const isAiImg = raw.isAiGeneratedImage !== undefined
-        ? Boolean(raw.isAiGeneratedImage)
-        : (!rawImg || rawImg.startsWith('data:image/svg+xml'));
 
       const normalizedItem = Object.assign({}, raw, {
         id,
@@ -5511,11 +5512,12 @@
         sourceName: String(raw.sourceName || (cat === 'chhattisgarh' ? 'DPR Chhattisgarh' : (cat === 'national' ? 'PIB India' : 'Global Official Desk'))).trim(),
         sourceUrl: String(raw.sourceUrl || defaultSourceUrl).trim(),
         createdAtMs: ts,
+        expiresAtMs: Number(raw.expiresAtMs || 0) > 0 ? Number(raw.expiresAtMs) : (ts + 86400000),
         createdAtIso: raw.createdAtIso || new Date(ts).toISOString(),
         publishedDateIso: raw.publishedDateIso || raw.dateIso || new Date(ts).toISOString().slice(0, 10),
         monthKey,
         yearKey,
-        isAiGeneratedImage: isAiImg
+        isAiGeneratedImage: false
       });
       normalizedItem.imageUrl = getStoryImageUrl(normalizedItem);
       deduplicated.push(normalizedItem);
@@ -5529,12 +5531,20 @@
     return deduplicated;
   }
 
+  function isStoryWithin24Hours(st, nowMsRef) {
+    if (!st || st.isDeleted === true || st.status === 'deleted') return false;
+    const nowMs = nowMsRef || Date.now();
+    const createdMs = getStoryTimestampMs(st);
+    if (!createdMs || createdMs <= 0) return false;
+    if ((nowMs - createdMs) > 86400000) return false;
+    if (st.expiresAtMs && Number(st.expiresAtMs) > 0 && Number(st.expiresAtMs) <= nowMs) return false;
+    return true;
+  }
+
   function getActiveDailyDoseStories() {
     const all = getCanonicalCurrentAffairsList();
-    const nowDate = new Date();
-    const currentMonthKey = `${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, '0')}`;
-    const currentMonthItems = all.filter((s) => getStoryMonthKey(s) === currentMonthKey);
-    return currentMonthItems.length > 0 ? currentMonthItems : all;
+    const nowMs = Date.now();
+    return all.filter((s) => isStoryWithin24Hours(s, nowMs));
   }
 
   function formatStoryUploadTimeShort(st) {
@@ -5562,56 +5572,63 @@
     return `${dateStr} • ${relStr}`;
   }
 
-  function isStoryImageAiGenerated(st) {
-    if (!st) return true;
-    if (st.isAiGeneratedImage === false) return false;
-    if (st.isAiGeneratedImage === true) return true;
-    const url = String(st.imageUrl || '').trim();
-    return !url || url.startsWith('data:image/svg+xml');
+  function isStoryImageAiGenerated() {
+    return false;
   }
 
   function getStoryImageUrl(st) {
     if (!st) return '';
-    if (st.imageUrl && String(st.imageUrl).trim() && !String(st.imageUrl).startsWith('data:image/svg+xml')) {
-      return String(st.imageUrl).trim();
-    }
-    if (st.imageUrl && String(st.imageUrl).startsWith('data:image/svg+xml')) {
-      st.isAiGeneratedImage = true;
-      return String(st.imageUrl);
+    const rawUrl = String(st.imageUrl || '').trim();
+    if (rawUrl && !rawUrl.startsWith('data:image/svg+xml')) {
+      st.isAiGeneratedImage = false;
+      return rawUrl;
     }
     const cat = normalizeStoryCategory(st.category);
-    const palette = cat === 'chhattisgarh'
-      ? { bg1: '#064E3B', bg2: '#047857', accent: '#34D399', badge: 'CHHATTISGARH CURRENT AFFAIRS', icon: '🌾' }
-      : cat === 'national'
-        ? { bg1: '#1E3A8A', bg2: '#1D4ED8', accent: '#FBBF24', badge: 'NATIONAL CURRENT AFFAIRS', icon: '🇮🇳' }
-        : { bg1: '#311042', bg2: '#6D28D9', accent: '#38BDF8', badge: 'INTERNATIONAL CURRENT AFFAIRS', icon: '🌍' };
-    const headline = String(st.headlineEn || st.titleEn || st.headlineHi || st.titleHi || 'Daily Current Affairs').replace(/[<>&"']/g, ' ').slice(0, 72);
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 420" width="800" height="420">
-      <defs>
-        <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stop-color="${palette.bg1}"/>
-          <stop offset="100%" stop-color="${palette.bg2}"/>
-        </linearGradient>
-      </defs>
-      <rect width="800" height="420" rx="22" fill="url(#g)"/>
-      <circle cx="700" cy="80" r="130" fill="${palette.accent}" opacity="0.14"/>
-      <circle cx="100" cy="360" r="160" fill="#ffffff" opacity="0.06"/>
-      <rect x="38" y="34" width="320" height="38" rx="19" fill="rgba(255,255,255,0.16)"/>
-      <text x="56" y="59" fill="#ffffff" font-family="sans-serif" font-size="15" font-weight="bold">${palette.icon} ${palette.badge}</text>
-      <rect x="556" y="34" width="206" height="36" rx="18" fill="rgba(15,23,42,0.75)"/>
-      <text x="659" y="57" text-anchor="middle" fill="#FDE68A" font-family="sans-serif" font-size="14" font-weight="bold">✨ AI Generated Image</text>
-      <text x="42" y="195" fill="#ffffff" font-family="sans-serif" font-size="27" font-weight="bold">${headline}</text>
-      <text x="42" y="370" fill="${palette.accent}" font-family="sans-serif" font-size="16" font-weight="bold">⚡ AI Generated Image • Exam Fact</text>
-    </svg>`;
-    const url = 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
-    st.imageUrl = url;
-    st.isAiGeneratedImage = true;
-    return url;
+    const combinedText = `${st.headlineHi || ''} ${st.headlineEn || ''} ${st.titleHi || ''} ${st.titleEn || ''} ${st.summaryHi || ''} ${st.summaryEn || ''}`.toLowerCase();
+
+    let resolvedPhoto = 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=900&q=80';
+    if (/धान|कृषक|किसान|कृषि|फसल|paddy|krishak|farmer|agriculture|crop|msp/.test(combinedText)) {
+      resolvedPhoto = 'https://images.unsplash.com/photo-1500937386664-56d1dfef3854?auto=format&fit=crop&w=900&q=80';
+    } else if (/महतारी|महिला|दीदी|लखपति|पोषण|mahtari|women|shg|empowerment/.test(combinedText)) {
+      resolvedPhoto = 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?auto=format&fit=crop&w=900&q=80';
+    } else if (/टाइगर|बाघ|अभयारण्य|गुरु घासीदास|राष्ट्रीय उद्यान|वन्यजीव|tiger|wildlife|park|reserve/.test(combinedText)) {
+      resolvedPhoto = 'https://images.unsplash.com/photo-1561731216-c3a4d99437d5?auto=format&fit=crop&w=900&q=80';
+    } else if (/तेंदूपत्ता|वन|बस्तर|नियद नेल्लानार|जनजाति|आदिवासी|सरगुजा|जलप्रपात|forest|tendu|bastar|tribal|niyad/.test(combinedText)) {
+      resolvedPhoto = 'https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=900&q=80';
+    } else if (/औद्योगिक|उद्योग|इस्पात|खनिज|निवेश|कोरबा|भिलाई|industrial|industry|investment|steel|mining|msme/.test(combinedText)) {
+      resolvedPhoto = 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&w=900&q=80';
+    } else if (/सूर्य घर|सौर|बिजली|नवीकरणीय|ऊर्जा|solar|surya|renewable|electricity|energy/.test(combinedText)) {
+      resolvedPhoto = 'https://images.unsplash.com/photo-1509391366360-2e959784a276?auto=format&fit=crop&w=900&q=80';
+    } else if (/विद्यालक्ष्मी|शिक्षा|विश्वविद्यालय|शास्त्रीय भाषा|भाषा|सब्सक्रिप्शन|नालंदा|education|vidyalaxmi|university|language|onos|journal|library/.test(combinedText)) {
+      resolvedPhoto = 'https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?auto=format&fit=crop&w=900&q=80';
+    } else if (/आयुष्मान|स्वास्थ्य|अस्पताल|चिकित्सा|वय वंदना|ayushman|health|medical|hospital/.test(combinedText)) {
+      resolvedPhoto = 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&w=900&q=80';
+    } else if (/इसरो|अंतरिक्ष|उपग्रह|स्पैडेक्स|डॉकिंग|क्वांटम|विज्ञान|रक्षा|isro|spadex|space|satellite|docking|quantum|science|drdo/.test(combinedText)) {
+      resolvedPhoto = 'https://images.unsplash.com/photo-1517976487468-f20514c44f53?auto=format&fit=crop&w=900&q=80';
+    } else if (/जलवायु|पर्यावरण|बाकू|कार्बन|cop-29|cop29|climate|environment|unfccc|green/.test(combinedText)) {
+      resolvedPhoto = 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop&w=900&q=80';
+    } else if (/रेल|मेट्रो|सड़क|राजमार्ग|हवाई|लॉजिस्टिक्स|rail|train|highway|airport|infrastructure/.test(combinedText)) {
+      resolvedPhoto = 'https://images.unsplash.com/photo-1474487548417-781cb71495f3?auto=format&fit=crop&w=900&q=80';
+    } else if (/बजट|आर्थिक|वित्त|बैंक|जीडीपी|कर|budget|economy|finance|rbi|gdp|bank/.test(combinedText)) {
+      resolvedPhoto = 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&w=900&q=80';
+    } else if (/खेल|ओलंपिक|पदक|पुरस्कार|सम्मान|रत्न|sports|olympic|medal|award|trophy/.test(combinedText)) {
+      resolvedPhoto = 'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?auto=format&fit=crop&w=900&q=80';
+    } else if (cat === 'international') {
+      resolvedPhoto = 'https://images.unsplash.com/photo-1526778548025-fa2f459cd5c1?auto=format&fit=crop&w=900&q=80';
+    } else if (cat === 'national') {
+      resolvedPhoto = 'https://images.unsplash.com/photo-1532375810709-75b1da00537c?auto=format&fit=crop&w=900&q=80';
+    }
+
+    st.imageUrl = resolvedPhoto;
+    st.isAiGeneratedImage = false;
+    return resolvedPhoto;
   }
 
-  // Group stories into the 3 categories ordered Oldest -> Newest (chronological order)
+  // Group stories into the 3 categories ordered Oldest -> Newest (chronological order, strictly < 24h)
   function groupStoriesByCategoryCircles(stories) {
-    const chronological = sortStoriesOldestToNewest(stories || []);
+    const nowMs = Date.now();
+    const active24h = (stories || []).filter((s) => isStoryWithin24Hours(s, nowMs));
+    const chronological = sortStoriesOldestToNewest(active24h);
     const lang = getCaLangMode();
     const isHi = lang === 'hi';
     const categoriesMeta = [
@@ -5865,16 +5882,11 @@
               </div>
             </div>
 
-            <!-- Full-Screen Story Body (Single Language Only + Relevant Image / AI Generated Image Label) -->
+            <!-- Full-Screen Story Body (Single Language Only + Relevant Original Photo) -->
             <div id="instaStoryContentArea" style="flex:1;width:100%;max-width:680px;margin:0 auto;padding:10px 20px 18px 20px;display:flex;flex-direction:column;justify-content:center;position:relative;overflow-y:auto;cursor:pointer;">
               ${imageUrl ? `
                 <div style="position:relative;width:100%;max-height:245px;border-radius:16px;overflow:hidden;margin-bottom:14px;border:1px solid rgba(255,255,255,0.18);box-shadow:0 12px 30px rgba(0,0,0,0.4);background:#091534;flex-shrink:0;">
                   <img src="${esc(imageUrl)}" alt="${esc(headlineText)}" style="width:100%;height:215px;object-fit:cover;display:block;" />
-                  ${isAiImg ? `
-                    <span style="position:absolute;top:10px;right:10px;background:rgba(15,23,42,0.88);color:#FDE68A;border:1px solid rgba(253,230,138,0.5);font-size:0.72rem;font-weight:800;padding:4px 10px;border-radius:99px;backdrop-filter:blur(4px);">
-                      ✨ AI Generated Image
-                    </span>
-                  ` : ''}
                 </div>
               ` : ''}
 
@@ -5898,17 +5910,13 @@
               </div>
             </div>
 
-            <!-- Story Footer Navigation Hint Only (Quiz Button Removed as Requested) -->
-            <div style="padding:12px 18px max(18px, env(safe-area-inset-bottom, 18px)) 18px;background:rgba(4,9,24,0.82);border-top:1px solid rgba(255,255,255,0.12);display:flex;align-items:center;justify-content:space-between;gap:10px;z-index:4;">
-              <span style="font-size:0.74rem;color:#93C5FD;">
-                ${isHi ? 'बाएं/दाएं टैप कर स्टोरी बदलें • रोकने के लिए दबाए रखें' : 'Tap left/right to navigate • Hold to pause'}
-              </span>
-              ${storyObj.sourceUrl ? `
+            ${storyObj.sourceUrl ? `
+              <div style="padding:10px 18px max(16px, env(safe-area-inset-bottom, 16px)) 18px;background:rgba(4,9,24,0.82);border-top:1px solid rgba(255,255,255,0.12);display:flex;align-items:center;justify-content:flex-end;gap:10px;z-index:4;">
                 <a href="${esc(storyObj.sourceUrl)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();" style="font-size:0.74rem;color:#6EE7B7;font-weight:700;text-decoration:none;">
                   🔗 ${isHi ? 'आधिकारिक स्रोत' : 'Official Source'} ↗
                 </a>
-              ` : ''}
-            </div>
+              </div>
+            ` : ''}
           </div>
         </div>
       `;
@@ -6081,7 +6089,7 @@
             <textarea class="form-textarea" id="quickStorySummaryEn" rows="2" placeholder="Exam-relevant key facts in English..."></textarea>
           </div>
           <div class="form-group">
-            <label class="form-label">🖼️ Attach Story Image (Optional — Gemini AI generates &amp; labels "AI Generated Image" if blank)</label>
+            <label class="form-label">🖼️ Attach Story Image (Optional — Relevant Original Photo selected automatically if blank)</label>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
               <input type="file" accept="image/*" class="form-input" id="quickStoryImageFileInput" style="flex:1;min-width:190px;padding:6px;" />
               <input type="url" class="form-input" id="quickStoryImageUrlInput" placeholder="Or paste Original Photo URL (https://...)" style="flex:1;min-width:190px;" />
@@ -6174,7 +6182,7 @@
         expiresAtMs: now.getTime() + 86400000,
         monthKey,
         yearKey: String(now.getFullYear()),
-        isAiGeneratedImage: !hasAuthenticCustomPhoto
+        isAiGeneratedImage: false
       };
       newStory.imageUrl = hasAuthenticCustomPhoto ? customImgUrl : getStoryImageUrl(newStory);
       state.stories = [newStory, ...existingAll];
@@ -7664,7 +7672,7 @@
     // Register Service Worker non-blockingly after initial render
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
       setTimeout(() => {
-        navigator.serviceWorker.register('sw.js?v=6.9').then((reg) => {
+        navigator.serviceWorker.register('sw.js?v=7.0').then((reg) => {
           try { reg.update(); } catch (_) {}
         }).catch(() => {});
       }, 300);
@@ -7702,12 +7710,13 @@
       const lastSyncMs = Number(localStorage.getItem(LAST_HOURLY_CA_KEY) || 0);
       const nowMs = Date.now();
       const canonicalStories = getCanonicalCurrentAffairsList();
-      const hasAllThreeCategories =
-        canonicalStories.some((s) => normalizeStoryCategory(s.category) === 'chhattisgarh') &&
-        canonicalStories.some((s) => normalizeStoryCategory(s.category) === 'national') &&
-        canonicalStories.some((s) => normalizeStoryCategory(s.category) === 'international');
+      const activeDailyDose = getActiveDailyDoseStories();
+      const hasAllThreeActiveCategories =
+        activeDailyDose.some((s) => normalizeStoryCategory(s.category) === 'chhattisgarh') &&
+        activeDailyDose.some((s) => normalizeStoryCategory(s.category) === 'national') &&
+        activeDailyDose.some((s) => normalizeStoryCategory(s.category) === 'international');
 
-      if (!forceNow && (nowMs - lastSyncMs) < 3600000 && canonicalStories.length >= 3 && hasAllThreeCategories) {
+      if (!forceNow && (nowMs - lastSyncMs) < 3600000 && activeDailyDose.length >= 3 && hasAllThreeActiveCategories) {
         return;
       }
 
@@ -7720,17 +7729,23 @@
         const generated = await window.CGpediaAdmin.generateCurrentAffairsWithAi({
           mode: 'intelligent_sync',
           category: 'ALL',
-          existingStories: canonicalStories,
+          existingStories: activeDailyDose,
           sourceName: 'PIB / DPR Chhattisgarh / Official Desk',
           count: 3
         });
         if (Array.isArray(generated) && generated.length > 0 && typeof window.CGpediaAdmin.enrichAndDeduplicateCurrentAffairsItems === 'function') {
-          const uniqueItems = window.CGpediaAdmin.enrichAndDeduplicateCurrentAffairsItems(generated, canonicalStories, {
+          const uniqueItems = window.CGpediaAdmin.enrichAndDeduplicateCurrentAffairsItems(generated, activeDailyDose, {
             category: 'ALL',
             sourceName: 'PIB / DPR Chhattisgarh / Official Desk'
           });
           if (uniqueItems.length > 0) {
-            state.stories = [...uniqueItems, ...canonicalStories];
+            const newIds = new Set(uniqueItems.map((u) => u.id));
+            const newHeadlines = uniqueItems.map((u) => u.headlineHi || u.headlineEn || '');
+            const filteredOld = canonicalStories.filter((oldItem) => {
+              if (!oldItem || newIds.has(oldItem.id)) return false;
+              return !newHeadlines.some((nh) => computeStoryTextSimilarity(nh, oldItem.headlineHi || oldItem.headlineEn || '') >= 0.68);
+            });
+            state.stories = [...uniqueItems, ...filteredOld];
             invalidateCanonicalCurrentAffairsCache();
             getCanonicalCurrentAffairsList();
             saveState();
@@ -7756,12 +7771,17 @@
       }
     }
 
-    // Start Firebase connection non-blockingly after initial paint (without full-database write storm or startup AI block)
+    // Start Firebase connection non-blockingly after initial paint
     setTimeout(() => {
       if (window.CGpediaCloud) {
         window.CGpediaCloud.initFirebaseConnection();
       }
     }, 60);
+
+    // Run Google AI Current Affairs & Story Auto-Update non-blockingly in the background after initial render
+    setTimeout(() => {
+      runHourlyCurrentAffairsAutoUpdate(false);
+    }, 2500);
 
     // Trigger online Current Affairs auto-update every 1 hour (3,600,000 ms)
     setInterval(() => {

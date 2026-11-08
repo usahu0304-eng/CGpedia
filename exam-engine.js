@@ -542,12 +542,6 @@
             <button class="btn btn-primary" id="cbtSaveNextBtn" type="button">
               💾 ${curIdx < questions.length - 1 ? 'Save & Next ➡️' : 'Save Response'}
             </button>
-            <button class="btn btn-danger" id="cbtLeaveTestBtn" type="button">
-              Leave Test
-            </button>
-            <button class="btn btn-success" id="cbtBottomSubmitBtn" type="button">
-              ✅ Submit Test
-            </button>
           </div>
         </footer>
       </div>

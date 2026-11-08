@@ -1869,15 +1869,17 @@
           editingStory.yearKey = yearVal;
           if (resolvedImgUrl) {
             editingStory.imageUrl = resolvedImgUrl;
-            editingStory.isAiGeneratedImage = String(resolvedImgUrl).startsWith('data:image/svg+xml');
-          } else if (!editingStory.imageUrl) {
+            editingStory.isAiGeneratedImage = false;
+          } else if (!editingStory.imageUrl || String(editingStory.imageUrl).startsWith('data:image/svg+xml')) {
             editingStory.imageUrl = generateAutoStoryImageUrl({
               category: catVal,
               headlineHi: headHi,
               headlineEn: headEn,
+              summaryHi,
+              summaryEn,
               sourceName: srcVal
             });
-            editingStory.isAiGeneratedImage = true;
+            editingStory.isAiGeneratedImage = false;
           }
           editingStory.updatedAtIso = new Date().toISOString();
           state.editingCaStoryId = null;
@@ -1900,7 +1902,6 @@
 
         const nowMs = Date.now();
         const nowIso = new Date(nowMs).toISOString();
-        const hasAuthenticCustomPhoto = Boolean(resolvedImgUrl && !String(resolvedImgUrl).startsWith('data:image/svg+xml'));
         const stObj = {
           id: 'ca_' + nowMs,
           category: catVal,
@@ -1918,9 +1919,9 @@
           expiresAtMs: nowMs + 86400000,
           createdAtIso: nowIso,
           updatedAtIso: nowIso,
-          isAiGeneratedImage: !hasAuthenticCustomPhoto
+          isAiGeneratedImage: false
         };
-        stObj.imageUrl = resolvedImgUrl || generateAutoStoryImageUrl(stObj);
+        stObj.imageUrl = (resolvedImgUrl && !String(resolvedImgUrl).startsWith('data:image/svg+xml')) ? resolvedImgUrl : generateAutoStoryImageUrl(stObj);
         state.stories.unshift(stObj);
         api.saveState();
         if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('current_affairs', stObj.id, stObj);
@@ -13782,69 +13783,59 @@ Return ONLY a valid JSON array of objects:
 
   function generateAutoStoryImageUrl(storyItem) {
     const st = storyItem || {};
-    if (st.imageUrl && String(st.imageUrl).trim() && !String(st.imageUrl).startsWith('data:image/svg+xml')) {
-      return String(st.imageUrl).trim();
+    const existingUrl = String(st.imageUrl || '').trim();
+    if (existingUrl && !existingUrl.startsWith('data:image/svg+xml')) {
+      return existingUrl;
     }
     const cat = String(st.category || 'chhattisgarh').toLowerCase();
-    const combinedText = `${st.headlineHi || ''} ${st.headlineEn || ''} ${st.summaryHi || ''}`.toLowerCase();
+    const combinedText = `${st.headlineHi || ''} ${st.headlineEn || ''} ${st.titleHi || ''} ${st.titleEn || ''} ${st.summaryHi || ''} ${st.summaryEn || ''}`.toLowerCase();
 
-    let gradStart = '#0F2557';
-    let gradMid = '#1E3A8A';
-    let gradEnd = '#EA580C';
-    let badgeText = 'CHHATTISGARH CURRENT AFFAIRS';
-    let iconEmoji = '🌾';
+    if (/धान|कृषक|किसान|कृषि|फसल|paddy|krishak|farmer|agriculture|crop|msp/.test(combinedText)) {
+      return 'https://images.unsplash.com/photo-1500937386664-56d1dfef3854?auto=format&fit=crop&w=900&q=80';
+    }
+    if (/महतारी|महिला|दीदी|लखपति|पोषण|mahtari|women|shg|empowerment/.test(combinedText)) {
+      return 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?auto=format&fit=crop&w=900&q=80';
+    }
+    if (/टाइगर|बाघ|अभयारण्य|गुरु घासीदास|राष्ट्रीय उद्यान|वन्यजीव|tiger|wildlife|park|reserve/.test(combinedText)) {
+      return 'https://images.unsplash.com/photo-1561731216-c3a4d99437d5?auto=format&fit=crop&w=900&q=80';
+    }
+    if (/तेंदूपत्ता|वन|बस्तर|नियद नेल्लानार|जनजाति|आदिवासी|सरगुजा|जलप्रपात|forest|tendu|bastar|tribal|niyad/.test(combinedText)) {
+      return 'https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=900&q=80';
+    }
+    if (/औद्योगिक|उद्योग|इस्पात|खनिज|निवेश|कोरबा|भिलाई|industrial|industry|investment|steel|mining|msme/.test(combinedText)) {
+      return 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&w=900&q=80';
+    }
+    if (/सूर्य घर|सौर|बिजली|नवीकरणीय|ऊर्जा|solar|surya|renewable|electricity|energy/.test(combinedText)) {
+      return 'https://images.unsplash.com/photo-1509391366360-2e959784a276?auto=format&fit=crop&w=900&q=80';
+    }
+    if (/विद्यालक्ष्मी|शिक्षा|विश्वविद्यालय|शास्त्रीय भाषा|भाषा|सब्सक्रिप्शन|नालंदा|education|vidyalaxmi|university|language|onos|journal|library/.test(combinedText)) {
+      return 'https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?auto=format&fit=crop&w=900&q=80';
+    }
+    if (/आयुष्मान|स्वास्थ्य|अस्पताल|चिकित्सा|वय वंदना|ayushman|health|medical|hospital/.test(combinedText)) {
+      return 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&w=900&q=80';
+    }
+    if (/इसरो|अंतरिक्ष|उपग्रह|स्पैडेक्स|डॉकिंग|क्वांटम|विज्ञान|रक्षा|isro|spadex|space|satellite|docking|quantum|science|drdo/.test(combinedText)) {
+      return 'https://images.unsplash.com/photo-1517976487468-f20514c44f53?auto=format&fit=crop&w=900&q=80';
+    }
+    if (/जलवायु|पर्यावरण|बाकू|कार्बन|cop-29|cop29|climate|environment|unfccc|green/.test(combinedText)) {
+      return 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop&w=900&q=80';
+    }
+    if (/रेल|मेट्रो|सड़क|राजमार्ग|हवाई|लॉजिस्टिक्स|rail|train|highway|airport|infrastructure/.test(combinedText)) {
+      return 'https://images.unsplash.com/photo-1474487548417-781cb71495f3?auto=format&fit=crop&w=900&q=80';
+    }
+    if (/बजट|आर्थिक|वित्त|बैंक|जीडीपी|कर|budget|economy|finance|rbi|gdp|bank/.test(combinedText)) {
+      return 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&w=900&q=80';
+    }
+    if (/खेल|ओलंपिक|पदक|पुरस्कार|सम्मान|रत्न|sports|olympic|medal|award|trophy/.test(combinedText)) {
+      return 'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?auto=format&fit=crop&w=900&q=80';
+    }
+    if (cat === 'international') {
+      return 'https://images.unsplash.com/photo-1526778548025-fa2f459cd5c1?auto=format&fit=crop&w=900&q=80';
+    }
     if (cat === 'national') {
-      gradStart = '#0B2447';
-      gradMid = '#19376D';
-      gradEnd = '#16A34A';
-      badgeText = 'NATIONAL CURRENT AFFAIRS';
-      iconEmoji = '🇮🇳';
-    } else if (cat === 'international') {
-      gradStart = '#1E1B4B';
-      gradMid = '#312E81';
-      gradEnd = '#0284C7';
-      badgeText = 'INTERNATIONAL CURRENT AFFAIRS';
-      iconEmoji = '🌍';
+      return 'https://images.unsplash.com/photo-1532375810709-75b1da00537c?auto=format&fit=crop&w=900&q=80';
     }
-
-    if (/बजट|आर्थिक|बैंक|वित्त|budget|economy|gdp|rbi|bank|scheme|योजना/.test(combinedText)) {
-      iconEmoji = '📊';
-    } else if (/इसरो|अंतरिक्ष|विज्ञान|उपग्रह|isro|space|science|satellite|drdo|रक्षा/.test(combinedText)) {
-      iconEmoji = '🚀';
-    } else if (/पुरस्कार|सम्मान|रत्न|खेल|award|prize|medal|olympic|sports/.test(combinedText)) {
-      iconEmoji = '🏆';
-    } else if (/वन|पर्यावरण|नदी|जलप्रपात|राष्ट्रीय उद्यान|forest|tiger|park|environment/.test(combinedText)) {
-      iconEmoji = '🌿';
-    }
-
-    const rawTitle = String(st.headlineEn || st.titleEn || st.headlineHi || st.titleHi || 'Current Affairs Highlight').replace(/[<>&"']/g, ' ');
-    const line1 = rawTitle.slice(0, 44);
-    const line2 = rawTitle.length > 44 ? rawTitle.slice(44, 88) + (rawTitle.length > 88 ? '...' : '') : '';
-    const srcLabel = String(st.sourceName || 'Official News Desk').replace(/[<>&"']/g, ' ').slice(0, 34);
-
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 440" width="800" height="440">
-      <defs>
-        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stop-color="${gradStart}"/>
-          <stop offset="58%" stop-color="${gradMid}"/>
-          <stop offset="100%" stop-color="${gradEnd}"/>
-        </linearGradient>
-      </defs>
-      <rect width="800" height="440" rx="24" fill="url(#bg)"/>
-      <circle cx="710" cy="85" r="145" fill="rgba(255,255,255,0.07)"/>
-      <circle cx="95" cy="380" r="165" fill="rgba(255,255,255,0.05)"/>
-      <rect x="38" y="34" width="330" height="38" rx="19" fill="rgba(255,255,255,0.16)"/>
-      <text x="56" y="59" fill="#FFFFFF" font-family="sans-serif" font-size="15" font-weight="800" letter-spacing="0.8">${badgeText}</text>
-      <rect x="556" y="34" width="206" height="36" rx="18" fill="rgba(15,23,42,0.72)" stroke="rgba(255,255,255,0.35)" stroke-width="1.5"/>
-      <text x="659" y="57" text-anchor="middle" fill="#FDE68A" font-family="sans-serif" font-size="14" font-weight="800">✨ AI Generated Image</text>
-      <circle cx="675" cy="195" r="76" fill="rgba(255,255,255,0.13)" stroke="rgba(255,255,255,0.28)" stroke-width="2"/>
-      <text x="675" y="220" text-anchor="middle" font-size="68">${iconEmoji}</text>
-      <text x="42" y="175" fill="#F8FAFC" font-family="sans-serif" font-size="28" font-weight="800">${line1}</text>
-      <text x="42" y="218" fill="#DBEAFE" font-family="sans-serif" font-size="24" font-weight="700">${line2}</text>
-      <rect x="42" y="342" width="470" height="44" rx="12" fill="rgba(15,23,42,0.52)"/>
-      <text x="60" y="370" fill="#93C5FD" font-family="sans-serif" font-size="16" font-weight="700">Source: ${srcLabel} • AI Generated Image</text>
-    </svg>`;
-    return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+    return 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=900&q=80';
   }
 
   function enrichAndDeduplicateCurrentAffairsItems(rawItems, existingStories, defaultCategory, defaultSource, targetMonthKey) {
@@ -13925,7 +13916,7 @@ Return ONLY a valid JSON array of objects:
         expiresAtMs: itemMs + 86400000,
         createdAtIso: itemIso,
         updatedAtIso: itemIso,
-        isAiGeneratedImage: !hasAuthenticPhoto
+        isAiGeneratedImage: false
       };
       stObj.imageUrl = hasAuthenticPhoto ? rawImg : generateAutoStoryImageUrl(stObj);
       runningPool.push(stObj);
@@ -14098,12 +14089,66 @@ ${schemaInstruction}`;
         sourceUrl: 'https://dprcg.gov.in'
       },
       {
+        category: 'chhattisgarh',
+        headlineHi: 'महतारी वंदन योजना (छत्तीसगढ़): पात्र विवाहित महिलाओं को ₹1,000 मासिक (₹12,000 वार्षिक) DBT सहायता',
+        headlineEn: 'Mahtari Vandan Yojana (Chhattisgarh): ₹1,000 Monthly (₹12,000 Annual) DBT Financial Assistance to Women',
+        summaryHi: 'छत्तीसगढ़ शासन के महिला एवं बाल विकास विभाग द्वारा संचालित महतारी वंदन योजना के अंतर्गत 21 वर्ष से अधिक आयु की पात्र विवाहित महिलाओं को प्रतिमाह ₹1,000 प्रत्यक्ष लाभ अंतरण (DBT) के माध्यम से प्रदान किए जा रहे हैं।',
+        summaryEn: 'Implemented by the Women and Child Development Department of Chhattisgarh, Mahtari Vandan Yojana transfers ₹1,000 per month via DBT to eligible married women aged 21 years and above.',
+        sourceName: 'DPR Chhattisgarh',
+        sourceUrl: 'https://dprcg.gov.in'
+      },
+      {
+        category: 'chhattisgarh',
+        headlineHi: 'कृषक उन्नति योजना: छत्तीसगढ़ में ₹3,100 प्रति क्विंटल की दर से प्रति एकड़ 21 क्विंटल धान खरीदी',
+        headlineEn: 'Krishak Unnati Yojana: Paddy Procurement at ₹3,100 per Quintal up to 21 Quintals per Acre in Chhattisgarh',
+        summaryHi: 'छत्तीसगढ़ शासन द्वारा कृषक उन्नति योजना के तहत पंजीकृत किसानों से खरीफ विपणन वर्ष में 21 क्विंटल प्रति एकड़ के मान से धान खरीदी कर समर्थन मूल्य के अतिरिक्त अंतर की राशि एकमुश्त आदान सहायता के रूप में दी जा रही है।',
+        summaryEn: 'Under Krishak Unnati Yojana, Chhattisgarh procures 21 quintals of paddy per acre from registered farmers and provides input assistance ensuring ₹3,100 per quintal.',
+        sourceName: 'DPR Chhattisgarh',
+        sourceUrl: 'https://dprcg.gov.in'
+      },
+      {
+        category: 'chhattisgarh',
+        headlineHi: 'नियद नेल्लानार योजना (आपका अच्छा गाँव): बस्तर संभाग में सुरक्षा कैंपों के 5 किमी दायरे में 50+ योजनाओं का संतृप्तिकरण',
+        headlineEn: 'Niyad Nellanar Yojana: Saturation of 50+ Welfare Schemes within 5 km of Security Camps in Bastar',
+        summaryHi: 'बस्तर संभाग के नक्सल प्रभावित क्षेत्रों में स्थापित सुरक्षा कैंपों के 5 किमी की परिधि में आने वाले गाँवों में बुनियादी अधोसंरचना और 50 से अधिक व्यक्तिगत व सामुदायिक कल्याणकारी योजनाओं का शत-प्रतिशत लाभ दिया जा रहा है।',
+        summaryEn: 'Niyad Nellanar Yojana delivers 100% saturation of over 50 government welfare schemes and basic infrastructure in villages located within 5 km of security camps across Bastar division.',
+        sourceName: 'DPR Chhattisgarh',
+        sourceUrl: 'https://dprcg.gov.in'
+      },
+      {
+        category: 'chhattisgarh',
+        headlineHi: 'छत्तीसगढ़ में तेंदूपत्ता संग्रहण पारिश्रमिक दर ₹4,000 से बढ़ाकर ₹5,500 प्रति मानक बोरा निर्धारित',
+        headlineEn: 'Chhattisgarh Raises Tendu Leaf Collection Wage Rate from ₹4,000 to ₹5,500 per Standard Bag',
+        summaryHi: 'छत्तीसगढ़ राज्य लघु वनोपज संघ के माध्यम से तेंदूपत्ता संग्राहक वनवासी परिवारों को अब ₹5,500 प्रति मानक बोरा की दर से पारिश्रमिक प्रदान किया जा रहा है, जिससे लगभग 12.50 लाख संग्राहक परिवार लाभान्वित हो रहे हैं।',
+        summaryEn: 'Through the Chhattisgarh State Minor Forest Produce Federation, tribal collectors now receive ₹5,500 per standard bag of Tendu leaves, benefiting nearly 12.50 lakh families.',
+        sourceName: 'DPR Chhattisgarh',
+        sourceUrl: 'https://dprcg.gov.in'
+      },
+      {
         category: 'national',
         headlineHi: 'एक राष्ट्र-एक सब्सक्रिप्शन (ONOS): देश के सभी सरकारी उच्च शिक्षण संस्थानों को वैश्विक शोध पत्रिकाओं तक निःशुल्क पहुँच',
         headlineEn: 'One Nation One Subscription (ONOS): Nationwide Access to International Scholarly Research Journals',
         summaryHi: 'भारत सरकार ने 6,000 करोड़ रुपये के परिव्यय के साथ वन नेशन वन सब्सक्रिप्शन (ONOS) योजना को मंजूरी दी है, जिससे 6,300 से अधिक सरकारी विश्वविद्यालयों और कॉलेजों के छात्रों व शोधकर्ताओं को 13,000+ अंतर्राष्ट्रीय जर्नल्स निःशुल्क उपलब्ध होंगे।',
         summaryEn: 'With an outlay of ₹6,000 crore, the Union Cabinet approved One Nation One Subscription (ONOS) providing 6,300+ government higher education institutions centralized access to over 13,000 international research journals.',
         sourceName: 'PIB India',
+        sourceUrl: 'https://pib.gov.in'
+      },
+      {
+        category: 'national',
+        headlineHi: 'पीएम सूर्य घर मुफ्त बिजली योजना: 1 करोड़ घरों में रूफटॉप सोलर एवं प्रतिमाह 300 यूनिट तक मुफ्त बिजली',
+        headlineEn: 'PM Surya Ghar Muft Bijli Yojana: Rooftop Solar for 1 Crore Households with 300 Units Free Monthly Electricity',
+        summaryHi: '₹75,021 करोड़ के कुल परिव्यय वाली पीएम सूर्य घर मुफ्त बिजली योजना के तहत 3 किलोवाट क्षमता तक के रूफटॉप सोलर संयंत्र पर ₹78,000 तक की केंद्रीय वित्तीय सहायता एवं 300 यूनिट तक निःशुल्क बिजली दी जा रही है।',
+        summaryEn: 'With an outlay of ₹75,021 crore, PM Surya Ghar Muft Bijli Yojana provides up to ₹78,000 central subsidy for residential rooftop solar systems and up to 300 units of free electricity monthly.',
+        sourceName: 'MNRE / PIB India',
+        sourceUrl: 'https://pib.gov.in'
+      },
+      {
+        category: 'national',
+        headlineHi: 'मराठी, पाली, प्राकृत, असमिया और बंगाली को शास्त्रीय भाषा का दर्जा: कुल शास्त्रीय भाषाओं की संख्या 11 हुई',
+        headlineEn: 'Classical Language Status Granted to Marathi, Pali, Prakrit, Assamese & Bengali; Total Reaches 11',
+        summaryHi: 'केंद्रीय मंत्रिमंडल ने मराठी, पाली, प्राकृत, असमिया और बंगाली को शास्त्रीय भाषा घोषित किया है; पूर्व में तमिल (2004), संस्कृत (2005), कन्नड़ (2008), तेलुगु (2008), मलयालम (2013) और ओड़िया (2014) शामिल थीं।',
+        summaryEn: 'The Union Cabinet conferred Classical Language status on Marathi, Pali, Prakrit, Assamese, and Bengali, expanding India’s classical languages from 6 to 11.',
+        sourceName: 'Ministry of Culture / PIB',
         sourceUrl: 'https://pib.gov.in'
       },
       {
@@ -14114,13 +14159,34 @@ ${schemaInstruction}`;
         summaryEn: 'At UNFCCC COP-29 in Baku, Azerbaijan, nations adopted the New Collective Quantified Goal (NCQG) committing $300 billion annually by 2035 for developing countries alongside Article 6 global carbon market rules.',
         sourceName: 'UNFCCC Official',
         sourceUrl: 'https://unfccc.int'
+      },
+      {
+        category: 'international',
+        headlineHi: '19वां G20 शिखर सम्मेलन (रियो डी जनेरियो, ब्राज़ील): "भुखमरी और गरीबी के विरुद्ध वैश्विक गठबंधन" का शुभारंभ',
+        headlineEn: '19th G20 Summit in Rio de Janeiro (Brazil) Launches Global Alliance Against Hunger and Poverty',
+        summaryHi: 'ब्राज़ील की अध्यक्षता में रियो डी जनेरियो में संपन्न 19वें G20 शिखर सम्मेलन का मुख्य विषय "Building a Just World and a Sustainable Planet" रहा तथा इसमें भुखमरी एवं गरीबी उन्मूलन हेतु वैश्विक गठबंधन प्रारंभ किया गया।',
+        summaryEn: 'Chaired by Brazil in Rio de Janeiro under the theme "Building a Just World and a Sustainable Planet", the 19th G20 Summit launched the Global Alliance Against Hunger and Poverty.',
+        sourceName: 'MEA / G20 Desk',
+        sourceUrl: 'https://news.un.org'
       }
     ];
 
-    const nonDupFallback = curatedHourlyPool.filter((item) => {
+    const nowMs = Date.now();
+    const active24hStories = existingStories.filter((s) => {
+      const ts = Number((s && (s.createdAtMs || (s.createdAtIso ? Date.parse(s.createdAtIso) : 0))) || 0);
+      return ts > 0 && (nowMs - ts) <= 86400000;
+    });
+
+    let nonDupFallback = curatedHourlyPool.filter((item) => {
       if (category && category !== 'ALL' && item.category !== category.toLowerCase()) return false;
       return !isDuplicateCurrentAffair(item, existingStories);
     });
+    if (nonDupFallback.length === 0) {
+      nonDupFallback = curatedHourlyPool.filter((item) => {
+        if (category && category !== 'ALL' && item.category !== category.toLowerCase()) return false;
+        return !isDuplicateCurrentAffair(item, active24hStories);
+      });
+    }
     return nonDupFallback.slice(0, count);
   }
 
@@ -14326,29 +14392,42 @@ ${schemaInstruction}`;
       `[${idx + 1}] Category: ${s.category || 'Current Affairs'} | Month: ${s.monthKey || targetMonthKey}\nHeadline (HI): ${s.headlineHi || s.titleHi || ''}\nHeadline (EN): ${s.headlineEn || s.titleEn || ''}\nDetails (HI): ${s.summaryHi || ''}\nDetails (EN): ${s.summaryEn || s.summaryHi || ''}`
     ).join('\n\n');
 
-    const promptText = `You are a Senior Competitive Exam Question Paper Setter for CGPSC, CG Vyapam, UPSC, and SSC.
+    const promptText = `You are the Chief Question Paper Setter for Chhattisgarh Public Service Commission (CGPSC State Service Prelims) and Chhattisgarh Professional Examination Board (CG Vyapam).
 Attempt Variation Seed: ${attemptSeed}
-Generate ${count} BRAND-NEW, freshly framed, professional Bilingual (Hindi Devanagari + English) Multiple-Choice Questions (MCQs) STRICTLY based on the following Current Affairs updates (${resolvedScopeLabel || 'Recent Current Affairs'}):
+Generate ${count} BRAND-NEW, authentic Chhattisgarh Exam Pattern Bilingual (Hindi Devanagari + English) Multiple-Choice Questions (MCQs) STRICTLY based on the following Current Affairs updates (${resolvedScopeLabel || 'Recent Current Affairs'}):
 
 ${contextDigest}
 
-CRITICAL INSTRUCTIONS FOR PROFESSIONAL & FRESH QUESTIONS EVERY ATTEMPT:
-1. Frame questions from diverse competitive exam angles: Statement-based (कथन-आधारित), Scheme Objectives & Provisions, Nodal Ministry/District/Agency, Key Data/Rankings, and Analytical Fact-Checking.
-2. NEVER repeat or reuse any of these previously generated question stems:
+MANDATORY CHHATTISGARH EXAM PATTERN (CGPSC PRELIMS & CG VYAPAM) RULES:
+1. Every question MUST follow the exact question style asked in CGPSC State Service Examination & CG Vyapam exams:
+   - Type A (CGPSC Multi-Statement Koot / कूट आधारित प्रश्न):
+     "छत्तीसगढ़/राष्ट्रीय समसामयिकी के संदर्भ में निम्नलिखित कथनों पर विचार कीजिए:
+     1. [कथन 1]
+     2. [कथन 2]
+     उपर्युक्त कथनों में से कौन-सा/से सही है/हैं?"
+     Options: ["केवल 1 सही है", "केवल 2 सही है", "1 और 2 दोनों सही हैं", "न तो 1 और न ही 2 सही है"]
+   - Type B (CGPSC Assertion-Reason / अभिकथन (A) एवं कारण (R) प्रश्न):
+     "नीचे दो कथन दिए गए हैं — एक को अभिकथन (A) और दूसरे को कारण (R) कहा गया है..."
+     Options: ["(A) और (R) दोनों सत्य हैं तथा (R), (A) की सही व्याख्या करता है", "(A) और (R) दोनों सत्य हैं किंतु (R), (A) की सही व्याख्या नहीं करता है", "(A) सत्य है किंतु (R) असत्य है", "(A) असत्य है किंतु (R) सत्य है"]
+   - Type C (CGPSC Correct/Incorrect Pair Matching / सुमेलित-असुमेलित युग्म पहचानिए):
+     "समसामयिकी योजनाओं/घटनाक्रम के संदर्भ में निम्नलिखित में से कौन-सा युग्म सही सुमेलित है?"
+   - Type D (CG Vyapam Factual Precision — योजना की पात्रता, सहायता राशि, नोडल विभाग, लाभार्थी जिला, तिथि एवं आधिकारिक आंकड़े).
+2. Give strong priority to Chhattisgarh State schemes, policies, districts (Bastar, Surguja, Raipur, Bilaspur, MCB, Koriya), tribal initiatives, forest produce, tiger reserves, and economic survey facts alongside National/International updates.
+3. NEVER repeat or reuse any of these previously generated question stems:
 ${recentQuestionStems || '(None yet)'}
-3. Include the "monthKey" (YYYY-MM) for each question matching the source Current Affairs update.
+4. Include the "monthKey" (YYYY-MM) for each question matching the source Current Affairs update.
 
 Return ONLY a valid JSON array of ${count} question objects with this exact schema:
 [
   {
     "monthKey": "${targetMonthKey}",
-    "questionHi": "औपचारिक हिन्दी में नया परीक्षा-स्तरीय प्रश्न...",
-    "questionEn": "Clear, newly framed English exam question...",
+    "questionHi": "छत्तीसगढ़ लोक सेवा आयोग (CGPSC) / व्यापम पैटर्न में औपचारिक हिन्दी प्रश्न...",
+    "questionEn": "Authentic CGPSC / CG Vyapam pattern English exam question...",
     "optionsHi": ["विकल्प A", "विकल्प B", "विकल्प C", "विकल्प D"],
     "optionsEn": ["Option A", "Option B", "Option C", "Option D"],
     "correctOptionIndex": 0,
-    "explanationHi": "विस्तृत हिन्दी व्याख्या...",
-    "explanationEn": "Detailed English explanation...",
+    "explanationHi": "विस्तृत परीक्षा उपयोगी हिन्दी व्याख्या...",
+    "explanationEn": "Detailed exam-oriented English explanation...",
     "subjectTag": "Current Affairs"
   }
 ]`;
@@ -14392,19 +14471,9 @@ Return ONLY a valid JSON array of ${count} question objects with this exact sche
       }
     } catch (_) {}
 
-    // Dynamic Multi-Angle Non-Repeating Question Synthesizer (rotates across 6 distinct exam templates per attempt)
+    // Authentic CGPSC Prelims & CG Vyapam Exam Pattern Synthesizer (Koot, Assertion-Reason, Pair Match, Factual)
     const built = [];
     const attemptOffset = Math.floor(Math.random() * 1000);
-    const catLabelsHi = {
-      chhattisgarh: 'छत्तीसगढ़ राज्य समसामयिकी एवं शासन नीति (Chhattisgarh State Current Affairs)',
-      national: 'राष्ट्रीय समसामयिकी एवं केंद्रीय योजनाएं (National Current Affairs)',
-      international: 'अंतर्राष्ट्रीय संबंध, विज्ञान एवं अंतरिक्ष प्रौद्योगिकी (International & Science)'
-    };
-    const catLabelsEn = {
-      chhattisgarh: 'Chhattisgarh State Current Affairs & Governance',
-      national: 'National Current Affairs & Union Initiatives',
-      international: 'International Relations, Science & Space Technology'
-    };
 
     for (let i = 0; i < count; i++) {
       const st = shuffledStories[i % shuffledStories.length];
@@ -14412,111 +14481,110 @@ Return ONLY a valid JSON array of ${count} question objects with this exact sche
       const other2 = shuffledStories[(i + 2) % shuffledStories.length] || st;
       const other3 = shuffledStories[(i + 3) % shuffledStories.length] || st;
       const stMonth = String(st.monthKey || targetMonthKey).trim();
-      const headHi = st.headlineHi || st.titleHi || 'समसामयिकी अपडेट';
+      const headHi = st.headlineHi || st.titleHi || 'छत्तीसगढ़ समसामयिकी अपडेट';
       const headEn = st.headlineEn || st.titleEn || headHi;
       const sumHi = st.summaryHi || headHi;
       const sumEn = st.summaryEn || sumHi;
-      const srcName = st.sourceName || 'PIB / DPR Chhattisgarh';
+      const srcName = st.sourceName || 'DPR Chhattisgarh / PIB';
       const templateIdx = (i + attemptOffset) % 5;
-      const corrSlot = (i + attemptOffset) % 4;
 
       let qHi = '';
       let qEn = '';
-      let corrHi = '';
-      let corrEn = '';
-      let distHi = [];
-      let distEn = [];
+      let optsHi = [];
+      let optsEn = [];
+      let corrSlot = 0;
 
       if (templateIdx === 0) {
-        qHi = `समसामयिकी (${stMonth}) के संदर्भ में निम्नलिखित कथनों पर विचार कीजिए:\nविषय: "${headHi}"\nउपरोक्त विषय के संबंध में कौन-सा मुख्य तथ्य सही है?`;
-        qEn = `With reference to Current Affairs (${stMonth}) regarding "${headEn}", which of the following key statements is correct?`;
-        corrHi = sumHi.slice(0, 175);
-        corrEn = sumEn.slice(0, 175);
-        distHi = [
-          other1 !== st && other1.summaryHi ? other1.summaryHi.slice(0, 165) : 'यह प्रावधान केवल मेट्रो शहरों के निजी संस्थानों तक सीमित है',
-          other2 !== st && other2.summaryHi ? other2.summaryHi.slice(0, 165) : 'इसे पूर्णतः समाप्त कर दिया गया है और कोई बजट आवंटित नहीं है',
-          'उपर्युक्त में से कोई भी कथन सत्य नहीं है'
+        // CGPSC Prelims Signature 2-Statement Koot (कूट) Pattern
+        qHi = `[CGPSC कूट पैटर्न] समसामयिकी (${stMonth}) के संदर्भ में निम्नलिखित कथनों पर विचार कीजिए:\n1. ${headHi}।\n2. ${sumHi.slice(0, 170)}\nउपर्युक्त कथनों में से कौन-सा/से सही है/हैं?`;
+        qEn = `[CGPSC Code Pattern] With reference to Current Affairs (${stMonth}), consider the following statements:\n1. ${headEn}.\n2. ${sumEn.slice(0, 170)}\nWhich of the statements given above is/are correct?`;
+        optsHi = [
+          'केवल 1 सही है',
+          'केवल 2 सही है',
+          '1 और 2 दोनों सही हैं',
+          'न तो 1 और न ही 2 सही है'
         ];
-        distEn = [
-          other1 !== st && other1.summaryEn ? other1.summaryEn.slice(0, 165) : 'This provision is restricted exclusively to private metro corporations',
-          other2 !== st && other2.summaryEn ? other2.summaryEn.slice(0, 165) : 'It has been completely discontinued without budgetary allocation',
-          'None of the statements above is correct'
+        optsEn = [
+          'Only 1 is correct',
+          'Only 2 is correct',
+          'Both 1 and 2 are correct',
+          'Neither 1 nor 2 is correct'
         ];
+        corrSlot = 2;
       } else if (templateIdx === 1) {
-        qHi = `हाल ही में चर्चा में रहे विवरण — "${sumHi.slice(0, 160)}" — का संबंध निम्नलिखित में से किस प्रमुख समसामयिकी शीर्षक से है?`;
-        qEn = `Which of the following recent Current Affairs developments corresponds to the statement — "${sumEn.slice(0, 160)}"?`;
-        corrHi = headHi;
-        corrEn = headEn;
-        distHi = [
+        // CGPSC Prelims 3-Statement Koot (कूट) with 1 False Distractor Statement
+        qHi = `[CGPSC प्रारंभिक परीक्षा कूट] "${headHi}" के संबंध में निम्नलिखित कथनों को पढ़कर सही विकल्प (कूट) चुनिए:\n1. ${sumHi.slice(0, 155)}\n2. इसका आधिकारिक संदर्भ स्रोत ${srcName} है।\n3. इस प्रावधान/योजना को पूर्णतः बंद कर दिया गया है और यह किसी भी जिले में लागू नहीं है।\nसही कूट (Code) का चयन कीजिए:`;
+        qEn = `[CGPSC Prelims Code] Read the following statements regarding "${headEn}" and select the correct code:\n1. ${sumEn.slice(0, 155)}\n2. Its official reference source is ${srcName}.\n3. This provision/scheme has been completely abolished and is not applicable in any district.\nSelect the correct code:`;
+        optsHi = [
+          'केवल 1 और 2 सही हैं',
+          'केवल 2 और 3 सही हैं',
+          'केवल 1 और 3 सही हैं',
+          '1, 2 और 3 तीनों सही हैं'
+        ];
+        optsEn = [
+          'Only 1 and 2 are correct',
+          'Only 2 and 3 are correct',
+          'Only 1 and 3 are correct',
+          'All 1, 2 and 3 are correct'
+        ];
+        corrSlot = 0;
+      } else if (templateIdx === 2) {
+        // CGPSC Assertion (A) & Reason (R) Pattern
+        qHi = `[CGPSC अभिकथन-कारण पैटर्न] नीचे दो कथन दिए गए हैं:\nअभिकथन (A): हालिया समसामयिकी में "${headHi}" विशेष रूप से चर्चा में रहा है।\nकारण (R): ${sumHi.slice(0, 165)}\nउपर्युक्त दोनों कथनों के संदर्भ में सही विकल्प चुनिए:`;
+        qEn = `[CGPSC Assertion-Reason Pattern] Given below are two statements:\nAssertion (A): "${headEn}" has been a major highlight in recent Current Affairs.\nReason (R): ${sumEn.slice(0, 165)}\nIn the context of the above two statements, select the correct option:`;
+        optsHi = [
+          '(A) और (R) दोनों सत्य हैं तथा (R), (A) की सही व्याख्या करता है',
+          '(A) और (R) दोनों सत्य हैं किंतु (R), (A) की सही व्याख्या नहीं करता है',
+          '(A) सत्य है किंतु (R) असत्य है',
+          '(A) असत्य है किंतु (R) सत्य है'
+        ];
+        optsEn = [
+          'Both (A) and (R) are true and (R) is the correct explanation of (A)',
+          'Both (A) and (R) are true but (R) is not the correct explanation of (A)',
+          '(A) is true but (R) is false',
+          '(A) is false but (R) is true'
+        ];
+        corrSlot = 0;
+      } else if (templateIdx === 3) {
+        // CG Vyapam Direct Scheme / Provision Identification Pattern
+        corrSlot = (i + attemptOffset) % 4;
+        qHi = `[CG Vyapam परीक्षा पैटर्न] हाल ही में चर्चा में रहे प्रावधान — "${sumHi.slice(0, 160)}" — का संबंध निम्नलिखित में से किस योजना/समसामयिकी विषय से है?`;
+        qEn = `[CG Vyapam Exam Pattern] Which scheme or Current Affairs topic is associated with the provision — "${sumEn.slice(0, 160)}"?`;
+        const distHi = [
           other1 !== st ? (other1.headlineHi || 'राष्ट्रीय डिजिटल लॉजिस्टिक्स सुधार मिशन') : 'राष्ट्रीय डिजिटल लॉजिस्टिक्स सुधार मिशन',
           other2 !== st ? (other2.headlineHi || 'अंतर्राष्ट्रीय समुद्री व्यापार समझौता') : 'अंतर्राष्ट्रीय समुद्री व्यापार समझौता',
           other3 !== st ? (other3.headlineHi || 'केंद्रीय कराधान संशोधन विधेयक') : 'केंद्रीय कराधान संशोधन विधेयक'
         ];
-        distEn = [
+        const distEn = [
           other1 !== st ? (other1.headlineEn || 'National Digital Logistics Reform Mission') : 'National Digital Logistics Reform Mission',
           other2 !== st ? (other2.headlineEn || 'International Maritime Trade Pact') : 'International Maritime Trade Pact',
           other3 !== st ? (other3.headlineEn || 'Central Taxation Amendment Bill') : 'Central Taxation Amendment Bill'
         ];
-      } else if (templateIdx === 2) {
-        const correctCat = ['chhattisgarh', 'national', 'international'].includes(st.category) ? st.category : 'chhattisgarh';
-        qHi = `परीक्षा उपयोगी समसामयिकी विषय "${headHi}" (${srcName}) को मुख्य रूप से किस परीक्षा खंड के अंतर्गत वर्गीकृत किया जाता है और इसका मुख्य सार क्या है?`;
-        qEn = `Under which primary examination segment is "${headEn}" (${srcName}) classified, and what is its core focus?`;
-        corrHi = `${catLabelsHi[correctCat]} — ${sumHi.slice(0, 110)}`;
-        corrEn = `${catLabelsEn[correctCat]} — ${sumEn.slice(0, 110)}`;
-        distHi = [
-          'प्राचीन भारतीय स्थापत्य एवं पुरातत्व सर्वेक्षण अभिलेख',
-          'मध्यकालीन राजस्व प्रशासन एवं सैन्य संगठन प्रणाली',
-          'केवल विदेशी निजी बैंकों के आंतरिक ऑडिट नियम'
-        ];
-        distEn = [
-          'Ancient Indian Architecture & Archaeological Survey Records',
-          'Medieval Revenue Administration & Military Organization',
-          'Internal Audit Rules of Foreign Private Banks Only'
-        ];
-      } else if (templateIdx === 3) {
-        qHi = `कथन-आधारित प्रश्न (${stMonth}):\nकथन-I: "${headHi}" हालिया समसामयिकी का एक महत्वपूर्ण विषय है।\nकथन-II: ${sumHi.slice(0, 150)}\nसही विकल्प चुनिए:`;
-        qEn = `Statement-Based Question (${stMonth}):\nStatement-I: "${headEn}" is a key recent Current Affairs development.\nStatement-II: ${sumEn.slice(0, 150)}\nSelect the correct option:`;
-        corrHi = 'कथन-I और कथन-II दोनों सही हैं तथा कथन-II, कथन-I का सही संदर्भ प्रस्तुत करता है';
-        corrEn = 'Both Statement-I and Statement-II are correct and Statement-II accurately explains Statement-I';
-        distHi = [
-          'कथन-I सही है किंतु कथन-II पूर्णतः असत्य है',
-          'कथन-I असत्य है किंतु कथन-II सही है',
-          'कथन-I और कथन-II दोनों असत्य हैं'
-        ];
-        distEn = [
-          'Statement-I is correct but Statement-II is completely false',
-          'Statement-I is false but Statement-II is correct',
-          'Both Statement-I and Statement-II are false'
-        ];
+        optsHi = [...distHi];
+        optsEn = [...distEn];
+        optsHi.splice(corrSlot, 0, headHi);
+        optsEn.splice(corrSlot, 0, headEn);
       } else {
-        qHi = `[अभ्यास सेट #${(attemptOffset % 90) + 10}] "${headHi}" के मुख्य प्रावधानों/तथ्यों के संबंध में सत्य विकल्प की पहचान कीजिए:`;
-        qEn = `[Practice Set #${(attemptOffset % 90) + 10}] Identify the accurate fact regarding the provisions/highlights of "${headEn}":`;
-        corrHi = `${sumHi.slice(0, 165)} (स्रोत: ${srcName})`;
-        corrEn = `${sumEn.slice(0, 165)} (Source: ${srcName})`;
-        distHi = [
-          other1 !== st && other1.summaryHi ? other1.summaryHi.slice(0, 150) : 'इसमें किसी भी प्रकार की सरकारी भागीदारी शामिल नहीं है',
-          other2 !== st && other2.summaryHi ? other2.summaryHi.slice(0, 150) : 'यह केवल वर्ष 1991 से पूर्व की योजनाओं पर लागू होता है',
-          'उपरोक्त में से कोई नहीं'
+        // CGPSC / CG Vyapam Correctly Matched Pair (सुमेलित युग्म) Pattern
+        corrSlot = (i + attemptOffset) % 4;
+        qHi = `[CGPSC सुमेलित युग्म पैटर्न] समसामयिकी (${stMonth}) के अंतर्गत "${headHi}" के संदर्भ में निम्नलिखित में से कौन-सा तथ्य/प्रावधान पूर्णतः सत्य (सुमेलित) है?`;
+        qEn = `[CGPSC Pair-Match Pattern] Under Current Affairs (${stMonth}), which of the following facts/provisions is accurately matched regarding "${headEn}"?`;
+        const corrHi = `${sumHi.slice(0, 165)} (${srcName})`;
+        const corrEn = `${sumEn.slice(0, 165)} (${srcName})`;
+        const distHi = [
+          other1 !== st && other1.summaryHi ? `केवल महानगरों हेतु सीमित — ${other1.headlineHi.slice(0, 80)}` : 'इसमें किसी भी प्रकार की शासकीय या विभागीय भागीदारी शामिल नहीं है',
+          'यह प्रावधान केवल वर्ष 1991 से पूर्व स्थापित निजी कंपनियों पर लागू होता है',
+          'उपर्युक्त में से कोई नहीं (None of the above)'
         ];
-        distEn = [
-          other1 !== st && other1.summaryEn ? other1.summaryEn.slice(0, 150) : 'It involves zero governmental or institutional participation',
-          other2 !== st && other2.summaryEn ? other2.summaryEn.slice(0, 150) : 'It applies only to schemes enacted prior to 1991',
+        const distEn = [
+          other1 !== st && other1.summaryEn ? `Restricted to metro cities only — ${other1.headlineEn.slice(0, 80)}` : 'It involves zero governmental or departmental participation',
+          'This provision applies exclusively to private firms established before 1991',
           'None of the above'
         ];
-      }
-
-      const optsHi = [];
-      const optsEn = [];
-      let dIdx = 0;
-      for (let sIdx = 0; sIdx < 4; sIdx++) {
-        if (sIdx === corrSlot) {
-          optsHi.push(corrHi);
-          optsEn.push(corrEn);
-        } else {
-          optsHi.push(distHi[dIdx] || `विकल्प ${sIdx + 1}`);
-          optsEn.push(distEn[dIdx] || `Option ${sIdx + 1}`);
-          dIdx += 1;
-        }
+        optsHi = [...distHi];
+        optsEn = [...distEn];
+        optsHi.splice(corrSlot, 0, corrHi);
+        optsEn.splice(corrSlot, 0, corrEn);
       }
 
       built.push({
@@ -14526,8 +14594,8 @@ Return ONLY a valid JSON array of ${count} question objects with this exact sche
         topic: resolvedScopeLabel || 'Current Affairs',
         questionHi: qHi,
         questionEn: qEn,
-        optionsHi: optsHi,
-        optionsEn: optsEn,
+        optionsHi: optsHi.slice(0, 4),
+        optionsEn: optsEn.slice(0, 4),
         optA_Hi: optsHi[0],
         optB_Hi: optsHi[1],
         optC_Hi: optsHi[2],
