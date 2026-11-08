@@ -268,7 +268,7 @@
           return;
         }
         const script = document.createElement('script');
-        script.src = 'admin-console.js?v=6.8';
+        script.src = 'admin-console.js?v=6.9';
         script.defer = true;
         script.setAttribute('data-admin-console-lazy', '1');
         script.onload = () => resolve(window.CGpediaAdmin || null);
@@ -285,13 +285,20 @@
     return adminConsoleLoadPromise;
   }
 
+  const UI_PREFS_STORAGE_KEY = 'cgpedia_ui_prefs_v4';
+
   function loadState() {
     const def = createDefaultState();
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return def;
       const parsed = JSON.parse(raw);
-      const merged = Object.assign({}, def, parsed, {
+      let uiPrefs = {};
+      try {
+        const rawPrefs = localStorage.getItem(UI_PREFS_STORAGE_KEY);
+        if (rawPrefs) uiPrefs = JSON.parse(rawPrefs) || {};
+      } catch (_) {}
+      const merged = Object.assign({}, def, parsed, uiPrefs, {
         authSession: Object.assign({}, def.authSession, parsed.authSession || {}),
         config: Object.assign({}, def.config, parsed.config || {}),
         student: Object.assign({}, def.student, parsed.student || {})
@@ -352,24 +359,75 @@
   }
 
   let saveStateTimerId = null;
+  let saveStateIdleId = null;
+  let stateDirty = false;
+  let workspaceDirty = false;
+
+  // Fast O(1) persistence for lightweight UI navigation/filter changes without serializing the full database
+  function saveUiPrefs() {
+    try {
+      const prefs = {
+        activeTab: state.activeTab || 'dashboard',
+        selectedExamFilter: state.selectedExamFilter || 'ALL',
+        testSeriesFilter: state.testSeriesFilter || 'ALL',
+        testSeriesSort: state.testSeriesSort || 'latest',
+        caCategoryFilter: state.caCategoryFilter || 'ALL',
+        selectedCaMonthKey: state.selectedCaMonthKey || '',
+        caLangMode: state.caLangMode || 'hi',
+        theme: state.theme || 'light',
+        lang: state.lang || 'bilingual',
+        solutionFilter: state.solutionFilter || 'ALL'
+      };
+      localStorage.setItem(UI_PREFS_STORAGE_KEY, JSON.stringify(prefs));
+    } catch (_) {}
+  }
+
+  function buildCompactStateForStorage() {
+    const compactStories = Array.isArray(state.stories)
+      ? state.stories.slice(0, 120).map((s) => {
+          if (!s || typeof s !== 'object') return s;
+          if (s.imageUrl && String(s.imageUrl).startsWith('data:image/svg+xml')) {
+            const copy = Object.assign({}, s);
+            delete copy.imageUrl;
+            return copy;
+          }
+          return s;
+        })
+      : [];
+    return Object.assign({}, state, {
+      stories: compactStories
+    });
+  }
 
   function flushSaveStateNow() {
     if (saveStateTimerId) {
       clearTimeout(saveStateTimerId);
       saveStateTimerId = null;
     }
+    if (saveStateIdleId && typeof window.cancelIdleCallback === 'function') {
+      try { window.cancelIdleCallback(saveStateIdleId); } catch (_) {}
+      saveStateIdleId = null;
+    }
+    if (!stateDirty) return;
+    stateDirty = false;
     try {
-      if (!isLoggedOut() && state.student && state.student.uid) {
+      saveUiPrefs();
+      if (workspaceDirty && !isLoggedOut() && state.student && state.student.uid) {
+        workspaceDirty = false;
         saveStudentWorkspaceSnapshot(state.student.uid);
         if (state.student.email) {
           upsertAccountInRegistry(state.student);
         }
       }
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(buildCompactStateForStorage()));
     } catch (_) {}
   }
 
-  function saveState(immediate) {
+  function saveState(immediate, markWorkspace) {
+    stateDirty = true;
+    if (markWorkspace !== false) {
+      workspaceDirty = true;
+    }
     if (immediate === true) {
       flushSaveStateNow();
       return;
@@ -378,12 +436,24 @@
       clearTimeout(saveStateTimerId);
     }
     saveStateTimerId = setTimeout(() => {
-      flushSaveStateNow();
-    }, 450);
+      saveStateTimerId = null;
+      if (typeof window.requestIdleCallback === 'function') {
+        saveStateIdleId = window.requestIdleCallback(() => {
+          saveStateIdleId = null;
+          flushSaveStateNow();
+        }, { timeout: 1500 });
+      } else {
+        flushSaveStateNow();
+      }
+    }, 1100);
   }
 
-  window.addEventListener('pagehide', flushSaveStateNow);
-  window.addEventListener('beforeunload', flushSaveStateNow);
+  window.addEventListener('pagehide', () => {
+    if (stateDirty) flushSaveStateNow();
+  });
+  window.addEventListener('beforeunload', () => {
+    if (stateDirty) flushSaveStateNow();
+  });
 
   const READ_NOTIF_STORAGE_KEY = 'cgpedia_read_notif_ids_v1';
 
@@ -689,7 +759,7 @@
     }
     initialHashSynced = true;
     syncUrlHashWithActiveTab(state.activeTab, true);
-    saveState();
+    saveUiPrefs();
     renderApp();
     return true;
   }
@@ -1058,7 +1128,7 @@
     document.querySelectorAll('[data-exam-chip]').forEach((chip) => {
       chip.onclick = () => {
         state.selectedExamFilter = chip.getAttribute('data-exam-chip');
-        saveState();
+        saveUiPrefs();
         renderApp();
       };
     });
@@ -1209,7 +1279,6 @@
     if (searchInp) {
       searchInp.oninput = () => {
         state.searchQuery = searchInp.value;
-        saveState();
         renderTestSeriesCatalog(root);
       };
     }
@@ -1218,7 +1287,7 @@
     if (accessSel) {
       accessSel.onchange = () => {
         state.testSeriesFilter = accessSel.value;
-        saveState();
+        saveUiPrefs();
         renderTestSeriesCatalog(root);
       };
     }
@@ -1227,7 +1296,7 @@
     if (sortSel) {
       sortSel.onchange = () => {
         state.testSeriesSort = sortSel.value;
-        saveState();
+        saveUiPrefs();
         renderTestSeriesCatalog(root);
       };
     }
@@ -1236,7 +1305,6 @@
     if (clearFld) {
       clearFld.onclick = () => {
         state.selectedFolderId = null;
-        saveState();
         renderTestSeriesCatalog(root);
       };
     }
@@ -1244,7 +1312,7 @@
     root.querySelectorAll('[data-cat-exam]').forEach((btn) => {
       btn.onclick = () => {
         state.selectedExamFilter = btn.getAttribute('data-cat-exam');
-        saveState();
+        saveUiPrefs();
         renderTestSeriesCatalog(root);
       };
     });
@@ -1252,7 +1320,6 @@
     root.querySelectorAll('[data-open-folder]').forEach((btn) => {
       btn.onclick = () => {
         state.selectedFolderId = btn.getAttribute('data-open-folder');
-        saveState();
         renderTestSeriesCatalog(root);
       };
     });
@@ -1808,11 +1875,14 @@
       ? allMonthlyStories
       : allMonthlyStories.filter((s) => normalizeStoryCategory(s.category) === selectedCaCategory);
 
+    const isQuizPanelOpen = state.caQuizPanelExpanded === true;
     const quizScope = state.caQuizScope || 'recent';
     const quizMonth = state.caQuizMonth || activeMonthKey;
     const quizYear = state.caQuizYear || currentYearKey;
-    const availablePoolForScope = getAvailableCurrentAffairsQuestionsForPeriod(quizScope, quizMonth, quizYear);
-    const maxAvailQuestions = Math.max(1, availablePoolForScope.length);
+    const availablePoolForScope = isQuizPanelOpen
+      ? getAvailableCurrentAffairsQuestionsForPeriod(quizScope, quizMonth, quizYear)
+      : null;
+    const maxAvailQuestions = availablePoolForScope ? Math.max(1, availablePoolForScope.length) : 50;
     const quizCount = Math.max(1, Math.min(maxAvailQuestions, Number(state.caQuizQuestionCount || 10)));
     const quizDuration = Math.max(1, Math.min(180, Number(state.caQuizDurationMinutes || 10)));
     const quizPosMarks = state.caQuizPositiveMarks !== undefined && Number(state.caQuizPositiveMarks) > 0
@@ -1821,7 +1891,6 @@
     const quizNegMarks = state.caQuizNegativeMarks !== undefined && Number(state.caQuizNegativeMarks) >= 0
       ? Number(state.caQuizNegativeMarks)
       : 0.66;
-    const isQuizPanelOpen = state.caQuizPanelExpanded === true;
 
     root.innerHTML = `
       <!-- Top Story Strip for Daily Dose (Synchronized with Current Affairs Database) -->
@@ -2075,7 +2144,7 @@
     root.querySelectorAll('[data-ca-cat-filter]').forEach((chip) => {
       chip.onclick = () => {
         state.caCategoryFilter = chip.getAttribute('data-ca-cat-filter') || 'ALL';
-        saveState();
+        saveUiPrefs();
         renderCurrentAffairsView(root);
       };
     });
@@ -2099,7 +2168,6 @@
     if (toggleQuizPanelBtn) {
       toggleQuizPanelBtn.onclick = () => {
         state.caQuizPanelExpanded = !state.caQuizPanelExpanded;
-        saveState();
         renderCurrentAffairsView(root);
       };
     }
@@ -4611,6 +4679,9 @@
     }
   }
 
+  let _caQuizPoolMemoKey = '';
+  let _caQuizPoolMemoResult = null;
+
   // Build a strictly deduplicated pool of Current Affairs questions for the selected period (recent, monthly, yearly)
   function getAvailableCurrentAffairsQuestionsForPeriod(scopeType, monthKey, yearKey) {
     const scope = scopeType || 'recent';
@@ -4620,6 +4691,12 @@
     const yKey = String(yearKey || mKey.slice(0, 4) || nowDate.getFullYear());
 
     const canonicalStories = sortStoriesLatestFirst(getCanonicalCurrentAffairsList());
+    const allBank = Array.isArray(state.questionBank) ? state.questionBank : [];
+    const memoKey = `${scope}::${mKey}::${yKey}::${canonicalStories.length}::${allBank.length}`;
+    if (_caQuizPoolMemoResult && _caQuizPoolMemoKey === memoKey) {
+      return _caQuizPoolMemoResult;
+    }
+
     let targetStories = [];
 
     if (scope === 'monthly') {
@@ -4761,19 +4838,13 @@
       const normEn = normalizeStemTextForSelection(qObj.questionEn || '');
       const key = normHi || normEn;
       if (!key || seenStems.has(key)) return false;
-      const nearDup = uniquePool.some((existing) => {
-        const sHi = (normHi && existing.questionHi) ? computeStemSimilarityForSelection(qObj.questionHi, existing.questionHi) : 0;
-        const sEn = (normEn && existing.questionEn) ? computeStemSimilarityForSelection(qObj.questionEn, existing.questionEn) : 0;
-        return Math.max(sHi, sEn) >= 0.88;
-      });
-      if (nearDup) return false;
-      seenStems.add(key);
+      if (normHi) seenStems.add(normHi);
+      if (normEn) seenStems.add(normEn);
       uniquePool.push(qObj);
       return true;
     };
 
     // 1. Pull period-matched Current Affairs questions from Central Question Bank first
-    const allBank = Array.isArray(state.questionBank) ? state.questionBank : [];
     const caBankQuestions = allBank.filter((q) => {
       if (!isQuestionEligibleForAutoSelection(q)) return false;
       const isCa = q.subjectId === 'sub_current_affairs' ||
@@ -4942,7 +5013,7 @@
     }
 
     // 3. Supplement with remaining verified General Studies / Chhattisgarh questions from Question Bank without duplicates
-    allBank.forEach((q, idx) => {
+    allBank.slice(0, 80).forEach((q, idx) => {
       if (!isQuestionEligibleForAutoSelection(q)) return;
       const optsHi = Array.isArray(q.optionsHi) && q.optionsHi.length === 4
         ? [...q.optionsHi]
@@ -4965,6 +5036,8 @@
       });
     });
 
+    _caQuizPoolMemoKey = memoKey;
+    _caQuizPoolMemoResult = uniquePool;
     return uniquePool;
   }
 
@@ -5130,6 +5203,9 @@
     return `cgpedia_seen_stories_v2_${cleanUid}`;
   }
 
+  let _cachedSeenStoriesUid = '';
+  let _cachedSeenStoriesSet = null;
+
   function loadSeenStoriesFromLocal(uid) {
     try {
       const raw = localStorage.getItem(getSeenStoriesStorageKey(uid));
@@ -5143,13 +5219,19 @@
 
   function saveSeenStoriesToLocal(uid, list) {
     try {
+      const cleanUid = String(uid || (state && state.student && state.student.uid) || 'guest').trim();
       const unique = Array.from(new Set((Array.isArray(list) ? list : []).map((id) => String(id))));
-      localStorage.setItem(getSeenStoriesStorageKey(uid), JSON.stringify(unique));
+      _cachedSeenStoriesUid = cleanUid;
+      _cachedSeenStoriesSet = new Set(unique);
+      localStorage.setItem(getSeenStoriesStorageKey(cleanUid), JSON.stringify(unique));
     } catch (_) {}
   }
 
   function getSeenStoryIdsSet() {
-    const uid = (state && state.student && state.student.uid) || 'guest';
+    const uid = String((state && state.student && state.student.uid) || 'guest').trim();
+    if (_cachedSeenStoriesSet && _cachedSeenStoriesUid === uid) {
+      return _cachedSeenStoriesSet;
+    }
     const fromStudent = (state && state.student && Array.isArray(state.student.seenStoryIds))
       ? state.student.seenStoryIds
       : [];
@@ -5157,7 +5239,9 @@
       ? state.seenStoryIds
       : [];
     const fromLocal = loadSeenStoriesFromLocal(uid);
-    return new Set([...fromStudent, ...fromState, ...fromLocal].filter(Boolean).map((id) => String(id)));
+    _cachedSeenStoriesUid = uid;
+    _cachedSeenStoriesSet = new Set([...fromStudent, ...fromState, ...fromLocal].filter(Boolean).map((id) => String(id)));
+    return _cachedSeenStoriesSet;
   }
 
   function isStorySeenByStudent(storyId) {
@@ -5491,17 +5575,9 @@
     if (st.imageUrl && String(st.imageUrl).trim() && !String(st.imageUrl).startsWith('data:image/svg+xml')) {
       return String(st.imageUrl).trim();
     }
-    if (st.imageUrl && String(st.imageUrl).startsWith('data:image/svg+xml') && String(st.imageUrl).includes('AI Generated Image')) {
+    if (st.imageUrl && String(st.imageUrl).startsWith('data:image/svg+xml')) {
       st.isAiGeneratedImage = true;
       return String(st.imageUrl);
-    }
-    if (window.CGpediaAdmin && typeof window.CGpediaAdmin.generateAutoStoryImageUrl === 'function') {
-      const generated = window.CGpediaAdmin.generateAutoStoryImageUrl(st);
-      if (generated) {
-        st.imageUrl = generated;
-        st.isAiGeneratedImage = true;
-        return generated;
-      }
     }
     const cat = normalizeStoryCategory(st.category);
     const palette = cat === 'chhattisgarh'
@@ -6339,10 +6415,53 @@
     return res;
   }
 
+  const _cloudCollectionFingerprintMap = new Map();
+
+  function computeCloudDocsFingerprint(docs) {
+    if (!Array.isArray(docs) || docs.length === 0) return 'empty:0';
+    return `${docs.length}:` + docs.slice(0, 60).map((d) => {
+      if (!d || typeof d !== 'object') return '';
+      return `${d.id || ''}|${d.updatedAtIso || d.createdAtMs || d.submittedAtIso || ''}|${d.status || ''}`;
+    }).join('~');
+  }
+
+  function doesCollectionAffectActiveTab(key, activeTab) {
+    if (activeTab === 'admin') return true;
+    if (key === 'configDocs') return true;
+    if (activeTab === 'dashboard') {
+      return key === 'tests' || key === 'folders' || key === 'stories' || key === 'notifications';
+    }
+    if (activeTab === 'test-series') {
+      return key === 'tests' || key === 'folders' || key === 'activations';
+    }
+    if (activeTab === 'current-affairs') {
+      return key === 'stories';
+    }
+    if (activeTab === 'leaderboard') {
+      return key === 'leaderboard';
+    }
+    if (activeTab === 'notifications') {
+      return key === 'notifications' || key === 'queries';
+    }
+    if (activeTab === 'payments') {
+      return key === 'folders' || key === 'tests' || key === 'coupons' || key === 'activations' || key === 'orders';
+    }
+    if (activeTab === 'profile') {
+      return key === 'activations' || key === 'orders' || key === 'registeredStudents';
+    }
+    return false;
+  }
+
   function mergeCloudCollection(key, docs, colNameArg) {
     if (!Array.isArray(docs)) return;
     const colName = colNameArg || getCollectionNameForStateKey(key);
     const adminMode = isCurrentUserAdmin();
+
+    const incomingFingerprint = computeCloudDocsFingerprint(docs);
+    if (_cloudCollectionFingerprintMap.get(key) === incomingFingerprint) {
+      return;
+    }
+    _cloudCollectionFingerprintMap.set(key, incomingFingerprint);
 
     if (key === 'configDocs') {
       const globalDoc = docs.find((d) => d.id === 'global' || d.configKey === 'global');
@@ -6362,13 +6481,13 @@
       if (taxDoc) {
         state.customTaxonomy = Object.assign({ customCategories: [], customSubjects: [] }, state.customTaxonomy || {}, taxDoc);
       }
-      saveState();
+      saveState(false, false);
       applyBrandingAndSecurity();
-      scheduleCloudRenderApp();
       return;
     }
 
     const activeCloudDocs = docs.filter((d) => d && d.id && d.isDeleted !== true && d.status !== 'deleted');
+    const prevCount = Array.isArray(state[key]) ? state[key].length : 0;
 
     if (adminMode) {
       const isDeletedFn = (window.CGpediaCloud && typeof window.CGpediaCloud.isDocDeletedLocally === 'function')
@@ -6386,7 +6505,6 @@
         }
       });
 
-      const toPushToCloud = [];
       const cloudHasDocs = activeCloudDocs.length > 0;
 
       localArr.forEach((lDoc) => {
@@ -6395,7 +6513,6 @@
           const isAuthoredOrEmptyCloud = !cloudHasDocs || Boolean(lDoc.updatedAtIso || lDoc.createdAtIso || lDoc.updatedByAdminEmail);
           if (isAuthoredOrEmptyCloud) {
             mergedMap.set(lid, lDoc);
-            toPushToCloud.push(lDoc);
           }
         } else {
           const cDoc = mergedMap.get(lid);
@@ -6403,17 +6520,11 @@
           const lTime = lDoc.updatedAtIso ? Date.parse(lDoc.updatedAtIso) : 0;
           if (lTime > cTime + 2000) {
             mergedMap.set(lid, lDoc);
-            toPushToCloud.push(lDoc);
           }
         }
       });
 
       state[key] = Array.from(mergedMap.values());
-
-      if (toPushToCloud.length > 0 && colName && window.CGpediaCloud && window.CGpediaCloud.batchSaveCloudDocs && !syncedLocalCollectionKeys.has(key)) {
-        syncedLocalCollectionKeys.add(key);
-        window.CGpediaCloud.batchSaveCloudDocs(colName, toPushToCloud).catch(() => {});
-      }
     } else {
       // Student mode: Cloud is authoritative when non-empty or once global config is synced
       if (activeCloudDocs.length > 0 || cloudGlobalConfigSynced || key === 'questionBank' || key === 'orders' || key === 'activations' || key === 'coupons' || key === 'registeredStudents') {
@@ -6457,9 +6568,16 @@
       checkAndDispatchCloudUpdateNotifications(key, state[key] || activeCloudDocs);
     }
 
-    saveState();
+    const nextCount = Array.isArray(state[key]) ? state[key].length : 0;
+    if (prevCount === 0 && nextCount === 0) {
+      return;
+    }
+
+    saveState(false, false);
     applyBrandingAndSecurity();
-    scheduleCloudRenderApp();
+    if (doesCollectionAffectActiveTab(key, state.activeTab || 'dashboard')) {
+      scheduleCloudRenderApp();
+    }
   }
 
   let cloudRenderScheduled = false;
@@ -7375,11 +7493,9 @@
       dismissSplashImmediate();
     }
 
-    // If user is already logged in as Admin, preload Admin Console module non-blockingly in idle time
-    if (isCurrentUserAdmin()) {
-      setTimeout(() => {
-        ensureAdminConsoleLoaded();
-      }, 250);
+    // Admin Console script (266 KB) is loaded strictly on-demand when navigating to the Admin tab
+    if (state.activeTab === 'admin' && isCurrentUserAdmin()) {
+      ensureAdminConsoleLoaded();
     }
 
     // Browser Back/Forward (popstate) & manual URL hash change protection
@@ -7548,7 +7664,7 @@
     // Register Service Worker non-blockingly after initial render
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
       setTimeout(() => {
-        navigator.serviceWorker.register('sw.js?v=6.8').then((reg) => {
+        navigator.serviceWorker.register('sw.js?v=6.9').then((reg) => {
           try { reg.update(); } catch (_) {}
         }).catch(() => {});
       }, 300);
@@ -7640,18 +7756,12 @@
       }
     }
 
-    // Start Firebase connection non-blockingly after initial paint (without full-database write storm)
+    // Start Firebase connection non-blockingly after initial paint (without full-database write storm or startup AI block)
     setTimeout(() => {
       if (window.CGpediaCloud) {
-        window.CGpediaCloud.initFirebaseConnection((connected) => {
-          if (connected) {
-            setTimeout(() => {
-              runHourlyCurrentAffairsAutoUpdate(false);
-            }, 4500);
-          }
-        });
+        window.CGpediaCloud.initFirebaseConnection();
       }
-    }, 10);
+    }, 60);
 
     // Trigger online Current Affairs auto-update every 1 hour (3,600,000 ms)
     setInterval(() => {

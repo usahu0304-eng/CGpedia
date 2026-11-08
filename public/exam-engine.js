@@ -74,16 +74,23 @@
     return ACTIVE_SESSION_STORAGE_KEY;
   }
 
+  let _cachedActiveSession = undefined;
+  let _cachedActiveSessionKey = '';
+
   function persistActiveSession(session) {
     try {
       const scopedKey = getActiveSessionStorageKey();
       if (!session) {
+        _cachedActiveSession = null;
+        _cachedActiveSessionKey = scopedKey;
         localStorage.removeItem(scopedKey);
         localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
       } else {
         if (window.CGpediaApp && typeof window.CGpediaApp.getCurrentStudentUid === 'function') {
           session.userId = window.CGpediaApp.getCurrentStudentUid() || session.userId || '';
         }
+        _cachedActiveSession = session;
+        _cachedActiveSessionKey = scopedKey;
         localStorage.setItem(scopedKey, JSON.stringify(session));
       }
     } catch (_) {}
@@ -95,15 +102,39 @@
         ? window.CGpediaApp.getCurrentStudentUid()
         : '';
       const scopedKey = getActiveSessionStorageKey();
+      if (_cachedActiveSession !== undefined && _cachedActiveSessionKey === scopedKey) {
+        if (
+          _cachedActiveSession &&
+          Array.isArray(_cachedActiveSession.questions) &&
+          _cachedActiveSession.questions.length > 0 &&
+          !_cachedActiveSession.submitted
+        ) {
+          if (_cachedActiveSession.userId && currentUid && _cachedActiveSession.userId !== currentUid) {
+            return null;
+          }
+          return _cachedActiveSession;
+        }
+        return null;
+      }
       const raw = localStorage.getItem(scopedKey) || localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
-      if (!raw) return null;
+      if (!raw) {
+        _cachedActiveSession = null;
+        _cachedActiveSessionKey = scopedKey;
+        return null;
+      }
       const parsed = JSON.parse(raw);
       if (parsed && Array.isArray(parsed.questions) && parsed.questions.length > 0 && !parsed.submitted) {
         if (parsed.userId && currentUid && parsed.userId !== currentUid) {
+          _cachedActiveSession = null;
+          _cachedActiveSessionKey = scopedKey;
           return null;
         }
+        _cachedActiveSession = parsed;
+        _cachedActiveSessionKey = scopedKey;
         return parsed;
       }
+      _cachedActiveSession = null;
+      _cachedActiveSessionKey = scopedKey;
     } catch (_) {}
     return null;
   }

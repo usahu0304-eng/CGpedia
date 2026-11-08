@@ -711,6 +711,23 @@
     }
   }
 
+  let studentPaymentListenersAttached = false;
+
+  function subscribeStudentSupportCollectionsNow() {
+    if (!db || studentPaymentListenersAttached) return;
+    studentPaymentListenersAttached = true;
+    const supportCollections = [
+      { col: 'purchases', key: 'activations' },
+      { col: 'coupons', key: 'coupons' },
+      { col: 'users', key: 'registeredStudents' }
+    ];
+    supportCollections.forEach(({ col, key }, idx) => {
+      setTimeout(() => {
+        attachSingleCollectionListener(col, key);
+      }, idx * 120);
+    });
+  }
+
   function subscribeSecondaryCollectionsNow() {
     if (!db || secondaryListenersAttached) return;
     secondaryListenersAttached = true;
@@ -719,13 +736,13 @@
       secondaryListenerTimer = null;
     }
 
-    // Tier 2: Deferred Student & Admin Collections (loaded in background after initial Home render)
+    // Tier 2: Deferred Admin & Question Bank Collections (staggered so main thread never freezes)
     const secondaryCollections = [
-      { col: 'upcoming_tests', key: 'upcomingTests' },
-      { col: 'coupons', key: 'coupons' },
       { col: 'purchases', key: 'activations' },
-      { col: 'admin_staff', key: 'adminStaff' },
+      { col: 'coupons', key: 'coupons' },
       { col: 'users', key: 'registeredStudents' },
+      { col: 'upcoming_tests', key: 'upcomingTests' },
+      { col: 'admin_staff', key: 'adminStaff' },
       { col: 'exams', key: 'examMaster' },
       { col: 'subjects', key: 'subjectMaster' },
       { col: 'topics', key: 'topicMaster' },
@@ -736,8 +753,10 @@
       { col: 'question_reports', key: 'questionReports' }
     ];
 
-    secondaryCollections.forEach(({ col, key }) => {
-      attachSingleCollectionListener(col, key);
+    secondaryCollections.forEach(({ col, key }, idx) => {
+      setTimeout(() => {
+        attachSingleCollectionListener(col, key);
+      }, idx * 90);
     });
   }
 
@@ -766,26 +785,27 @@
         if (navigator.onLine !== false) {
           updateSyncBadge('connected', true);
         }
-        // Attach Tier 2 collections smoothly in background after Tier 1 completes
-        if (!secondaryListenersAttached && !secondaryListenerTimer) {
+        if (!studentPaymentListenersAttached && !secondaryListenerTimer) {
           secondaryListenerTimer = setTimeout(() => {
-            subscribeSecondaryCollectionsNow();
-          }, 180);
+            subscribeStudentSupportCollectionsNow();
+          }, 900);
         }
       }
     };
 
-    essentialCollections.forEach(({ col, key }) => {
-      attachSingleCollectionListener(col, key, markEssentialReceived);
+    essentialCollections.forEach(({ col, key }, idx) => {
+      setTimeout(() => {
+        attachSingleCollectionListener(col, key, markEssentialReceived);
+      }, idx * 45);
     });
 
-    // Fallback: ensure Connected badge and Tier 2 listeners activate within 1.2s even on slow mobile networks
+    // Fallback: ensure Connected badge and lightweight student support listeners activate smoothly
     setTimeout(() => {
       if (navigator.onLine !== false && currentSyncStatusState === 'synchronizing' && isCloudConnected) {
         updateSyncBadge('connected', true);
       }
-      subscribeSecondaryCollectionsNow();
-    }, 1200);
+      subscribeStudentSupportCollectionsNow();
+    }, 1500);
   }
 
   function prepareCloudPayload(docId, payload) {

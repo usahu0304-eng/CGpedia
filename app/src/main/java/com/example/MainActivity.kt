@@ -412,10 +412,16 @@ fun CgpediaWebAppHost(
     onLaunchFilePicker: (String) -> Unit,
     onSetUploadCallback: (ValueCallback<Array<Uri>>?) -> Unit
 ) {
-    var webViewRef by remember { mutableStateOf<WebView?>(null) }
+    val webViewHolder = remember { object { var view: WebView? = null } }
+    var canNavigateBack by remember { mutableStateOf(false) }
 
-    BackHandler(enabled = webViewRef?.canGoBack() == true) {
-        webViewRef?.goBack()
+    BackHandler(enabled = canNavigateBack) {
+        val wv = webViewHolder.view
+        if (wv != null && wv.canGoBack()) {
+            wv.goBack()
+        } else {
+            canNavigateBack = false
+        }
     }
 
     Scaffold(
@@ -431,6 +437,7 @@ fun CgpediaWebAppHost(
                 val bridge = CgpediaAndroidBridge(activity)
                 WebView(context).apply {
                     bridge.webViewRef = this
+                    webViewHolder.view = this
                     if (activity is MainActivity) {
                         activity.activeWebView = this
                     }
@@ -448,7 +455,7 @@ fun CgpediaWebAppHost(
                         setSupportZoom(true)
                         builtInZoomControls = true
                         displayZoomControls = false
-                        cacheMode = WebSettings.LOAD_NO_CACHE
+                        cacheMode = WebSettings.LOAD_DEFAULT
                     }
 
                     addJavascriptInterface(bridge, "AndroidBridge")
@@ -473,8 +480,14 @@ fun CgpediaWebAppHost(
                             return false
                         }
 
+                        override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
+                            super.doUpdateVisitedHistory(view, url, isReload)
+                            canNavigateBack = view?.canGoBack() == true
+                        }
+
                         override fun onPageFinished(view: WebView?, url: String?) {
                             super.onPageFinished(view, url)
+                            canNavigateBack = view?.canGoBack() == true
                             val isLand = activity.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
                             view?.evaluateJavascript(
                                 "if(window.__onNativeOrientationChange){window.__onNativeOrientationChange($isLand);}",
@@ -509,9 +522,7 @@ fun CgpediaWebAppHost(
                         }
                     }
 
-                    clearCache(true)
                     loadUrl("file:///android_asset/index.html")
-                    webViewRef = this
                 }
             }
         )

@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan to fix application hang/freeze and device heating, restore International Current Affairs & Daily Dose content and auto-updates, and remove all numerical seen/unseen story counters from Daily Dose and the full-screen Story Viewer.",
-  "updatedAt":  "2026-11-08T09:46:50.794027410Z",
+  "summary":  "Implementation plan to eliminate the 5 root causes of slow app/web startup and touch/tab freezing in CGpedia without altering any existing UI design or features.",
+  "updatedAt":  "2026-11-08T10:37:12.239769064Z",
   "requestFeedback":  true,
   "userFacing":  true
 }
