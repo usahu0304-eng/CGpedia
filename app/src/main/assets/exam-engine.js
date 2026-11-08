@@ -221,8 +221,13 @@
    * Launches or resumes the Fullscreen Live CBT Session
    */
   function launchLiveCbtSession(testObj, questions, chosenLang, appCallbacks, existingSession) {
+    const currentUid = (window.CGpediaApp && typeof window.CGpediaApp.getCurrentStudentUid === 'function')
+      ? (window.CGpediaApp.getCurrentStudentUid() || '')
+      : '';
     const session = existingSession || {
       sessionId: 'cbt_' + Date.now(),
+      attemptId: 'att_' + Date.now(),
+      userId: currentUid,
       testId: testObj.id,
       testTitleHi: testObj.titleHi,
       testTitleEn: testObj.titleEn,
@@ -242,8 +247,17 @@
       startedAtIso: new Date().toISOString(),
       paletteOpen: false,
       paletteOpenMobile: false,
+      status: 'in_progress',
       submitted: false
     };
+    if (!session.attemptId) {
+      session.attemptId = session.sessionId || ('att_' + Date.now());
+    }
+    if (!session.userId && currentUid) {
+      session.userId = currentUid;
+    }
+    session.status = 'in_progress';
+    session.submitted = false;
     if (typeof session.paletteOpen !== 'boolean') {
       session.paletteOpen = false;
     }
@@ -334,6 +348,10 @@
 
             <button class="btn cbt-palette-toggle-btn ${isPaletteOpen ? 'active' : ''}" id="cbtToggleMobilePaletteBtn" type="button" aria-expanded="${isPaletteOpen}" title="Toggle Question Palette">
               🔢 Question Palette (${counts.answered + counts['answered-review']}/${questions.length})
+            </button>
+
+            <button class="btn btn-danger cbt-submit-top-btn" id="cbtTopLeaveTestBtn" type="button">
+              Leave Test
             </button>
 
             <button class="btn btn-success cbt-submit-top-btn" id="cbtOpenSubmitSummaryBtn" type="button">
@@ -471,8 +489,11 @@
               }).join('')}
             </div>
 
-            <div style="margin-top:auto;padding-top:14px;">
-              <button class="btn btn-success" style="width:100%;" id="cbtSidebarSubmitBtn" type="button">
+            <div style="margin-top:auto;padding-top:14px;display:flex;gap:8px;flex-wrap:wrap;">
+              <button class="btn btn-danger" style="flex:1;" id="cbtSidebarLeaveTestBtn" type="button">
+                Leave Test
+              </button>
+              <button class="btn btn-success" style="flex:1;" id="cbtSidebarSubmitBtn" type="button">
                 ✅ Review &amp; Submit Exam
               </button>
             </div>
@@ -486,9 +507,15 @@
             <button class="btn btn-review btn-sm" id="cbtMarkReviewNextBtn">🟣 Mark for Review &amp; Next</button>
             <button class="btn btn-outline btn-sm" id="cbtClearResponseBtn">🧹 Clear Response</button>
           </div>
-          <div style="display:flex;align-items:center;gap:8px;">
-            <button class="btn btn-primary" id="cbtSaveNextBtn">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-primary" id="cbtSaveNextBtn" type="button">
               💾 ${curIdx < questions.length - 1 ? 'Save & Next ➡️' : 'Save Response'}
+            </button>
+            <button class="btn btn-danger" id="cbtLeaveTestBtn" type="button">
+              Leave Test
+            </button>
+            <button class="btn btn-success" id="cbtBottomSubmitBtn" type="button">
+              ✅ Submit Test
             </button>
           </div>
         </footer>
@@ -645,12 +672,76 @@
       };
     }
 
+    // Open Leave Test Confirmation Modal
+    const leaveBtnBottom = document.getElementById('cbtLeaveTestBtn');
+    const leaveBtnTop = document.getElementById('cbtTopLeaveTestBtn');
+    const leaveBtnSidebar = document.getElementById('cbtSidebarLeaveTestBtn');
+    const triggerLeaveModal = () => openLeaveTestModal(session, appCallbacks);
+    if (leaveBtnBottom) leaveBtnBottom.onclick = triggerLeaveModal;
+    if (leaveBtnTop) leaveBtnTop.onclick = triggerLeaveModal;
+    if (leaveBtnSidebar) leaveBtnSidebar.onclick = triggerLeaveModal;
+
     // Open Submit Confirmation Summary Modal
     const openSub1 = document.getElementById('cbtOpenSubmitSummaryBtn');
     const openSub2 = document.getElementById('cbtSidebarSubmitBtn');
+    const openSub3 = document.getElementById('cbtBottomSubmitBtn');
     const triggerSummary = () => openSubmitSummaryModal(session, appCallbacks);
     if (openSub1) openSub1.onclick = triggerSummary;
     if (openSub2) openSub2.onclick = triggerSummary;
+    if (openSub3) openSub3.onclick = triggerSummary;
+  }
+
+  function openLeaveTestModal(session, appCallbacks) {
+    const modalRoot = document.getElementById('genericModalContainer');
+    if (!modalRoot) return;
+
+    modalRoot.innerHTML = `
+      <div class="modal-backdrop" id="cbtLeaveTestModalBackdrop">
+        <div class="modal-card" style="max-width:460px;">
+          <h2 style="font-size:1.15rem;font-weight:800;margin-bottom:8px;color:var(--danger);">🚪 Leave Test</h2>
+          <p style="font-size:0.96rem;font-weight:700;color:var(--text);margin-bottom:4px;">
+            Are you sure you want to leave this test?
+          </p>
+          <p style="font-size:0.94rem;font-weight:700;color:var(--text-secondary);margin-bottom:14px;">
+            क्या आप वाकई यह टेस्ट छोड़ना चाहते हैं?
+          </p>
+          <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:16px;">
+            Your current attempt, answers, marked-for-review status, and remaining time (<strong>${formatClock(session.remainingSeconds)}</strong>) will be saved so you can resume from where you left off.
+          </p>
+          <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;">
+            <button class="btn btn-outline" id="cbtContinueTestBtn" type="button">Continue Test</button>
+            <button class="btn btn-danger" id="cbtConfirmLeaveTestBtn" type="button">Leave Test</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('cbtContinueTestBtn').onclick = () => {
+      modalRoot.innerHTML = '';
+    };
+    document.getElementById('cbtConfirmLeaveTestBtn').onclick = () => {
+      modalRoot.innerHTML = '';
+      leaveAndPauseCbtSession(session, appCallbacks);
+    };
+  }
+
+  function leaveAndPauseCbtSession(session, appCallbacks) {
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
+    setNativeScreenshotProtection(false);
+    session.submitted = false;
+    session.status = 'paused';
+    session.pausedAtIso = new Date().toISOString();
+    persistActiveSession(session);
+
+    const container = document.getElementById('cbtExamContainer');
+    if (container) container.innerHTML = '';
+
+    if (appCallbacks && typeof appCallbacks.onExamLeft === 'function') {
+      appCallbacks.onExamLeft(session);
+    }
   }
 
   function openSubmitSummaryModal(session, appCallbacks) {
@@ -761,7 +852,9 @@
     const timeTakenSeconds = Math.max(1, (session.totalDurationSeconds || 0) - (session.remainingSeconds || 0));
 
     const resultRecord = {
-      id: 'res_' + Date.now(),
+      id: session.attemptId || session.sessionId || ('res_' + Date.now()),
+      attemptId: session.attemptId || session.sessionId || ('att_' + Date.now()),
+      sessionId: session.sessionId || '',
       testId: session.testId,
       testTitleHi: session.testTitleHi,
       testTitleEn: session.testTitleEn,

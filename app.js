@@ -1044,7 +1044,23 @@
       publishedTests.sort((a, b) => Number(a.priceInr || 0) - Number(b.priceInr || 0));
     }
 
+    const savedCbtSession = window.CGpediaCBT && window.CGpediaCBT.getSavedActiveSession();
+
     root.innerHTML = `
+      ${savedCbtSession ? `
+        <div class="card" style="border-left:5px solid #EA580C;background:var(--warning-soft);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+          <div>
+            <span class="badge badge-paid">⏸️ IN-PROGRESS EXAM DETECTED</span>
+            <div style="font-weight:800;font-size:0.98rem;margin-top:3px;">${esc(savedCbtSession.testTitleHi)}</div>
+            <div style="font-size:0.8rem;color:var(--text-secondary);">Auto-saved with ${Math.floor(savedCbtSession.remainingSeconds / 60)}m remaining. Resume from where you left off.</div>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-outline btn-sm" id="discardSavedSessionBtn">Discard</button>
+            <button class="btn btn-primary btn-sm" id="resumeSavedSessionBtn">▶️ Resume Exam</button>
+          </div>
+        </div>
+      ` : ''}
+
       <div class="card">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
           <div>
@@ -1184,6 +1200,30 @@
         renderTestSeriesCatalog(root);
       };
     });
+
+    if (savedCbtSession) {
+      const resumeBtn = document.getElementById('resumeSavedSessionBtn');
+      const discardBtn = document.getElementById('discardSavedSessionBtn');
+      if (resumeBtn) {
+        resumeBtn.onclick = () => {
+          window.CGpediaCBT.launchLiveCbtSession({}, savedCbtSession.questions, savedCbtSession.langMode, cbtCallbacks, savedCbtSession);
+        };
+      }
+      if (discardBtn) {
+        discardBtn.onclick = () => {
+          confirmUserAction({
+            title: 'Discard Saved Exam Session?',
+            message: `क्या आप वाकई "${savedCbtSession.testTitleHi || 'In-Progress Exam'}" के सेव किए गए सेशन को हटाना चाहते हैं? (Your saved progress for this incomplete attempt will be discarded.)`,
+            confirmText: '🗑️ Yes, Discard',
+            cancelText: 'Keep Session'
+          }, () => {
+            window.CGpediaCBT.clearSavedSession();
+            renderApp();
+            toast('🗑️ In-progress exam session discarded.');
+          });
+        };
+      }
+    }
 
     bindTestCardButtons(root);
   }
@@ -5988,6 +6028,11 @@
     containerEl.querySelectorAll('[data-start-test]').forEach((btn) => {
       btn.onclick = () => {
         const tid = btn.getAttribute('data-start-test');
+        const savedSession = window.CGpediaCBT && window.CGpediaCBT.getSavedActiveSession();
+        if (savedSession && savedSession.testId === tid && !savedSession.submitted) {
+          window.CGpediaCBT.launchLiveCbtSession({}, savedSession.questions, savedSession.langMode, cbtCallbacks, savedSession);
+          return;
+        }
         const testObj = (state.tests || []).find((t) => t.id === tid);
         if (!testObj) return;
         const qs = (testObj.questions && testObj.questions.length > 0)
@@ -6119,6 +6164,17 @@
       state.activeTab = 'analytics';
       renderApp();
       toast(`🎉 Exam submitted! Net Score: ${taggedResult.score} / ${taggedResult.maxScore} (${taggedResult.accuracyPercent}% Accuracy)`);
+    },
+    onExamLeft: () => {
+      applyBrandingAndSecurity();
+      if (state.activeTab !== 'test-series') {
+        state.activeTab = 'dashboard';
+      }
+      syncNavHighlight();
+      saveState();
+      renderApp();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      toast('⏸️ Test progress saved. You can Resume or Dismiss your attempt anytime.');
     }
   };
 
