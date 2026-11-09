@@ -5672,47 +5672,266 @@
     return false;
   }
 
+  function pickStoryPhotoFromPool(pool, seedStr) {
+    if (!Array.isArray(pool) || pool.length === 0) return '';
+    if (pool.length === 1) return pool[0];
+    const s = String(seedStr || '');
+    let hash = 0;
+    for (let i = 0; i < s.length; i++) {
+      hash = ((hash << 5) - hash + s.charCodeAt(i)) | 0;
+    }
+    return pool[Math.abs(hash) % pool.length];
+  }
+
   function getStoryImageUrl(st) {
     if (!st) return '';
     const rawUrl = String(st.imageUrl || '').trim();
-    if (rawUrl && !rawUrl.startsWith('data:image/svg+xml')) {
+    // Preserve custom admin-uploaded images or non-Unsplash URLs; re-evaluate auto-assigned Unsplash URLs for topic relevance
+    if (
+      rawUrl &&
+      !rawUrl.startsWith('data:image/svg+xml') &&
+      !rawUrl.includes('images.unsplash.com/')
+    ) {
       st.isAiGeneratedImage = false;
       return rawUrl;
     }
     const cat = normalizeStoryCategory(st.category);
     const combinedText = `${st.headlineHi || ''} ${st.headlineEn || ''} ${st.titleHi || ''} ${st.titleEn || ''} ${st.summaryHi || ''} ${st.summaryEn || ''}`.toLowerCase();
+    const seedKey = `${st.id || ''}_${st.headlineEn || st.headlineHi || ''}`;
 
-    let resolvedPhoto = 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=900&q=80';
-    if (/धान|कृषक|किसान|कृषि|फसल|paddy|krishak|farmer|agriculture|crop|msp/.test(combinedText)) {
-      resolvedPhoto = 'https://images.unsplash.com/photo-1500937386664-56d1dfef3854?auto=format&fit=crop&w=900&q=80';
-    } else if (/महतारी|महिला|दीदी|लखपति|पोषण|mahtari|women|shg|empowerment/.test(combinedText)) {
-      resolvedPhoto = 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?auto=format&fit=crop&w=900&q=80';
-    } else if (/टाइगर|बाघ|अभयारण्य|गुरु घासीदास|राष्ट्रीय उद्यान|वन्यजीव|tiger|wildlife|park|reserve/.test(combinedText)) {
-      resolvedPhoto = 'https://images.unsplash.com/photo-1561731216-c3a4d99437d5?auto=format&fit=crop&w=900&q=80';
-    } else if (/तेंदूपत्ता|वन|बस्तर|नियद नेल्लानार|जनजाति|आदिवासी|सरगुजा|जलप्रपात|forest|tendu|bastar|tribal|niyad/.test(combinedText)) {
-      resolvedPhoto = 'https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=900&q=80';
-    } else if (/औद्योगिक|उद्योग|इस्पात|खनिज|निवेश|कोरबा|भिलाई|industrial|industry|investment|steel|mining|msme/.test(combinedText)) {
-      resolvedPhoto = 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&w=900&q=80';
-    } else if (/सूर्य घर|सौर|बिजली|नवीकरणीय|ऊर्जा|solar|surya|renewable|electricity|energy/.test(combinedText)) {
-      resolvedPhoto = 'https://images.unsplash.com/photo-1509391366360-2e959784a276?auto=format&fit=crop&w=900&q=80';
-    } else if (/विद्यालक्ष्मी|शिक्षा|विश्वविद्यालय|शास्त्रीय भाषा|भाषा|सब्सक्रिप्शन|नालंदा|education|vidyalaxmi|university|language|onos|journal|library/.test(combinedText)) {
-      resolvedPhoto = 'https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?auto=format&fit=crop&w=900&q=80';
-    } else if (/आयुष्मान|स्वास्थ्य|अस्पताल|चिकित्सा|वय वंदना|ayushman|health|medical|hospital/.test(combinedText)) {
-      resolvedPhoto = 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&w=900&q=80';
-    } else if (/इसरो|अंतरिक्ष|उपग्रह|स्पैडेक्स|डॉकिंग|क्वांटम|विज्ञान|रक्षा|isro|spadex|space|satellite|docking|quantum|science|drdo/.test(combinedText)) {
-      resolvedPhoto = 'https://images.unsplash.com/photo-1517976487468-f20514c44f53?auto=format&fit=crop&w=900&q=80';
-    } else if (/जलवायु|पर्यावरण|बाकू|कार्बन|cop-29|cop29|climate|environment|unfccc|green/.test(combinedText)) {
-      resolvedPhoto = 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop&w=900&q=80';
-    } else if (/रेल|मेट्रो|सड़क|राजमार्ग|हवाई|लॉजिस्टिक्स|rail|train|highway|airport|infrastructure/.test(combinedText)) {
-      resolvedPhoto = 'https://images.unsplash.com/photo-1474487548417-781cb71495f3?auto=format&fit=crop&w=900&q=80';
-    } else if (/बजट|आर्थिक|वित्त|बैंक|जीडीपी|कर|budget|economy|finance|rbi|gdp|bank/.test(combinedText)) {
-      resolvedPhoto = 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&w=900&q=80';
-    } else if (/खेल|ओलंपिक|पदक|पुरस्कार|सम्मान|रत्न|sports|olympic|medal|award|trophy/.test(combinedText)) {
-      resolvedPhoto = 'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?auto=format&fit=crop&w=900&q=80';
-    } else if (cat === 'international') {
-      resolvedPhoto = 'https://images.unsplash.com/photo-1526778548025-fa2f459cd5c1?auto=format&fit=crop&w=900&q=80';
-    } else if (cat === 'national') {
-      resolvedPhoto = 'https://images.unsplash.com/photo-1532375810709-75b1da00537c?auto=format&fit=crop&w=900&q=80';
+    const topicPhotoRules = [
+      // 1. Space, ISRO, Satellites, Rocket Launches & Astronomy
+      {
+        re: /इसरो|अंतरिक्ष|उपग्रह|स्पैडेक्स|डॉकिंग|चंद्रयान|गगनयान|आदित्य|पीएसएलवी|जीएसएलवी|रॉकेट|नासा|isro|spadex|space|satellite|docking|chandrayaan|gaganyaan|pslv|gslv|rocket|nasa|orbit|astronaut/,
+        urls: [
+          'https://images.unsplash.com/photo-1517976487468-f20514c44f53?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1446776811953-b23d57bd21aa?auto=format&fit=crop&w=900&q=80'
+        ]
+      },
+      // 2. Quantum Science, AI, Semiconductor, Supercomputer, Cyber & Digital Tech
+      {
+        re: /क्वांटम|कृत्रिम बुद्धिमत्ता|एआई|सेमीकंडक्टर|सुपर कंप्यूटर|साइबर|डिजिटल|प्रौद्योगिकी|रोबोट|5जी|6जी|quantum|artificial intelligence|semiconductor|supercomputer|cyber|digital|robotics|telecom|innovation/,
+        urls: [
+          'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=900&q=80'
+        ]
+      },
+      // 3. Defence, DRDO, Military Exercises, Missiles, Navy, Air Force & Border Security
+      {
+        re: /डीआरडीओ|रक्षा|मिसाइल|सेना|नौसेना|वायुसेना|सैन्य अभ्यास|पनडुब्बी|लड़ाकू विमान|अग्नि|ब्रह्मोस|drdo|defence|defense|missile|military|army|navy|air force|submarine|frigate|exercise/,
+        urls: [
+          'https://images.unsplash.com/photo-1508614589041-895b88991e3e?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?auto=format&fit=crop&w=900&q=80'
+        ]
+      },
+      // 4. Tiger Reserves, Lions, Elephants, National Parks & Wildlife Conservation
+      {
+        re: /टाइगर|बाघ|अभयारण्य|गुरु घासीदास|तमोर पिंगला|इंद्रावती|कांगेर|बारनवापारा|अचानकमार|राष्ट्रीय उद्यान|वन्यजीव|हाथी|लेमरू|चीता|tiger|wildlife|national park|sanctuary|reserve|elephant|cheetah|leopard|biodiversity/,
+        urls: [
+          'https://images.unsplash.com/photo-1561731216-c3a4d99437d5?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1534567153574-2b12153a87f0?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1549366021-9f761d450615?auto=format&fit=crop&w=900&q=80'
+        ]
+      },
+      // 5. Paddy Procurement, Krishak Unnati, MSP, Agriculture, Farmers, Millets & Crops
+      {
+        re: /धान|कृषक|किसान|कृषि|फसल|समर्थन मूल्य|एमएसपी|कोदो|कुटकी|रागी|मिलेट|उर्वरक|बागवानी|मत्स्य|paddy|krishak|farmer|agriculture|crop|msp|millet|harvest|irrigation|horticulture|grain/,
+        urls: [
+          'https://images.unsplash.com/photo-1500937386664-56d1dfef3854?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1625246333195-78d9c38ad449?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1586771107445-d3ca888129ff?auto=format&fit=crop&w=900&q=80'
+        ]
+      },
+      // 6. Women Empowerment, Mahtari Vandan, Lakhpati Didi, Self-Help Groups (Bihan) & Child Welfare
+      {
+        re: /महतारी|महिला|दीदी|लखपति|पोषण|आंगनबाड़ी|बिहान|स्व-सहायता समूह|मातृत्व|बालिका|mahtari|women|lakhpati didi|shg|self help group|empowerment|maternal|girl child/,
+        urls: [
+          'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1509099836639-18ba1795216d?auto=format&fit=crop&w=900&q=80'
+        ]
+      },
+      // 7. Tendu Leaf, Minor Forest Produce, Bastar, Niyad Nellanar, Tribal Welfare & Forests
+      {
+        re: /तेंदूपत्ता|लघु वनोपज|वन|बस्तर|नियद नेल्लानार|जनजाति|आदिवासी|सरगुजा|बैगा|कमार|पहाड़ी कोरवा|अबूझमाड़िया|हल्बा|गोंड|forest|tendu|minor forest|bastar|tribal|niyad nellanar|adivasi|pvtg/,
+        urls: [
+          'https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1511497584788-876760111969?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1542273917363-3b1817f69a2d?auto=format&fit=crop&w=900&q=80'
+        ]
+      },
+      // 8. Waterfalls, Rivers, Dams, Mahanadi, Indravati, Hasdeo, Chitrakote & Jal Jeevan
+      {
+        re: /जलप्रपात|चित्रकोट|तीरथगढ़|महानदी|इंद्रावती नदी|हसदेव|शिवनाथ|अर्पा|बांध|सिंचाई|जल जीवन|पेयजल|waterfall|chitrakote|river|mahanadi|dam|reservoir|jal jeevan|water supply/,
+        urls: [
+          'https://images.unsplash.com/photo-1432405972618-c60b0225b8f9?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=900&q=80'
+        ]
+      },
+      // 9. Heritage, Temples, Culture, Ram Van Gaman, Sirpur, Bhoramdeo, Rajim, Bastar Dussehra & Tourism
+      {
+        re: /सिरपुर|भोरमदेव|राजिम|राम वन गमन|दंतेश्वरी|डोंगरगढ़|बमलेश्वरी|दशहरा|मड़ई|चक्रधर|महोत्सव|पर्यटन|मंदिर|धरोहर|यूनेस्को|संस्कृति|लोक कला|sirpur|bhoramdeo|rajim|temple|heritage|unesco|tourism|festival|cultural/,
+        urls: [
+          'https://images.unsplash.com/photo-1524492412937-b28074a5d7da?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1548013146-72479768bada?auto=format&fit=crop&w=900&q=80'
+        ]
+      },
+      // 10. Industrial Policy, Steel, Bhilai, Korba, Coal, Iron Ore, Mining, NMDC, SECL & Manufacturing
+      {
+        re: /औद्योगिक|उद्योग|इस्पात|खनिज|निवेश|कोरबा|भिलाई|बैलाडीला|कोयला|लौह अयस्क|एनएमडीसी|एसईसीएल|एमएसएमई|स्टार्टअप|विनिर्माण|industrial|industry|investment|steel|mining|coal|iron ore|nmdc|secl|msme|manufacturing|factory/,
+        urls: [
+          'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1513828583688-c52646db42da?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1504917595217-d4dc5ebe6122?auto=format&fit=crop&w=900&q=80'
+        ]
+      },
+      // 11. Solar Energy, PM Surya Ghar, Green Hydrogen, Power Plants & Renewable Electricity
+      {
+        re: /सूर्य घर|सौर|बिजली|नवीकरणीय|ऊर्जा|ग्रीन हाइड्रोजन|पवन ऊर्जा|विद्युत|solar|surya ghar|renewable|electricity|energy|green hydrogen|power plant|wind energy/,
+        urls: [
+          'https://images.unsplash.com/photo-1509391366360-2e959784a276?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1466611653911-95081537e5b7?auto=format&fit=crop&w=900&q=80'
+        ]
+      },
+      // 12. Education, Vidyalaxmi, ONOS, Classical Languages, Universities, IIT/IIM, Books & Libraries
+      {
+        re: /विद्यालक्ष्मी|शिक्षा|विश्वविद्यालय|शास्त्रीय भाषा|भाषा|सब्सक्रिप्शन|नालंदा|पीएम श्री|छात्रवृत्ति|पुस्तक|साहित्य|ग्रंथालय|आईआईटी|प्रोफेसर|education|vidyalaxmi|university|classical language|onos|journal|library|scholarship|school|book|literary/,
+        urls: [
+          'https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=900&q=80'
+        ]
+      },
+      // 13. Healthcare, Ayushman Bharat, Hospitals, Medical Colleges, Vaccines & Disease Eradication
+      {
+        re: /आयुष्मान|स्वास्थ्य|अस्पताल|चिकित्सा|वय वंदना|मेडिकल कॉलेज|टीकाकरण|मलेरिया|टीबी|सिकल सेल|दवा|एम्स|ayushman|health|medical|hospital|vaccine|sickle cell|aiims|doctor|medicine/,
+        urls: [
+          'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?auto=format&fit=crop&w=900&q=80'
+        ]
+      },
+      // 14. Railways, Vande Bharat, Metro, Bullet Train & Railway Stations
+      {
+        re: /रेल|रेलवे|वंदे भारत|मेट्रो|अमृत भारत स्टेशन|ट्रेन|rail|railway|vande bharat|metro|train|locomotive/,
+        urls: [
+          'https://images.unsplash.com/photo-1474487548417-781cb71495f3?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1515165562839-978bbcf18277?auto=format&fit=crop&w=900&q=80'
+        ]
+      },
+      // 15. Aviation, Airports, Flights, Bilaspur / Jagdalpur / Raipur Airport
+      {
+        re: /हवाई अड्डा|विमान|उड़ान|एयरपोर्ट|एविएशन|फ्लाइट|airport|aviation|flight|airline|aircraft|udaan/,
+        urls: [
+          'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1569154941061-e231b4725ef1?auto=format&fit=crop&w=900&q=80'
+        ]
+      },
+      // 16. Highways, Expressways, Bridges, Bharatmala, Roads & Logistics
+      {
+        re: /सड़क|राजमार्ग|एक्सप्रेसवे|भारतमाला|पुल|सेतु|लॉजिस्टिक्स|बंदरगाह|highway|expressway|bridge|road|infrastructure|logistics|port/,
+        urls: [
+          'https://images.unsplash.com/photo-1519003722824-194d4455a60c?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1545558014-8692077e9b5c?auto=format&fit=crop&w=900&q=80'
+        ]
+      },
+      // 17. Housing, PM Awas Yojana, Rural / Urban Development, Panchayati Raj & Swachhata
+      {
+        re: /आवास|प्रधानमंत्री आवास|मोर मकान|पंचायत|ग्रामीण विकास|स्वच्छ सर्वेक्षण|स्वच्छता|स्मार्ट सिटी|नगर निगम|awas|housing|panchayat|rural development|swachh|cleanliness|smart city|urban/,
+        urls: [
+          'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=900&q=80'
+        ]
+      },
+      // 18. Budget, Economy, RBI, Banking, GDP, GST, Tax, Trade & Finance
+      {
+        re: /बजट|आर्थिक सर्वेक्षण|आर्थिक|वित्त|बैंक|आरबीआई|रेपो रेट|जीडीपी|जीएसटी|कर|मुद्रास्फीति|निर्यात|व्यापार|शेयर बाजार|budget|economic survey|economy|finance|rbi|gdp|gst|bank|tax|inflation|export|trade/,
+        urls: [
+          'https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=900&q=80'
+        ]
+      },
+      // 19. Judiciary, Supreme Court, High Court, Bilaspur High Court, Constitution & Laws
+      {
+        re: /न्यायालय|सुप्रीम कोर्ट|हाई कोर्ट|उच्च न्यायालय|मुख्य न्यायाधीश|संविधान|विधेयक|अधिनियम|कानून|न्याय संहिता|supreme court|high court|chief justice|judiciary|constitution|law|bill|act|legal/,
+        urls: [
+          'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1453945619913-79ec89a82c51?auto=format&fit=crop&w=900&q=80'
+        ]
+      },
+      // 20. Parliament, Vidhan Sabha, Cabinet, Election Commission, Governance & Polity
+      {
+        re: /संसद|विधानसभा|मंत्रिमंडल|कैबिनेट|निर्वाचन|चुनाव आयोग|लोकसभा|राज्यसभा|राज्यपाल|मुख्यमंत्री|प्रधानमंत्री|राष्ट्रपति|नियुक्ति|आयोग|parliament|vidhan sabha|cabinet|election|governor|chief minister|president|appointment|commission/,
+        urls: [
+          'https://images.unsplash.com/photo-1541872703-74c5e44368f9?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1529107386315-e1a2ed48a620?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1532375810709-75b1da00537c?auto=format&fit=crop&w=900&q=80'
+        ]
+      },
+      // 21. Climate Change, COP-29, Carbon Market, Environment, Ecology & Green Initiatives
+      {
+        re: /जलवायु|पर्यावरण|बाकू|कार्बन|cop-29|cop29|cop30|climate|environment|unfccc|green credit|emission|glacier|ozone|pollution/,
+        urls: [
+          'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=900&q=80'
+        ]
+      },
+      // 22. International Summits, G20, BRICS, UN, ASEAN, Quad, Global Indices & Diplomacy
+      {
+        re: /जी-20|जी20|ब्रिक्स|संयुक्त राष्ट्र|शिखर सम्मेलन|आसियान|क्वाड|विश्व बैंक|आईएमएफ|सूचकांक|रैंकिंग|द्विपक्षीय|संधि|g20|brics|united nations|summit|asean|quad|world bank|imf|global index|diplomacy|bilateral/,
+        urls: [
+          'https://images.unsplash.com/photo-1526778548025-fa2f459cd5c1?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1521295121783-8a321d551ad2?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=900&q=80'
+        ]
+      },
+      // 23. Sports, Olympics, Paralympics, Cricket, Hockey, Chess, Archery & Tournaments
+      {
+        re: /खेल|ओलंपिक|पैरालंपिक|क्रिकेट|हॉकी|शतरंज|तीरंदाजी|खेलो इंडिया|चैंपियनशिप|टूर्नामेंट|खिलाड़ी|एथलीट|sports|olympic|paralympic|cricket|hockey|chess|archery|khelo india|tournament|championship|athlete/,
+        urls: [
+          'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1517649763962-0c623066013b?auto=format&fit=crop&w=900&q=80'
+        ]
+      },
+      // 24. Awards, Honours, Bharat Ratna, Padma Awards, Rajyotsava Alankaran & Nobel Prize
+      {
+        re: /पुरस्कार|सम्मान|अलंकरण|भारत रत्न|पद्म|नोबेल|साहित्य अकादमी|ज्ञानपीठ|राष्ट्रीय पुरस्कार|पदक|award|honour|honor|bharat ratna|padma|nobel|medal|trophy|prize/,
+        urls: [
+          'https://images.unsplash.com/photo-1567427017947-545c5f8d16ad?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1578269174936-2709b6aeb913?auto=format&fit=crop&w=900&q=80'
+        ]
+      }
+    ];
+
+    let resolvedPhoto = '';
+    for (let i = 0; i < topicPhotoRules.length; i++) {
+      if (topicPhotoRules[i].re.test(combinedText)) {
+        resolvedPhoto = pickStoryPhotoFromPool(topicPhotoRules[i].urls, seedKey);
+        break;
+      }
+    }
+
+    if (!resolvedPhoto) {
+      if (cat === 'international') {
+        resolvedPhoto = pickStoryPhotoFromPool([
+          'https://images.unsplash.com/photo-1526778548025-fa2f459cd5c1?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1521295121783-8a321d551ad2?auto=format&fit=crop&w=900&q=80'
+        ], seedKey);
+      } else if (cat === 'national') {
+        resolvedPhoto = pickStoryPhotoFromPool([
+          'https://images.unsplash.com/photo-1532375810709-75b1da00537c?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1524492412937-b28074a5d7da?auto=format&fit=crop&w=900&q=80'
+        ], seedKey);
+      } else {
+        resolvedPhoto = pickStoryPhotoFromPool([
+          'https://images.unsplash.com/photo-1500937386664-56d1dfef3854?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=900&q=80',
+          'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&w=900&q=80'
+        ], seedKey);
+      }
     }
 
     st.imageUrl = resolvedPhoto;
@@ -6301,7 +6520,13 @@
       }
       closeModal();
       renderApp();
-      toast('✅ Daily Dose & Current Affairs Story published live!');
+      sendSystemAndAppNotification(
+        '⚡ समसामयिकी (Current Affairs): ' + (newStory.headlineHi || newStory.headlineEn),
+        newStory.summaryHi || newStory.summaryEn || newStory.headlineEn,
+        'stories',
+        'stories_' + newStory.id,
+        'current-affairs'
+      );
     };
   }
 
@@ -6809,7 +7034,16 @@
     const cleanMsg = String(message || 'Tap to view the latest update in CGpedia.').trim();
     const cleanKey = String(notifKey || (category + '_' + Date.now()));
 
-    // 1. Native Android Notification Bridge
+    // Mark as notified in local store so cloud echo does not duplicate the same notification
+    try {
+      const store = loadNotifiedItemsStore();
+      const normalizedComposite = cleanKey.replace(/^(tests|notifications|stories)_/, '$1:');
+      store.seenIds[normalizedComposite] = Date.now();
+      store.seenIds[cleanKey] = Date.now();
+      saveNotifiedItemsStore(store);
+    } catch (_) {}
+
+    // 1. Native Android Notification Bridge (shows directly in device Notification Bar)
     let sentViaAndroid = false;
     try {
       if (window.AndroidBridge && typeof window.AndroidBridge.postNotification === 'function') {
@@ -6819,28 +7053,30 @@
     } catch (_) {}
 
     // 2. Web / PWA Service Worker or Browser Notification API
-    if (!sentViaAndroid && 'Notification' in window && Notification.permission === 'granted') {
-      try {
-        if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.ready.then((reg) => {
-            if (reg && typeof reg.showNotification === 'function') {
-              reg.showNotification(cleanTitle, {
-                body: cleanMsg,
-                icon: 'assets/icon-192.png',
-                badge: 'assets/icon-192.png',
-                tag: cleanKey,
-                data: { tab: targetTab || 'dashboard' }
-              });
-            }
-          }).catch(() => {});
-        } else {
-          new Notification(cleanTitle, {
-            body: cleanMsg,
-            icon: 'assets/icon-192.png',
-            tag: cleanKey
-          });
-        }
-      } catch (_) {}
+    if (!sentViaAndroid && 'Notification' in window) {
+      if (Notification.permission === 'granted') {
+        try {
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.ready.then((reg) => {
+              if (reg && typeof reg.showNotification === 'function') {
+                reg.showNotification(cleanTitle, {
+                  body: cleanMsg,
+                  icon: 'assets/icon-192.png',
+                  badge: 'assets/icon-192.png',
+                  tag: cleanKey,
+                  data: { tab: targetTab || 'dashboard' }
+                });
+              }
+            }).catch(() => {});
+          } else {
+            new Notification(cleanTitle, {
+              body: cleanMsg,
+              icon: 'assets/icon-192.png',
+              tag: cleanKey
+            });
+          }
+        } catch (_) {}
+      }
     }
 
     // 3. In-App Toast Banner
@@ -6868,6 +7104,17 @@
     return null;
   }
 
+  function extractCloudItemTimestampMs(item) {
+    if (!item) return 0;
+    if (typeof item.createdAtMs === 'number' && item.createdAtMs > 0) return item.createdAtMs;
+    const parsedIso = Date.parse(item.updatedAtIso || item.createdAtIso || item.publishedDateIso || item.dateLabel || '');
+    if (!Number.isNaN(parsedIso) && parsedIso > 0) return parsedIso;
+    if (item.createdAt && typeof item.createdAt.seconds === 'number') {
+      return item.createdAt.seconds * 1000;
+    }
+    return 0;
+  }
+
   function checkAndDispatchCloudUpdateNotifications(key, docs) {
     if (!Array.isArray(docs)) return;
     const eligibleItems = key === 'tests'
@@ -6886,7 +7133,7 @@
         const compositeId = `${key}:${item.id}`;
         store.seenIds[compositeId] = Date.now();
         if (!SEED_ITEM_IDS.has(String(item.id))) {
-          const itemTs = Date.parse(item.updatedAtIso || item.createdAtIso || '') || 0;
+          const itemTs = extractCloudItemTimestampMs(item);
           if (itemTs >= recentCutoffMs && itemTs >= newestTs) {
             newestTs = itemTs;
             newestRecentItem = item;
@@ -6915,8 +7162,10 @@
     const newlyArrived = [];
     eligibleItems.forEach((item) => {
       const compositeId = `${key}:${item.id}`;
-      if (!store.seenIds[compositeId]) {
+      const altId = `${key}_${item.id}`;
+      if (!store.seenIds[compositeId] && !store.seenIds[altId]) {
         store.seenIds[compositeId] = Date.now();
+        store.seenIds[altId] = Date.now();
         if (!SEED_ITEM_IDS.has(String(item.id))) {
           newlyArrived.push(item);
         }
@@ -6925,20 +7174,18 @@
 
     if (newlyArrived.length > 0) {
       saveNotifiedItemsStore(store);
-      if (isStudentAuthenticated()) {
-        newlyArrived.slice(0, 3).forEach((item) => {
-          const notifInfo = buildNotificationPayloadForItem(key, item);
-          if (notifInfo) {
-            sendSystemAndAppNotification(
-              notifInfo.title,
-              notifInfo.message,
-              notifInfo.category,
-              `${key}_${item.id}`,
-              notifInfo.tab
-            );
-          }
-        });
-      }
+      newlyArrived.slice(0, 3).forEach((item) => {
+        const notifInfo = buildNotificationPayloadForItem(key, item);
+        if (notifInfo) {
+          sendSystemAndAppNotification(
+            notifInfo.title,
+            notifInfo.message,
+            notifInfo.category,
+            `${key}_${item.id}`,
+            notifInfo.tab
+          );
+        }
+      });
     }
   }
 
@@ -7587,7 +7834,8 @@
     performStudentLogout,
     toggleStudentAnthemFloatingPlayer,
     openSettingsDrawer,
-    closeSettingsDrawer
+    closeSettingsDrawer,
+    sendSystemAndAppNotification
   };
   window.CGpediaApp = publicApi;
 
@@ -7772,7 +8020,8 @@
       }, 900);
     }
 
-    // Connect Firebase Cloud Sync & Intelligent Verified Current Affairs Sync in background
+    // Connect Firebase Cloud Sync & 3-Hour Conditional Verified Current Affairs Sync in background
+    const THREE_HOURS_CA_INTERVAL_MS = 3 * 60 * 60 * 1000; // 3 hours (10,800,000 ms)
     let hourlyCaSyncInProgress = false;
     async function runHourlyCurrentAffairsAutoUpdate(forceNow) {
       if (hourlyCaSyncInProgress || navigator.onLine === false) return;
@@ -7781,13 +8030,9 @@
       const lastSyncMs = Number(localStorage.getItem(LAST_HOURLY_CA_KEY) || 0);
       const nowMs = Date.now();
       const canonicalStories = getCanonicalCurrentAffairsList();
-      const activeDailyDose = getActiveDailyDoseStories();
-      const hasAllThreeActiveCategories =
-        activeDailyDose.some((s) => normalizeStoryCategory(s.category) === 'chhattisgarh') &&
-        activeDailyDose.some((s) => normalizeStoryCategory(s.category) === 'national') &&
-        activeDailyDose.some((s) => normalizeStoryCategory(s.category) === 'international');
 
-      if (!forceNow && (nowMs - lastSyncMs) < 3600000 && activeDailyDose.length >= 3 && hasAllThreeActiveCategories) {
+      // Only check every ~3 hours unless forced manually
+      if (!forceNow && lastSyncMs > 0 && (nowMs - lastSyncMs) < THREE_HOURS_CA_INTERVAL_MS) {
         return;
       }
 
@@ -7800,12 +8045,12 @@
         const generated = await window.CGpediaAdmin.generateCurrentAffairsWithAi({
           mode: 'intelligent_sync',
           category: 'ALL',
-          existingStories: activeDailyDose,
+          existingStories: canonicalStories,
           sourceName: 'PIB / DPR Chhattisgarh / Official Desk',
           count: 3
         });
         if (Array.isArray(generated) && generated.length > 0 && typeof window.CGpediaAdmin.enrichAndDeduplicateCurrentAffairsItems === 'function') {
-          const uniqueItems = window.CGpediaAdmin.enrichAndDeduplicateCurrentAffairsItems(generated, activeDailyDose, {
+          const uniqueItems = window.CGpediaAdmin.enrichAndDeduplicateCurrentAffairsItems(generated, canonicalStories, {
             category: 'ALL',
             sourceName: 'PIB / DPR Chhattisgarh / Official Desk'
           });
@@ -7828,12 +8073,26 @@
                 } catch (_) {}
               }
             }
+            const topNew = uniqueItems[0];
+            if (topNew) {
+              sendSystemAndAppNotification(
+                '⚡ समसामयिकी अपडेट: ' + (topNew.headlineHi || topNew.headlineEn || 'New Current Affairs'),
+                topNew.summaryHi || topNew.summaryEn || topNew.headlineEn || 'नया करंट अफेयर्स अपडेट उपलब्ध है।',
+                'stories',
+                'stories_' + topNew.id,
+                'current-affairs'
+              );
+            }
             if (state.activeTab === 'dashboard' || state.activeTab === 'current-affairs') {
               renderApp();
             }
           } else {
+            // No new updates found in this 3-hour window — leave Current Affairs untouched
             localStorage.setItem(LAST_HOURLY_CA_KEY, String(Date.now()));
           }
+        } else {
+          // AI found no new updates in this 3-hour window — do not update Current Affairs
+          localStorage.setItem(LAST_HOURLY_CA_KEY, String(Date.now()));
         }
       } catch (_) {
         // Silent retry on next cycle
@@ -7849,14 +8108,14 @@
       }
     }, 60);
 
-    // Run Google AI Current Affairs & Story Auto-Update non-blockingly in the background after initial render
+    // Run Google AI Current Affairs & Story Auto-Update check non-blockingly in the background after initial render
     setTimeout(() => {
       runHourlyCurrentAffairsAutoUpdate(false);
     }, 2500);
 
-    // Trigger online Current Affairs auto-update every 1 hour (3,600,000 ms)
+    // Trigger online Current Affairs auto-update check every 3 hours (10,800,000 ms)
     setInterval(() => {
       runHourlyCurrentAffairsAutoUpdate(false);
-    }, 3600000);
+    }, THREE_HOURS_CA_INTERVAL_MS);
   });
 })();

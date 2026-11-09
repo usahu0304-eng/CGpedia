@@ -591,16 +591,24 @@
     } catch (bindErr) {
       console.warn('Named Firestore database binding notice:', bindErr);
     }
+    let fsInst = null;
     try {
-      return appInstance.firestore(NAMED_DATABASE_ID);
+      fsInst = appInstance.firestore(NAMED_DATABASE_ID);
     } catch (_) {
-      return window.firebase.firestore();
+      fsInst = window.firebase.firestore();
     }
+    try {
+      if (fsInst && typeof fsInst.settings === 'function') {
+        fsInst.settings({ experimentalAutoDetectLongPolling: true, merge: true });
+      }
+    } catch (_) {}
+    return fsInst;
   }
 
   const activeListenerMap = new Map();
   let secondaryListenersAttached = false;
   let secondaryListenerTimer = null;
+  let hasSuccessfulCloudSnapshot = false;
 
   function initFirebaseConnection(onStateReady) {
     if (navigator.onLine === false) {
@@ -669,11 +677,13 @@
     try {
       const unsub = db.collection(col).onSnapshot(
         (snap) => {
+          hasSuccessfulCloudSnapshot = true;
+          isCloudConnected = true;
           if (!firstSnapFired) {
             firstSnapFired = true;
             if (typeof onFirstSnapshotDone === 'function') onFirstSnapshotDone();
           }
-          if (navigator.onLine !== false && currentSyncStatusState === 'error') {
+          if (navigator.onLine !== false && currentSyncStatusState !== 'connected') {
             updateSyncBadge('connected', true);
           }
           if (!window.CGpediaApp || typeof window.CGpediaApp.mergeCloudCollection !== 'function') return;
@@ -693,12 +703,33 @@
             firstSnapFired = true;
             if (typeof onFirstSnapshotDone === 'function') onFirstSnapshotDone();
           }
+          activeListenerMap.delete(col);
           console.warn(`Firestore listener notice [${col}]:`, err && err.message ? err.message : err);
           if (navigator.onLine === false) {
             updateSyncBadge('offline', false);
-          } else if (err && (err.code === 'unavailable' || err.code === 'unauthenticated' || err.code === 'resource-exhausted')) {
-            updateSyncBadge('error', false);
+            return;
           }
+          // Keep status Connected when online and fallback to one-time collection fetch + quiet reconnect
+          if (isCloudConnected || hasSuccessfulCloudSnapshot) {
+            updateSyncBadge('connected', true);
+          }
+          try {
+            db.collection(col).get().then((snap) => {
+              if (!snap || !window.CGpediaApp || typeof window.CGpediaApp.mergeCloudCollection !== 'function') return;
+              hasSuccessfulCloudSnapshot = true;
+              if (navigator.onLine !== false) updateSyncBadge('connected', true);
+              const docs = [];
+              snap.forEach((doc) => {
+                const data = doc.data() || {};
+                if (data.isDeleted === true || data.status === 'deleted') {
+                  markDocDeletedLocally(col, doc.id);
+                  return;
+                }
+                docs.push(Object.assign({ id: doc.id }, data));
+              });
+              window.CGpediaApp.mergeCloudCollection(key, docs, col);
+            }).catch(() => {});
+          } catch (_) {}
         }
       );
       activeListenerMap.set(col, unsub);
@@ -801,7 +832,7 @@
 
     // Fallback: ensure Connected badge and lightweight student support listeners activate smoothly
     setTimeout(() => {
-      if (navigator.onLine !== false && currentSyncStatusState === 'synchronizing' && isCloudConnected) {
+      if (navigator.onLine !== false && isCloudConnected) {
         updateSyncBadge('connected', true);
       }
       subscribeStudentSupportCollectionsNow();

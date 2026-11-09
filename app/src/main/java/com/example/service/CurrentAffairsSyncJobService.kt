@@ -18,26 +18,22 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 /**
- * Scheduled Background Service (`JobService`) that automatically refreshes
- * Bilingual Current Affairs across Chhattisgarh, India, and World every 60 minutes
- * and triggers a push notification to users when new updates arrive.
+ * Scheduled Background Service (`JobService`) that automatically checks for
+ * Bilingual Current Affairs across Chhattisgarh, India, and World every 3 hours
+ * and triggers a device notification bar alert only when new updates arrive.
  */
 class CurrentAffairsSyncJobService : JobService() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onStartJob(params: JobParameters?): Boolean {
-        val currentUser = Firebase.auth.currentUser
-        if (currentUser == null) {
-            jobFinished(params, false)
-            return false
-        }
+        val authorUid = Firebase.auth.currentUser?.uid ?: "system_auto_sync"
 
         serviceScope.launch {
             runCatching {
                 val aiService = CgpediaAiService()
                 val repository = CgpediaRepository(applicationContext)
-                val grounded = aiService.fetchGroundedCurrentAffairs(currentUser.uid).getOrNull()
+                val grounded = aiService.fetchGroundedCurrentAffairs(authorUid).getOrNull()
                 if (!grounded.isNullOrEmpty()) {
                     val savedCount = repository.saveCurrentAffairsBatch(grounded).getOrDefault(0)
                     if (savedCount > 0) {
@@ -74,7 +70,7 @@ class CurrentAffairsSyncJobService : JobService() {
 
     companion object {
         private const val JOB_ID_CURRENT_AFFAIRS_SYNC = 4401
-        private const val SIXTY_MINUTES_MS = 60L * 60L * 1000L // 60 minutes auto-sync interval
+        private const val THREE_HOURS_MS = 3L * 60L * 60L * 1000L // 3 hours auto-sync interval
 
         fun schedulePeriodicSync(context: Context) {
             runCatching {
@@ -85,7 +81,7 @@ class CurrentAffairsSyncJobService : JobService() {
                 val component = ComponentName(context, CurrentAffairsSyncJobService::class.java)
                 val jobInfo = JobInfo.Builder(JOB_ID_CURRENT_AFFAIRS_SYNC, component)
                     .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
-                    .setPeriodic(SIXTY_MINUTES_MS)
+                    .setPeriodic(THREE_HOURS_MS)
                     .build()
                 scheduler.schedule(jobInfo)
             }.onFailure { e ->
