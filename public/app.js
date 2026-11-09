@@ -268,7 +268,7 @@
           return;
         }
         const script = document.createElement('script');
-        script.src = 'admin-console.js?v=7.0';
+        script.src = 'admin-console.js?v=7.2';
         script.defer = true;
         script.setAttribute('data-admin-console-lazy', '1');
         script.onload = () => resolve(window.CGpediaAdmin || null);
@@ -526,7 +526,7 @@
     const cancelLabel = opts.cancelText || opts.cancelLabel || 'Cancel';
     const icon = opts.icon || '⚠️';
     modalRoot.innerHTML = `
-      <div class="modal-backdrop" id="appUserConfirmBackdrop" role="dialog" aria-modal="true" style="z-index:9999;">
+      <div class="modal-backdrop" id="appUserConfirmBackdrop" role="dialog" aria-modal="true" style="z-index:9600;">
         <div class="modal-card" style="max-width:420px;width:100%;text-align:center;padding:24px 22px;margin:auto;">
           <div style="width:52px;height:52px;border-radius:50%;background:var(--danger-soft);color:var(--danger);display:flex;align-items:center;justify-content:center;font-size:1.45rem;margin:0 auto 12px;">
             ${icon}
@@ -542,8 +542,14 @@
     `;
     const cancelBtn = document.getElementById('appUserConfirmCancelBtn');
     const okBtn = document.getElementById('appUserConfirmOkBtn');
+    const confirmBackdrop = document.getElementById('appUserConfirmBackdrop');
     if (cancelBtn) {
       cancelBtn.onclick = () => { modalRoot.innerHTML = ''; };
+    }
+    if (confirmBackdrop) {
+      confirmBackdrop.onclick = (e) => {
+        if (e.target === confirmBackdrop) modalRoot.innerHTML = '';
+      };
     }
     if (okBtn) {
       okBtn.onclick = async () => {
@@ -3674,14 +3680,14 @@
       );
 
       modalRoot.innerHTML = `
-        <div class="modal-backdrop">
+        <div class="modal-backdrop" id="studentPaymentModalBackdrop">
           <div class="modal-card" style="max-width:540px;">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-              <div>
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:12px;">
+              <div style="min-width:0;flex:1;">
                 <span class="badge badge-paid">PREMIUM PACKAGE UNLOCK</span>
-                <h2 style="font-size:1.12rem;font-weight:800;margin-top:3px;">${esc(item.titleHi)}</h2>
+                <h2 style="font-size:1.1rem;font-weight:800;margin-top:3px;line-height:1.35;">${esc(item.titleHi)}</h2>
               </div>
-              <button class="btn btn-outline btn-sm" id="closePayModalBtn">✕</button>
+              <button type="button" class="btn btn-outline btn-sm" id="closePayModalBtn" style="flex-shrink:0;">✕</button>
             </div>
 
             <div class="kpi-grid" style="grid-template-columns:1fr 1fr;margin-bottom:12px;">
@@ -3696,9 +3702,9 @@
             </div>
 
             <!-- Coupon Input -->
-            <div style="display:flex;gap:8px;margin-bottom:14px;">
-              <input class="form-input" id="payCouponInput" value="${esc(appliedCouponCode)}" placeholder="Have a Coupon Code? (e.g. CGPSC50)" style="padding:7px 11px;" />
-              <button class="btn btn-outline btn-sm" id="applyPayCouponBtn">🎟️ Apply</button>
+            <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+              <input class="form-input" id="payCouponInput" value="${esc(appliedCouponCode)}" placeholder="Have a Coupon Code? (e.g. CGPSC50)" style="flex:1;min-width:170px;padding:7px 11px;" />
+              <button type="button" class="btn btn-outline btn-sm" id="applyPayCouponBtn">🎟️ Apply</button>
             </div>
 
             <!-- UPI QR Code Box -->
@@ -3713,8 +3719,8 @@
               `}
               ${upiId ? `
                 <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:6px;flex-wrap:wrap;">
-                  <code style="padding:6px 12px;border-radius:6px;background:var(--surface);border:1px solid var(--border);font-weight:800;font-size:0.9rem;">${esc(upiId)}</code>
-                  <button class="btn btn-primary btn-sm" id="copyUpiIdBtn">📋 Copy UPI ID</button>
+                  <code style="padding:6px 12px;border-radius:6px;background:var(--surface);border:1px solid var(--border);font-weight:800;font-size:0.9rem;word-break:break-all;">${esc(upiId)}</code>
+                  <button type="button" class="btn btn-primary btn-sm" id="copyUpiIdBtn">📋 Copy UPI ID</button>
                 </div>
               ` : `
                 <div style="font-size:0.78rem;color:var(--text-muted);margin-top:4px;">UPI ID not configured by Admin yet.</div>
@@ -3731,8 +3737,8 @@
             <div style="padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);margin-bottom:12px;">
               <div style="font-size:0.78rem;font-weight:800;margin-bottom:6px;">🧾 Submit Payment Verification Record (Optional UTR / Ref No.)</div>
               <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                <input class="form-input" id="payModalUtrInput" placeholder="Enter 12-digit UPI UTR / Transaction Ref" style="flex:1;min-width:180px;padding:7px 10px;font-size:0.8rem;" />
-                <button class="btn btn-navy btn-sm" id="submitPayOrderModalBtn">📤 Submit Payment Record</button>
+                <input class="form-input" id="payModalUtrInput" placeholder="Enter 12-digit UPI UTR / Transaction Ref" style="flex:1;min-width:170px;padding:7px 10px;font-size:0.8rem;" />
+                <button type="button" class="btn btn-navy btn-sm" id="submitPayOrderModalBtn">📤 Submit Payment Record</button>
               </div>
             </div>
 
@@ -3741,7 +3747,7 @@
                 💬 Send Payment Screenshot on WhatsApp (${esc(rawWa)})
               </a>
             ` : `
-              <button class="btn btn-outline btn-lg" style="width:100%;" id="openPaymentCenterFromModalBtn">
+              <button type="button" class="btn btn-outline btn-lg" style="width:100%;" id="openPaymentCenterFromModalBtn">
                 💳 Open Student Payment Center
               </button>
             `}
@@ -3749,7 +3755,14 @@
         </div>
       `;
 
-      document.getElementById('closePayModalBtn').onclick = () => { modalRoot.innerHTML = ''; };
+      const closePayModal = () => { modalRoot.innerHTML = ''; };
+      document.getElementById('closePayModalBtn').onclick = closePayModal;
+      const payBackdrop = document.getElementById('studentPaymentModalBackdrop');
+      if (payBackdrop) {
+        payBackdrop.onclick = (e) => {
+          if (e.target === payBackdrop) closePayModal();
+        };
+      }
       const copyBtn = document.getElementById('copyUpiIdBtn');
       if (copyBtn) {
         copyBtn.onclick = () => {
@@ -6163,7 +6176,7 @@
       const summaryText = getStoryLocalizedSummary(storyObj, lang);
 
       storyRoot.innerHTML = `
-        <div class="modal-backdrop" id="instaStoryBackdrop" style="position:fixed;top:0;left:0;right:0;bottom:0;width:100%;height:100%;background:#040918;padding:0;margin:0;z-index:2147483640;display:flex;align-items:stretch;justify-content:center;">
+        <div class="modal-backdrop" id="instaStoryBackdrop" style="position:fixed;top:0;left:0;right:0;bottom:0;width:100%;height:100%;background:#040918;padding:0;margin:0;z-index:8500;display:flex;align-items:stretch;justify-content:center;">
           <div style="width:100%;height:100%;max-width:100%;max-height:100%;background:linear-gradient(165deg,#07122E 0%,#0F2557 52%,#1B1440 100%);color:#fff;border-radius:0;border:none;display:flex;flex-direction:column;justify-content:space-between;position:relative;overflow:hidden;user-select:none;">
 
             <!-- Top Segmented WhatsApp-Style Story Progress Bars -->
@@ -6427,7 +6440,7 @@
             </div>
           </div>
 
-          <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:14px;">
+          <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:14px;flex-wrap:wrap;">
             <button type="button" class="btn btn-outline" id="cancelQuickAdminStoryBtn">Cancel</button>
             <button type="button" class="btn btn-primary" id="publishQuickAdminStoryBtn">🚀 Publish Story Now</button>
           </div>
@@ -6438,6 +6451,12 @@
     const closeModal = () => { modalRoot.innerHTML = ''; };
     document.getElementById('closeQuickAdminStoryModalBtn').onclick = closeModal;
     document.getElementById('cancelQuickAdminStoryBtn').onclick = closeModal;
+    const quickStoryBackdrop = document.getElementById('quickAdminStoryModalBackdrop');
+    if (quickStoryBackdrop) {
+      quickStoryBackdrop.onclick = (e) => {
+        if (e.target === quickStoryBackdrop) closeModal();
+      };
+    }
     document.getElementById('openFullAiCaStudioBtn').onclick = () => {
       closeModal();
       navigateToTab('admin', 'stories');
@@ -8003,7 +8022,7 @@
     // Register Service Worker non-blockingly after initial render
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
       setTimeout(() => {
-        navigator.serviceWorker.register('sw.js?v=7.0').then((reg) => {
+        navigator.serviceWorker.register('sw.js?v=7.2').then((reg) => {
           try { reg.update(); } catch (_) {}
         }).catch(() => {});
       }, 300);

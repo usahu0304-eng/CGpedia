@@ -1,11 +1,11 @@
-const CACHE_NAME = 'cgpedia-platform-v24';
+const CACHE_NAME = 'cgpedia-platform-v26';
 const CORE_ASSETS = [
   '/',
   '/index.html',
-  '/styles.css?v=6.8',
-  '/firebase-sync.js?v=7.0',
-  '/exam-engine.js?v=7.0',
-  '/app.js?v=7.0',
+  '/styles.css?v=7.2',
+  '/firebase-sync.js?v=7.2',
+  '/exam-engine.js?v=7.2',
+  '/app.js?v=7.2',
   '/manifest.webmanifest',
   '/favicon.png',
   '/assets/cgpedia-logo-clean.png',
@@ -57,13 +57,15 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
 
-  const isHtmlNavigation =
+  const isHtmlOrCodeAsset =
     event.request.mode === 'navigate' ||
     url.pathname === '/' ||
-    url.pathname.endsWith('.html');
+    url.pathname.endsWith('.html') ||
+    url.pathname.endsWith('.css') ||
+    url.pathname.endsWith('.js');
 
-  // HTML navigation: Network-First with instant cache fallback
-  if (isHtmlNavigation) {
+  // HTML, CSS, and JS: Network-First with instant cache fallback so UI/modal updates apply immediately
+  if (isHtmlOrCodeAsset) {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
@@ -78,7 +80,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Static JS, CSS, Images & Icons: Stale-While-Revalidate for instant repeat loads
+  // Static Images & Icons: Stale-While-Revalidate for instant repeat loads
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       const networkFetch = fetch(event.request)

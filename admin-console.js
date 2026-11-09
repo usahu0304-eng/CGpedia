@@ -9363,15 +9363,15 @@ Return ONLY a JSON array of objects:
 
     const modal = document.createElement('div');
     modal.id = 'qbAiPromptGeneratorModal';
-    modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.72);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+    modal.className = 'modal-backdrop';
     modal.innerHTML = `
-      <div class="card" style="width:100%;max-width:650px;max-height:92vh;overflow-y:auto;padding:20px;border-top:5px solid var(--primary);box-shadow:0 24px 55px rgba(0,0,0,0.3);">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-          <div>
+      <div class="card modal-card" style="max-width:650px;padding:20px;border-top:5px solid var(--primary);box-shadow:0 24px 55px rgba(0,0,0,0.3);">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:12px;">
+          <div style="min-width:0;flex:1;">
             <span class="badge badge-exam">✨ AI QUESTION GENERATOR</span>
-            <h3 style="font-size:1.08rem;font-weight:800;margin-top:4px;">🤖 AI प्रॉम्प्ट देकर नए प्रश्न बनाएं (Auto Subject → Topic Folder)</h3>
+            <h3 style="font-size:1.05rem;font-weight:800;margin-top:4px;line-height:1.35;">🤖 AI प्रॉम्प्ट देकर नए प्रश्न बनाएं (Auto Subject → Topic Folder)</h3>
           </div>
-          <button class="btn btn-outline btn-sm" id="qbCloseAiPromptModalBtn">✕ बंद करें</button>
+          <button type="button" class="btn btn-outline btn-sm" id="qbCloseAiPromptModalBtn" style="flex-shrink:0;">✕ बंद करें</button>
         </div>
         <p style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:14px;">
           कोई भी टॉपिक, सिलेबस बिंदु या निर्देश लिखें (जैसे: <em>"छत्तीसगढ़ के कलचुरी वंश और जनजातीय विद्रोह पर 10 कठिन प्रश्न बनाएं"</em>)। AI स्वयं द्विभाषी (Hindi + English) MCQ प्रश्न, 4 विकल्प, सही उत्तर और व्याख्या बनाकर सीधे संबंधित <strong>Subject → Topic फ़ोल्डर</strong> में सेव कर देगा।
@@ -9601,15 +9601,15 @@ Requirements:
 
     const modal = document.createElement('div');
     modal.id = 'qbPasteParagraphModal';
-    modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.72);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+    modal.className = 'modal-backdrop';
     modal.innerHTML = `
-      <div class="card" style="width:100%;max-width:700px;max-height:92vh;overflow-y:auto;padding:20px;border-top:5px solid #059669;box-shadow:0 24px 55px rgba(0,0,0,0.3);">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-          <div>
+      <div class="card modal-card" style="max-width:700px;padding:20px;border-top:5px solid #059669;box-shadow:0 24px 55px rgba(0,0,0,0.3);">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:12px;">
+          <div style="min-width:0;flex:1;">
             <span class="badge badge-free">📋 PARAGRAPH & TEXT SCANNER</span>
-            <h3 style="font-size:1.08rem;font-weight:800;margin-top:4px;">📋 पैराग्राफ या प्रश्न कॉपी-पेस्ट करें (Auto Subject → Topic Folder)</h3>
+            <h3 style="font-size:1.05rem;font-weight:800;margin-top:4px;line-height:1.35;">📋 पैराग्राफ या प्रश्न कॉपी-पेस्ट करें (Auto Subject → Topic Folder)</h3>
           </div>
-          <button class="btn btn-outline btn-sm" id="qbClosePasteModalBtn">✕ बंद करें</button>
+          <button type="button" class="btn btn-outline btn-sm" id="qbClosePasteModalBtn" style="flex-shrink:0;">✕ बंद करें</button>
         </div>
         <p style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:12px;">
           यहाँ कोई भी <strong>पैराग्राफ / नोट्स</strong> या पहले से लिखे <strong>MCQ प्रश्न</strong> पेस्ट करें। यह टूल पेस्ट किए गए प्रश्नों को भी स्कैन करके सेव करता है और पैराग्राफ से नए MCQ प्रश्न भी बनाकर जिस विषय (Subject) का है उसके फ़ोल्डर में ऑटोमैटिक सेव कर देता है!

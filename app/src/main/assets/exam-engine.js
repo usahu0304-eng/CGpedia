@@ -168,19 +168,19 @@
     modalRoot.innerHTML = `
       <div class="modal-backdrop" id="preTestInstructionsBackdrop">
         <div class="modal-card" style="max-width:680px;">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;">
-            <div style="display:flex;align-items:center;gap:10px;">
-              <img src="assets/cgpedia-logo-clean.png" alt="CGpedia" style="width:42px;height:42px;border-radius:50%;object-fit:cover;border:2px solid var(--secondary);" />
-              <div>
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px;">
+            <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1;">
+              <img src="assets/cgpedia-logo-clean.png" alt="CGpedia" style="width:42px;height:42px;border-radius:50%;object-fit:cover;border:2px solid var(--secondary);flex-shrink:0;" />
+              <div style="min-width:0;">
                 <span class="badge badge-exam">${esc(testObj.examCode || 'CBT EXAM')}</span>
-                <h2 style="font-size:1.15rem;font-weight:800;margin-top:2px;">${esc(testObj.titleHi)}</h2>
-                <div style="font-size:0.8rem;color:var(--text-muted);">${esc(testObj.titleEn)}</div>
+                <h2 style="font-size:1.1rem;font-weight:800;margin-top:2px;line-height:1.35;">${esc(testObj.titleHi)}</h2>
+                <div style="font-size:0.78rem;color:var(--text-muted);line-height:1.3;">${esc(testObj.titleEn)}</div>
               </div>
             </div>
-            <button class="btn btn-outline btn-sm" id="closePreTestModalBtn">✕ Close</button>
+            <button type="button" class="btn btn-outline btn-sm" id="closePreTestModalBtn" style="flex-shrink:0;">✕ Close</button>
           </div>
 
-          <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:14px;">
+          <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(125px,1fr));margin-bottom:14px;">
             <div class="kpi-card" style="padding:10px;">
               <div class="kpi-value" style="font-size:1.2rem;">${questions.length}</div>
               <div class="kpi-label">Questions / प्रश्न</div>
@@ -233,13 +233,13 @@
           </div>
 
           <label style="display:flex;align-items:flex-start;gap:9px;font-size:0.82rem;cursor:pointer;padding:10px;border-radius:8px;background:var(--secondary-soft);margin-bottom:16px;">
-            <input type="checkbox" id="preTestDeclarationCheck" checked style="margin-top:3px;width:17px;height:17px;" />
+            <input type="checkbox" id="preTestDeclarationCheck" checked style="margin-top:3px;width:17px;height:17px;flex-shrink:0;" />
             <span>मैंने सभी निर्देशों को पढ़ और समझ लिया है। मैं परीक्षा के दौरान किसी भी अनुचित साधन या स्क्रीनशॉट का उपयोग नहीं करूँगा/करूँगी। (I have read and understood all instructions.)</span>
           </label>
 
-          <div style="display:flex;justify-content:flex-end;gap:10px;">
-            <button class="btn btn-outline" id="cancelPreTestBtn">Cancel</button>
-            <button class="btn btn-primary btn-lg" id="confirmStartCbtBtn">🚀 Start Live CBT Exam</button>
+          <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;">
+            <button type="button" class="btn btn-outline" id="cancelPreTestBtn">Cancel</button>
+            <button type="button" class="btn btn-primary btn-lg" id="confirmStartCbtBtn">🚀 Start Live CBT Exam</button>
           </div>
         </div>
       </div>
@@ -248,6 +248,12 @@
     const closeFn = () => { modalRoot.innerHTML = ''; };
     document.getElementById('closePreTestModalBtn').onclick = closeFn;
     document.getElementById('cancelPreTestBtn').onclick = closeFn;
+    const preTestBackdrop = document.getElementById('preTestInstructionsBackdrop');
+    if (preTestBackdrop) {
+      preTestBackdrop.onclick = (e) => {
+        if (e.target === preTestBackdrop) closeFn();
+      };
+    }
     document.getElementById('confirmStartCbtBtn').onclick = () => {
       const checked = document.getElementById('preTestDeclarationCheck').checked;
       if (!checked) {
@@ -797,7 +803,7 @@
             कृपया सबमिट करने से पहले अपने प्रयासों का सारांश जांच लें। बचे हुए समय: <strong>${formatClock(session.remainingSeconds)}</strong>
           </p>
 
-          <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:16px;">
+          <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(115px,1fr));margin-bottom:16px;">
             <div class="kpi-card" style="padding:10px;text-align:center;">
               <div class="kpi-value" style="font-size:1.3rem;">${total}</div>
               <div class="kpi-label">Total Questions</div>
@@ -824,9 +830,9 @@
             </div>
           </div>
 
-          <div style="display:flex;justify-content:flex-end;gap:10px;">
-            <button class="btn btn-outline" id="cbtResumeExamBtn">⬅️ Back to Exam</button>
-            <button class="btn btn-success btn-lg" id="cbtFinalConfirmSubmitBtn">✅ Final Submit &amp; View Result</button>
+          <div style="display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;">
+            <button type="button" class="btn btn-outline" id="cbtResumeExamBtn">⬅️ Back to Exam</button>
+            <button type="button" class="btn btn-success btn-lg" id="cbtFinalConfirmSubmitBtn">✅ Final Submit &amp; View Result</button>
           </div>
         </div>
       </div>
