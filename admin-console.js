@@ -210,6 +210,15 @@
           switchAdminSection(rootEl, state, api, targetSubTab);
         }
       };
+      subTabsContainer.querySelectorAll('[data-admin-subtab]').forEach((btn) => {
+        btn.onclick = (ev) => {
+          if (ev) ev.stopPropagation();
+          const targetSubTab = btn.getAttribute('data-admin-subtab');
+          if (targetSubTab) {
+            switchAdminSection(rootEl, state, api, targetSubTab);
+          }
+        };
+      });
     }
 
     rootEl.querySelectorAll('[data-admin-util-jump]').forEach((btn) => {
@@ -663,69 +672,71 @@
         };
       }
 
-      document.getElementById('admCreateDraftTestBtn').onclick = () => {
-        const titleHi = document.getElementById('admTestTitleHi').value.trim();
-        const titleEn = document.getElementById('admTestTitleEn').value.trim() || titleHi;
-        const rawTopicInput = document.getElementById('admTestTopic').value.trim();
-        const rawSubtopicInput = document.getElementById('admTestSubtopicFilter')
-          ? document.getElementById('admTestSubtopicFilter').value.trim()
-          : '';
-        const selectedSubject = document.getElementById('admTestSubjectFilter')
-          ? document.getElementById('admTestSubjectFilter').value
-          : 'ALL';
-        const selectedDifficulty = document.getElementById('admTestDifficultyFilter')
-          ? document.getElementById('admTestDifficultyFilter').value
-          : 'ALL';
-        const examCode = document.getElementById('admTestExamCode').value || 'CGPSC';
-        const topic = rawTopicInput || (selectedSubject !== 'ALL' ? selectedSubject : titleHi);
+      const createDraftBtn = document.getElementById('admCreateDraftTestBtn');
+      if (createDraftBtn) {
+        createDraftBtn.onclick = () => {
+          const rawTitleHi = (document.getElementById('admTestTitleHi') && document.getElementById('admTestTitleHi').value || '').trim();
+          const rawTitleEn = (document.getElementById('admTestTitleEn') && document.getElementById('admTestTitleEn').value || '').trim();
+          const rawTopicInput = (document.getElementById('admTestTopic') && document.getElementById('admTestTopic').value || '').trim();
+          const rawSubtopicInput = document.getElementById('admTestSubtopicFilter')
+            ? document.getElementById('admTestSubtopicFilter').value.trim()
+            : '';
+          const selectedSubject = document.getElementById('admTestSubjectFilter')
+            ? document.getElementById('admTestSubjectFilter').value
+            : 'ALL';
+          const selectedDifficulty = document.getElementById('admTestDifficultyFilter')
+            ? document.getElementById('admTestDifficultyFilter').value
+            : 'ALL';
+          const examCode = (document.getElementById('admTestExamCode') && document.getElementById('admTestExamCode').value) || 'CGPSC';
+          const defaultLabel = `${examCode} ${selectedSubject !== 'ALL' ? selectedSubject : (rawTopicInput || 'Mock Test')}`;
+          const titleHi = rawTitleHi || rawTitleEn || `${defaultLabel} टेस्ट`;
+          const titleEn = rawTitleEn || rawTitleHi || `${defaultLabel} Test`;
+          const topic = rawTopicInput || (selectedSubject !== 'ALL' ? selectedSubject : titleHi);
 
-        if (!titleHi) {
-          api.toast('कृपया टेस्ट का शीर्षक (Title) दर्ज करें।');
-          return;
-        }
-        const aiCount = Math.max(0, Math.min(200, Number(document.getElementById('admTestAiCount').value || 0)));
-        const customPrompt = document.getElementById('admTestAiPrompt').value.trim();
-        const isPaid = document.getElementById('admTestIsPaid').value === 'paid';
-        const testId = 'test_' + Date.now();
+          const aiCount = Math.max(0, Math.min(200, Number((document.getElementById('admTestAiCount') && document.getElementById('admTestAiCount').value) || 10)));
+          const customPrompt = (document.getElementById('admTestAiPrompt') && document.getElementById('admTestAiPrompt').value || '').trim();
+          const isPaid = (document.getElementById('admTestIsPaid') && document.getElementById('admTestIsPaid').value) === 'paid';
+          const testId = 'test_' + Date.now();
 
-        let generatedQuestions = [];
-        let selectionResult = null;
+          let generatedQuestions = [];
+          let selectionResult = null;
 
-        if (aiCount > 0) {
-          if (api && typeof api.selectEligibleQuestionsForTest === 'function') {
-            selectionResult = api.selectEligibleQuestionsForTest({
-              testId,
-              examCode,
-              subject: selectedSubject !== 'ALL' ? selectedSubject : '',
-              topicFilter: rawTopicInput,
-              subtopicFilter: rawSubtopicInput,
-              topic,
-              difficulty: selectedDifficulty !== 'ALL' ? selectedDifficulty : '',
-              count: aiCount,
-              customPrompt
-            });
-            generatedQuestions = selectionResult.questions || [];
-          } else {
-            generatedQuestions = api.generateHighYieldBilingualQuestions(testId, topic, aiCount, customPrompt, {
-              examCode,
-              subject: selectedSubject !== 'ALL' ? selectedSubject : '',
-              topicFilter: rawTopicInput,
-              subtopicFilter: rawSubtopicInput,
-              difficulty: selectedDifficulty !== 'ALL' ? selectedDifficulty : ''
-            });
+          if (aiCount > 0) {
+            if (api && typeof api.selectEligibleQuestionsForTest === 'function') {
+              selectionResult = api.selectEligibleQuestionsForTest({
+                testId,
+                examCode,
+                subject: selectedSubject !== 'ALL' ? selectedSubject : '',
+                topicFilter: rawTopicInput,
+                subtopicFilter: rawSubtopicInput,
+                topic,
+                difficulty: selectedDifficulty !== 'ALL' ? selectedDifficulty : '',
+                count: aiCount,
+                customPrompt
+              });
+              generatedQuestions = (selectionResult && selectionResult.questions) ? selectionResult.questions.slice() : [];
+            }
+            if (generatedQuestions.length < aiCount && api && typeof api.generateHighYieldBilingualQuestions === 'function') {
+              const fallbackQs = api.generateHighYieldBilingualQuestions(testId, topic, aiCount, customPrompt, {
+                examCode,
+                subject: selectedSubject !== 'ALL' ? selectedSubject : '',
+                topicFilter: rawTopicInput,
+                subtopicFilter: rawSubtopicInput,
+                difficulty: selectedDifficulty !== 'ALL' ? selectedDifficulty : ''
+              });
+              const seenIds = new Set(generatedQuestions.map((q) => q.centralQuestionId || q.questionId || q.id));
+              for (const fq of (fallbackQs || [])) {
+                if (generatedQuestions.length >= aiCount) break;
+                const fid = fq.centralQuestionId || fq.questionId || fq.id;
+                if (!seenIds.has(fid)) {
+                  seenIds.add(fid);
+                  generatedQuestions.push(fq);
+                }
+              }
+            }
           }
-        }
 
-        if (selectionResult && selectionResult.insufficient) {
-          tbState.lastWarning = {
-            requestedCount: selectionResult.requestedCount,
-            availableCount: selectionResult.availableEligibleCount,
-            selectedCount: selectionResult.selectedCount,
-            message: selectionResult.warningMessage
-          };
-        } else {
           tbState.lastWarning = null;
-        }
 
         const resolvedHierarchy = catalog.resolveHierarchy({
           examCode,
@@ -773,7 +784,8 @@
           api.toast(`📝 Test saved as DRAFT with ${generatedQuestions.length} verified bilingual question(s). Review & click Publish when ready!`);
         }
         renderAdminConsole(rootEl, state, api);
-      };
+        };
+      }
 
       bodyEl.querySelectorAll('[data-edit-test-meta]').forEach((btn) => {
         btn.onclick = () => {
@@ -792,8 +804,19 @@
           const t = state.tests.find((item) => item.id === tid);
           if (!t) return;
           if (t.status !== 'published' && (!t.questions || t.questions.length === 0)) {
-            api.toast('⚠️ पब्लिश करने से पहले कम से कम 1 प्रश्न जोड़ें।');
-            return;
+            if (api && typeof api.generateHighYieldBilingualQuestions === 'function') {
+              t.questions = api.generateHighYieldBilingualQuestions(
+                t.id,
+                t.topic || t.subject || 'General Studies',
+                Math.max(10, Number(t.requestedQuestionCount || 10)),
+                '',
+                { examCode: t.examCode || 'CGPSC' }
+              );
+            }
+            if (!t.questions || t.questions.length === 0) {
+              api.toast('⚠️ पब्लिश करने से पहले कम से कम 1 प्रश्न जोड़ें।');
+              return;
+            }
           }
           if (t.status === 'published') {
             openConfirmationDialog({
@@ -8752,25 +8775,37 @@ Return ONLY a JSON array of objects:
     };
   }
 
-  function openConfirmationDialog({ title, message, confirmLabel, isDanger, onConfirm }) {
+  function openConfirmationDialog(options, fallbackOnConfirm) {
+    const opts = options || {};
+    const title = opts.title;
+    const message = opts.message;
+    const confirmLabel = opts.confirmLabel || opts.confirmText || 'Confirm';
+    const cancelLabel = opts.cancelLabel || opts.cancelText || 'Cancel';
+    const isDanger = opts.isDanger !== undefined ? opts.isDanger : true;
+    const onConfirm = typeof opts.onConfirm === 'function'
+      ? opts.onConfirm
+      : (typeof fallbackOnConfirm === 'function' ? fallbackOnConfirm : null);
     const modalRoot = document.getElementById('genericModalContainer');
-    if (!modalRoot) return;
+    if (!modalRoot) {
+      if (onConfirm) onConfirm();
+      return;
+    }
     modalRoot.innerHTML = `
       <div class="modal-backdrop">
         <div class="modal-card" style="max-width:440px;">
           <h2 style="font-size:1.08rem;font-weight:800;margin-bottom:8px;">${esc(title || 'Confirm Action')}</h2>
           <p style="font-size:0.86rem;color:var(--text-secondary);margin-bottom:16px;line-height:1.5;">${esc(message)}</p>
           <div style="display:flex;justify-content:flex-end;gap:10px;">
-            <button class="btn btn-outline" id="confirmDialogCancelBtn">Cancel</button>
-            <button class="btn ${isDanger ? 'btn-danger' : 'btn-primary'}" id="confirmDialogProceedBtn">${esc(confirmLabel || 'Confirm')}</button>
+            <button type="button" class="btn btn-outline" id="confirmDialogCancelBtn">${esc(cancelLabel)}</button>
+            <button type="button" class="btn ${isDanger ? 'btn-danger' : 'btn-primary'}" id="confirmDialogProceedBtn">${esc(confirmLabel)}</button>
           </div>
         </div>
       </div>
     `;
     document.getElementById('confirmDialogCancelBtn').onclick = () => { modalRoot.innerHTML = ''; };
-    document.getElementById('confirmDialogProceedBtn').onclick = () => {
+    document.getElementById('confirmDialogProceedBtn').onclick = async () => {
       modalRoot.innerHTML = '';
-      if (typeof onConfirm === 'function') onConfirm();
+      if (onConfirm) await onConfirm();
     };
   }
 

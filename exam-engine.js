@@ -81,10 +81,24 @@
     try {
       const scopedKey = getActiveSessionStorageKey();
       if (!session) {
+        if (timerInterval) {
+          clearInterval(timerInterval);
+          timerInterval = null;
+        }
         _cachedActiveSession = null;
         _cachedActiveSessionKey = scopedKey;
         localStorage.removeItem(scopedKey);
         localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.indexOf(ACTIVE_SESSION_STORAGE_KEY) === 0) {
+            keysToRemove.push(k);
+          }
+        }
+        keysToRemove.forEach((k) => {
+          try { localStorage.removeItem(k); } catch (_) {}
+        });
       } else {
         if (window.CGpediaApp && typeof window.CGpediaApp.getCurrentStudentUid === 'function') {
           session.userId = window.CGpediaApp.getCurrentStudentUid() || session.userId || '';

@@ -511,20 +511,19 @@
   }
 
   function confirmUserAction(options, onConfirmCallback) {
-    if (window.CGpediaAdmin && typeof window.CGpediaAdmin.openConfirmationDialog === 'function') {
-      window.CGpediaAdmin.openConfirmationDialog(options, onConfirmCallback);
-      return;
-    }
     const opts = options || {};
+    const resolvedConfirmFn = typeof onConfirmCallback === 'function'
+      ? onConfirmCallback
+      : (typeof opts.onConfirm === 'function' ? opts.onConfirm : null);
     const modalRoot = document.getElementById('genericModalContainer');
     if (!modalRoot) {
-      if (typeof onConfirmCallback === 'function') onConfirmCallback();
+      if (resolvedConfirmFn) resolvedConfirmFn();
       return;
     }
     const title = opts.title || 'Confirm Action / पुष्टि करें';
     const message = opts.message || 'क्या आप वाकई यह कार्रवाई करना चाहते हैं? (Are you sure you want to proceed?)';
-    const confirmLabel = opts.confirmText || 'Yes, Confirm';
-    const cancelLabel = opts.cancelText || 'Cancel';
+    const confirmLabel = opts.confirmText || opts.confirmLabel || 'Yes, Confirm';
+    const cancelLabel = opts.cancelText || opts.cancelLabel || 'Cancel';
     const icon = opts.icon || '⚠️';
     modalRoot.innerHTML = `
       <div class="modal-backdrop" id="appUserConfirmBackdrop" role="dialog" aria-modal="true" style="z-index:9999;">
@@ -550,8 +549,8 @@
       okBtn.onclick = async () => {
         okBtn.disabled = true;
         modalRoot.innerHTML = '';
-        if (typeof onConfirmCallback === 'function') {
-          await onConfirmCallback();
+        if (resolvedConfirmFn) {
+          await resolvedConfirmFn();
         }
       };
     }
@@ -838,6 +837,11 @@
       syncNavHighlight();
       const cbtRoot = document.getElementById('cbtExamContainer');
       if (cbtRoot) cbtRoot.innerHTML = '';
+      const existingAuthPortal = document.getElementById('studentAuthPortalRootCard');
+      const currentAuthMode = (state.authSession && state.authSession.authMode) || 'login';
+      if (existingAuthPortal && root.contains(existingAuthPortal) && existingAuthPortal.getAttribute('data-rendered-auth-mode') === currentAuthMode) {
+        return;
+      }
       renderStudentAuthPortal(root, false);
       return;
     }
@@ -2086,7 +2090,7 @@
                     <span style="font-size:0.72rem;color:var(--text-muted);">
                       ${isHi ? 'स्रोत' : 'Source'}: ${st.sourceUrl ? `<a href="${esc(st.sourceUrl)}" target="_blank" rel="noopener noreferrer" style="color:var(--secondary);font-weight:700;text-decoration:none;">${esc(st.sourceName || 'Official Portal')} ↗</a>` : esc(st.sourceName || 'Official PIB / DPR')}
                     </span>
-                    <button class="btn btn-outline btn-sm" data-open-monthly-story="${idx}" style="padding:4px 10px;font-size:0.74rem;">
+                    <button type="button" class="btn btn-outline btn-sm" data-open-monthly-story="${idx}" data-story-id="${esc(st.id || '')}" style="padding:4px 10px;font-size:0.74rem;">
                       📖 ${isHi ? 'स्टोरी देखें' : 'View Story'}
                     </button>
                   </div>
@@ -2144,9 +2148,11 @@
 
     // Bind Monthly Story Card reader (opens in chronological order starting at clicked item)
     root.querySelectorAll('[data-open-monthly-story]').forEach((el) => {
-      el.onclick = () => {
+      el.onclick = (ev) => {
+        if (ev) ev.stopPropagation();
         const idx = Number(el.getAttribute('data-open-monthly-story'));
-        const clickedStory = monthlyStories[idx];
+        const storyId = el.getAttribute('data-story-id');
+        const clickedStory = (storyId && monthlyStories.find((s) => s.id === storyId)) || monthlyStories[idx];
         if (clickedStory) {
           const catStories = sortStoriesOldestToNewest(
             monthlyStories.filter((s) => normalizeStoryCategory(s.category) === normalizeStoryCategory(clickedStory.category))
@@ -2812,7 +2818,7 @@
     const exams = window.CGpediaCloud ? window.CGpediaCloud.EXAM_CATEGORIES : [];
 
     containerEl.innerHTML = `
-      <div class="${isModalOverlay ? '' : 'card'}" style="${isModalOverlay ? '' : 'max-width:720px;margin:8px auto;'}">
+      <div id="${isModalOverlay ? 'studentAuthModalPortalCard' : 'studentAuthPortalRootCard'}" data-rendered-auth-mode="${esc(mode)}" class="${isModalOverlay ? '' : 'card'}" style="${isModalOverlay ? '' : 'max-width:720px;margin:8px auto;'}">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
           <div style="display:flex;align-items:center;gap:12px;">
             <img src="assets/cgpedia-logo-clean.png" alt="CGpedia" style="width:54px;height:54px;border-radius:50%;object-fit:cover;border:2px solid var(--secondary);" />
@@ -3325,6 +3331,27 @@
         toast('✅ Password reset successfully! You can now sign in with your new password.');
       };
     }
+
+    // Ensure smooth keyboard focus and Enter key submission on Login / Register / Reset inputs
+    containerEl.querySelectorAll('input.form-input').forEach((inp) => {
+      inp.addEventListener('focus', () => {
+        setTimeout(() => {
+          try {
+            inp.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          } catch (_) {}
+        }, 220);
+      });
+      inp.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') {
+          ev.preventDefault();
+          if (mode === 'login' && loginSubmitBtn) {
+            loginSubmitBtn.click();
+          } else if (mode === 'register' && regSubmitBtn) {
+            regSubmitBtn.click();
+          }
+        }
+      });
+    });
   }
 
   function renderProfileAndSettings(root) {
@@ -4504,7 +4531,7 @@
       });
     }
 
-    // Step 7: Deduplicate candidate pool & prevent duplicate questions within the same test
+    // Step 7: Fast O(N) Deduplication of candidate pool & near-duplicate guard only on selected slice
     const uniqueEligible = [];
     const seenIds = new Set();
     const seenNormHi = new Set();
@@ -4519,13 +4546,6 @@
       if (normHi && seenNormHi.has(normHi)) continue;
       if (normEn && seenNormEn.has(normEn)) continue;
 
-      const isNearDup = uniqueEligible.some((already) => {
-        const simHi = (normHi && already.questionHi) ? computeStemSimilarityForSelection(q.questionHi, already.questionHi) : 0;
-        const simEn = (normEn && already.questionEn) ? computeStemSimilarityForSelection(q.questionEn, already.questionEn) : 0;
-        return Math.max(simHi, simEn) >= 0.88;
-      });
-      if (isNearDup) continue;
-
       if (qid) seenIds.add(qid);
       if (normHi) seenNormHi.add(normHi);
       if (normEn) seenNormEn.add(normEn);
@@ -4533,7 +4553,20 @@
     }
 
     const availableEligibleCount = uniqueEligible.length;
-    const chosenSlice = requestedCount > 0 ? uniqueEligible.slice(0, requestedCount) : [];
+    const chosenSlice = [];
+    if (requestedCount > 0) {
+      for (const q of uniqueEligible) {
+        if (chosenSlice.length >= requestedCount) break;
+        const isNearDup = chosenSlice.some((already) => {
+          const simHi = (q.questionHi && already.questionHi) ? computeStemSimilarityForSelection(q.questionHi, already.questionHi) : 0;
+          const simEn = (q.questionEn && already.questionEn) ? computeStemSimilarityForSelection(q.questionEn, already.questionEn) : 0;
+          return Math.max(simHi, simEn) >= 0.88;
+        });
+        if (!isNearDup) {
+          chosenSlice.push(q);
+        }
+      }
+    }
 
     // Create independent snapshot copies linked via centralQuestionId so published tests are never mutated later
     const selectedQuestions = chosenSlice.map((q, idx) => {
@@ -4620,13 +4653,48 @@
   }
 
   function generateHighYieldBilingualQuestions(prefix, topic, count, customPrompt, extraFilters) {
+    const targetCount = Math.max(1, Number(count || 10));
     const selectionResult = selectEligibleQuestionsForTest(Object.assign({
       testId: prefix,
       topic,
-      count,
+      count: targetCount,
       customPrompt
     }, extraFilters || {}));
-    return selectionResult.questions;
+    const picked = Array.isArray(selectionResult.questions) ? selectionResult.questions.slice() : [];
+    if (picked.length < targetCount) {
+      const broadResult = selectEligibleQuestionsForTest({
+        testId: prefix,
+        examCode: 'ALL',
+        subject: 'ALL',
+        topic: '',
+        count: targetCount
+      });
+      const existingIds = new Set(picked.map((q) => q.centralQuestionId || q.questionId || q.id));
+      for (const bq of (broadResult.questions || [])) {
+        if (picked.length >= targetCount) break;
+        const bid = bq.centralQuestionId || bq.questionId || bq.id;
+        if (!existingIds.has(bid)) {
+          existingIds.add(bid);
+          picked.push(bq);
+        }
+      }
+    }
+    if (picked.length < targetCount) {
+      const caFallbackPool = getAvailableCurrentAffairsQuestionsForPeriod('recent');
+      const existingIds = new Set(picked.map((q) => q.centralQuestionId || q.questionId || q.id));
+      for (const cq of caFallbackPool) {
+        if (picked.length >= targetCount) break;
+        if (!existingIds.has(cq.id)) {
+          existingIds.add(cq.id);
+          picked.push(Object.assign({}, cq, {
+            id: `${prefix}_ca_${picked.length + 1}`,
+            subjectTag: topic || cq.subjectTag || 'General Studies',
+            topic: topic || cq.topic || 'General Studies'
+          }));
+        }
+      }
+    }
+    return picked;
   }
 
   function parseBulkQuestionsText(text, fileName) {
@@ -5448,20 +5516,48 @@
       }
     ];
 
-    const combinedInput = rawList.length > 0 ? rawList.slice() : baselineVerifiedItems.slice();
-    const countInt = combinedInput.filter((s) => s && normalizeStoryCategory(s.category, `${s.headlineHi || ''} ${s.headlineEn || ''}`, s.id) === 'international').length;
-    if (countInt === 0) {
-      combinedInput.push(baselineVerifiedItems[2], baselineVerifiedItems[3]);
-    } else if (countInt === 1) {
-      combinedInput.push(baselineVerifiedItems[3]);
+    const nowCheckMs = Date.now();
+    const isRecent24hItem = (s) => {
+      if (!s || s.isDeleted === true || s.status === 'deleted') return false;
+      const ts = getStoryTimestampMs(s);
+      return ts > 0 && (nowCheckMs - ts) <= 86400000;
+    };
+    const makeFreshBaselineItem = (baseItem, offsetMs) => {
+      const freshTs = nowCheckMs - offsetMs;
+      const freshDate = new Date(freshTs);
+      const freshMonth = `${freshDate.getFullYear()}-${String(freshDate.getMonth() + 1).padStart(2, '0')}`;
+      return Object.assign({}, baseItem, {
+        createdAtMs: freshTs,
+        expiresAtMs: freshTs + 86400000,
+        createdAtIso: freshDate.toISOString(),
+        publishedDateIso: freshDate.toISOString().slice(0, 10),
+        monthKey: freshMonth,
+        yearKey: String(freshDate.getFullYear())
+      });
+    };
+
+    const combinedInput = rawList.length > 0 ? rawList.slice() : [
+      makeFreshBaselineItem(baselineVerifiedItems[0], 3600000),
+      makeFreshBaselineItem(baselineVerifiedItems[1], 2700000),
+      makeFreshBaselineItem(baselineVerifiedItems[2], 2100000),
+      makeFreshBaselineItem(baselineVerifiedItems[3], 1800000)
+    ];
+    const activeIntCount = combinedInput.filter((s) => isRecent24hItem(s) && normalizeStoryCategory(s.category, `${s.headlineHi || ''} ${s.headlineEn || ''}`, s.id) === 'international').length;
+    if (activeIntCount === 0) {
+      combinedInput.unshift(
+        makeFreshBaselineItem(baselineVerifiedItems[2], 2100000),
+        makeFreshBaselineItem(baselineVerifiedItems[3], 1800000)
+      );
+    } else if (activeIntCount === 1) {
+      combinedInput.unshift(makeFreshBaselineItem(baselineVerifiedItems[3], 1800000));
     }
-    const hasNat = combinedInput.some((s) => s && normalizeStoryCategory(s.category, `${s.headlineHi || ''} ${s.headlineEn || ''}`, s.id) === 'national');
-    if (!hasNat) {
-      combinedInput.push(baselineVerifiedItems[1]);
+    const hasActiveNat = combinedInput.some((s) => isRecent24hItem(s) && normalizeStoryCategory(s.category, `${s.headlineHi || ''} ${s.headlineEn || ''}`, s.id) === 'national');
+    if (!hasActiveNat) {
+      combinedInput.unshift(makeFreshBaselineItem(baselineVerifiedItems[1], 2700000));
     }
-    const hasCg = combinedInput.some((s) => s && normalizeStoryCategory(s.category, `${s.headlineHi || ''} ${s.headlineEn || ''}`, s.id) === 'chhattisgarh');
-    if (!hasCg) {
-      combinedInput.push(baselineVerifiedItems[0]);
+    const hasActiveCg = combinedInput.some((s) => isRecent24hItem(s) && normalizeStoryCategory(s.category, `${s.headlineHi || ''} ${s.headlineEn || ''}`, s.id) === 'chhattisgarh');
+    if (!hasActiveCg) {
+      combinedInput.unshift(makeFreshBaselineItem(baselineVerifiedItems[0], 3600000));
     }
 
     const deduplicated = [];
@@ -5714,15 +5810,15 @@
               const thumbUrl = getStoryImageUrl(targetPreviewStory);
               const ringSvg = buildWhatsAppStoryRingSvg(catGroup.stories);
               return `
-                <div class="story-item" data-open-whatsapp-cat="${esc(catGroup.category)}" data-strip-prefix="${esc(prefix)}" style="min-width:92px;cursor:pointer;display:flex;flex-direction:column;align-items:center;">
-                  <div style="position:relative;width:74px;height:74px;display:flex;align-items:center;justify-content:center;">
+                <div class="story-item" role="button" tabindex="0" data-open-whatsapp-cat="${esc(catGroup.category)}" data-strip-prefix="${esc(prefix)}" style="min-width:92px;cursor:pointer;display:flex;flex-direction:column;align-items:center;-webkit-tap-highlight-color:transparent;">
+                  <div style="position:relative;width:74px;height:74px;display:flex;align-items:center;justify-content:center;pointer-events:none;">
                     ${ringSvg}
-                    <div style="width:62px;height:62px;border-radius:50%;overflow:hidden;position:relative;background:#0F2557;display:flex;align-items:center;justify-content:center;">
-                      ${thumbUrl ? `<img src="${esc(thumbUrl)}" alt="${esc(catGroup.displayLabel)}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;" />` : `<span style="font-size:1.55rem;">${catGroup.icon}</span>`}
-                      <span style="position:absolute;inset:0;background:rgba(8,15,38,0.28);display:flex;align-items:center;justify-content:center;font-size:1.25rem;text-shadow:0 2px 6px rgba(0,0,0,0.65);">${catGroup.icon}</span>
+                    <div style="width:62px;height:62px;border-radius:50%;overflow:hidden;position:relative;background:#0F2557;display:flex;align-items:center;justify-content:center;pointer-events:none;">
+                      ${thumbUrl ? `<img src="${esc(thumbUrl)}" alt="${esc(catGroup.displayLabel)}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;pointer-events:none;" />` : `<span style="font-size:1.55rem;pointer-events:none;">${catGroup.icon}</span>`}
+                      <span style="position:absolute;inset:0;background:rgba(8,15,38,0.28);display:flex;align-items:center;justify-content:center;font-size:1.25rem;text-shadow:0 2px 6px rgba(0,0,0,0.65);pointer-events:none;">${catGroup.icon}</span>
                     </div>
                   </div>
-                  <span class="story-caption" style="font-weight:800;font-size:0.79rem;margin-top:6px;color:var(--text);">${esc(catGroup.displayLabel)}</span>
+                  <span class="story-caption" style="font-weight:800;font-size:0.79rem;margin-top:6px;color:var(--text);pointer-events:none;">${esc(catGroup.displayLabel)}</span>
                 </div>
               `;
             }).join('')}
@@ -5734,11 +5830,24 @@
 
   function bindDailyDoseStoryStripEvents(containerEl, storiesList, prefix) {
     if (!containerEl) return;
-    const groupedByCat = groupStoriesByCategoryCircles(storiesList);
     containerEl.querySelectorAll(`[data-open-whatsapp-cat][data-strip-prefix="${prefix}"]`).forEach((item) => {
-      item.onclick = () => {
+      item.onclick = (ev) => {
+        if (ev) ev.stopPropagation();
         const catKey = item.getAttribute('data-open-whatsapp-cat');
-        const foundGroup = groupedByCat.find((g) => g.category === catKey);
+        const currentStories = Array.isArray(storiesList) && storiesList.length > 0
+          ? storiesList
+          : getActiveDailyDoseStories();
+        const groupedByCat = groupStoriesByCategoryCircles(currentStories);
+        let foundGroup = groupedByCat.find((g) => g.category === catKey);
+        if (!foundGroup || !foundGroup.stories.length) {
+          const fallbackAll = getCanonicalCurrentAffairsList().filter((s) => normalizeStoryCategory(s.category) === catKey);
+          if (fallbackAll.length > 0) {
+            const sortedFallback = sortStoriesOldestToNewest(fallbackAll);
+            const unseenIdx = sortedFallback.findIndex((st) => !isStorySeenByStudent(st.id));
+            openStoryViewerModal(unseenIdx !== -1 ? unseenIdx : 0, sortedFallback, { autoStartUnseen: true });
+            return;
+          }
+        }
         if (foundGroup && foundGroup.stories.length > 0) {
           // Open stories in chronological order (oldest -> newest) starting directly from the first unseen story
           openStoryViewerModal(foundGroup.firstUnseenIndex, foundGroup.stories, { autoStartUnseen: true });
@@ -5835,8 +5944,8 @@
       const summaryText = getStoryLocalizedSummary(storyObj, lang);
 
       storyRoot.innerHTML = `
-        <div class="modal-backdrop" id="instaStoryBackdrop" style="position:fixed;inset:0;width:100vw;height:100dvh;background:#040918;padding:0;margin:0;z-index:9999;display:flex;align-items:stretch;justify-content:center;">
-          <div style="width:100vw;height:100dvh;max-width:100vw;max-height:100dvh;background:linear-gradient(165deg,#07122E 0%,#0F2557 52%,#1B1440 100%);color:#fff;border-radius:0;border:none;display:flex;flex-direction:column;justify-content:space-between;position:relative;overflow:hidden;user-select:none;">
+        <div class="modal-backdrop" id="instaStoryBackdrop" style="position:fixed;top:0;left:0;right:0;bottom:0;width:100%;height:100%;background:#040918;padding:0;margin:0;z-index:2147483640;display:flex;align-items:stretch;justify-content:center;">
+          <div style="width:100%;height:100%;max-width:100%;max-height:100%;background:linear-gradient(165deg,#07122E 0%,#0F2557 52%,#1B1440 100%);color:#fff;border-radius:0;border:none;display:flex;flex-direction:column;justify-content:space-between;position:relative;overflow:hidden;user-select:none;">
 
             <!-- Top Segmented WhatsApp-Style Story Progress Bars -->
             <div style="padding:max(14px, env(safe-area-inset-top, 14px)) 16px 10px 16px;background:linear-gradient(180deg,rgba(4,9,24,0.88) 0%,rgba(4,9,24,0) 100%);z-index:4;">
@@ -6662,18 +6771,35 @@
 
   function requestStudentNotificationPermissionImmediate() {
     if (!isStudentAuthenticated()) return;
+    const FIRST_TIME_NOTIF_KEY = 'cgpedia_first_notif_perm_v2';
+    const alreadyRequested = localStorage.getItem(FIRST_TIME_NOTIF_KEY) === '1';
+    if (alreadyRequested) return;
+
     try {
       if (window.AndroidBridge && typeof window.AndroidBridge.requestNotificationPermission === 'function') {
+        localStorage.setItem(FIRST_TIME_NOTIF_KEY, '1');
         window.AndroidBridge.requestNotificationPermission();
+        return;
       }
     } catch (_) {}
     try {
-      if ('Notification' in window && Notification.permission === 'default') {
-        Notification.requestPermission().then((perm) => {
-          if (perm === 'granted') {
-            toast('🔔 Notifications enabled for Live Tests, Current Affairs & Announcements!');
-          }
-        }).catch(() => {});
+      if ('Notification' in window) {
+        if (Notification.permission === 'default') {
+          localStorage.setItem(FIRST_TIME_NOTIF_KEY, '1');
+          Notification.requestPermission().then((perm) => {
+            if (perm === 'granted') {
+              sendSystemAndAppNotification(
+                'CGpedia • छत्तीसगढ़ प्रतियोगी परीक्षा',
+                'CGpedia में आपका स्वागत है! लाइव टेस्ट, करेंट अफेयर्स और डेली डोज़ अपडेट्स यहाँ मिलेंगे।',
+                'broadcast',
+                'welcome_notif_' + Date.now(),
+                'dashboard'
+              );
+            }
+          }).catch(() => {});
+        } else {
+          localStorage.setItem(FIRST_TIME_NOTIF_KEY, '1');
+        }
       }
     } catch (_) {}
   }
@@ -6839,49 +6965,29 @@
     return window.innerWidth > window.innerHeight;
   }
 
-  function syncOrientationViewportMode(explicitLandscapeFlag) {
-    const isLandscape = detectPhysicalLandscapeOrientation(explicitLandscapeFlag);
+  function syncOrientationViewportMode() {
     const viewportMeta = document.getElementById('dynamicViewportMeta') || document.querySelector('meta[name="viewport"]');
     const htmlEl = document.documentElement;
-
-    if (isLandscape) {
-      const rawScreenW = Math.max(
-        (window.screen && window.screen.availWidth) || 0,
-        (window.screen && window.screen.width) || 0,
-        window.outerWidth || 0
+    if (viewportMeta) {
+      viewportMeta.setAttribute(
+        'content',
+        'width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes'
       );
-      const scale = rawScreenW > 0 && rawScreenW < 1280
-        ? Math.max(0.35, Math.min(1.0, Number((rawScreenW / 1280).toFixed(2))))
-        : 1.0;
-      if (viewportMeta) {
-        viewportMeta.setAttribute(
-          'content',
-          `width=1280, initial-scale=${scale}, minimum-scale=0.25, maximum-scale=5.0, user-scalable=yes`
-        );
-      }
-      if (htmlEl) {
-        htmlEl.classList.add('landscape-desktop-mode');
-      }
-    } else {
-      if (viewportMeta) {
-        viewportMeta.setAttribute(
-          'content',
-          'width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes'
-        );
-      }
-      if (htmlEl) {
-        htmlEl.classList.remove('landscape-desktop-mode');
-      }
+    }
+    if (htmlEl) {
+      htmlEl.classList.remove('landscape-desktop-mode');
     }
   }
 
-  window.__onNativeOrientationChange = function (isLandscape) {
-    syncOrientationViewportMode(Boolean(isLandscape));
+  window.__onNativeOrientationChange = function () {
+    syncOrientationViewportMode();
   };
 
   window.__onNativeNotificationPermissionResult = function (granted) {
     if (granted) {
-      toast('🔔 Notifications enabled for Live Tests, Current Affairs & Announcements!');
+      try {
+        localStorage.setItem('cgpedia_first_notif_perm_v2', '1');
+      } catch (_) {}
     }
   };
 
@@ -7646,29 +7752,6 @@
       secOverlay.onclick = () => secOverlay.classList.remove('active');
     }
 
-    // PWA Install Banner
-    const pwaBanner = document.getElementById('pwaInstallBanner');
-    const installBtn = document.getElementById('installPwaBtn');
-    const dismissPwa = document.getElementById('dismissPwaBannerBtn');
-    window.addEventListener('beforeinstallprompt', (e) => {
-      e.preventDefault();
-      deferredPwaPrompt = e;
-    });
-    if (installBtn) {
-      installBtn.onclick = async () => {
-        if (deferredPwaPrompt) {
-          deferredPwaPrompt.prompt();
-          await deferredPwaPrompt.userChoice;
-          deferredPwaPrompt = null;
-        } else {
-          toast('📲 Browser menu (⋮) खोलें और "Add to Home Screen / Install App" चुनें।');
-        }
-      };
-    }
-    if (dismissPwa && pwaBanner) {
-      dismissPwa.onclick = () => pwaBanner.classList.add('hidden');
-    }
-
     // Register Service Worker non-blockingly after initial render
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
       setTimeout(() => {
@@ -7678,27 +7761,15 @@
       }, 300);
     }
 
-    // Portrait (Normal Mobile Site) vs Landscape (1280px Desktop Site) Automatic Switcher
-    window.addEventListener('orientationchange', () => {
-      setTimeout(() => syncOrientationViewportMode(), 80);
-      setTimeout(() => syncOrientationViewportMode(), 260);
-    });
-    window.addEventListener('resize', () => {
-      syncOrientationViewportMode();
-    });
-    if (window.screen && window.screen.orientation && typeof window.screen.orientation.addEventListener === 'function') {
-      try {
-        window.screen.orientation.addEventListener('change', () => {
-          syncOrientationViewportMode();
-        });
-      } catch (_) {}
-    }
-
-    // Request notification permission if user is already logged in
+    // Show Welcome message on app open and request notification permission only on 1st app use
     if (isStudentAuthenticated()) {
+      const studentName = (state.student && state.student.name) || 'Aspirant';
+      setTimeout(() => {
+        toast(`🙏 नमस्ते, ${studentName}! CGpedia में आपका स्वागत है।`);
+      }, 350);
       setTimeout(() => {
         requestStudentNotificationPermissionImmediate();
-      }, 800);
+      }, 900);
     }
 
     // Connect Firebase Cloud Sync & Intelligent Verified Current Affairs Sync in background

@@ -73,13 +73,38 @@ const server = http.createServer((req, res) => {
   const pathname = decodeURIComponent(parsedUrl.pathname);
   const hasVersionQuery = parsedUrl.searchParams.has('v');
 
-  // Redirect any legacy APK download URLs back to the web portal root
+  // Serve the compiled Android APK directly for one-click download
   if (
     pathname === '/CGpedia.apk' ||
+    pathname === '/CGpedia-v7.0.apk' ||
     pathname === '/download/CGpedia.apk' ||
     pathname === '/apk' ||
     pathname === '/download-apk'
   ) {
+    const apkCandidates = [
+      path.join(__dirname, 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk'),
+      path.join(__dirname, 'CGpedia.apk'),
+      path.join(__dirname, 'public', 'CGpedia.apk'),
+      path.join(__dirname, 'dist', 'CGpedia.apk')
+    ];
+    const foundApk = apkCandidates.find((p) => {
+      try {
+        return fs.existsSync(p) && fs.statSync(p).isFile();
+      } catch (_) {
+        return false;
+      }
+    });
+    if (foundApk) {
+      const stat = fs.statSync(foundApk);
+      res.writeHead(200, {
+        'Content-Type': 'application/vnd.android.package-archive',
+        'Content-Disposition': 'attachment; filename="CGpedia-v7.0.apk"',
+        'Content-Length': stat.size,
+        'Cache-Control': 'no-cache'
+      });
+      fs.createReadStream(foundApk).pipe(res);
+      return;
+    }
     res.writeHead(302, { Location: '/' });
     res.end();
     return;

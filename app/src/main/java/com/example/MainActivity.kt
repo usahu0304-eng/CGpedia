@@ -3,6 +3,7 @@ package com.example
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
@@ -78,6 +79,17 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestPermission()
     ) { granted: Boolean ->
         CgpediaNotificationHelper.ensureChannels(this)
+        val prefs = getSharedPreferences("cgpedia_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putBoolean("first_notif_perm_handled_v2", true).apply()
+        if (granted) {
+            CgpediaNotificationHelper.notifyGenericAlert(
+                context = this,
+                title = "CGpedia • छत्तीसगढ़ प्रतियोगी परीक्षा",
+                message = "CGpedia में आपका स्वागत है! लाइव टेस्ट, करेंट अफेयर्स और डेली डोज़ अपडेट्स यहाँ मिलेंगे।",
+                category = "broadcast",
+                notificationKey = "welcome_init"
+            )
+        }
         activeWebView?.post {
             activeWebView?.evaluateJavascript(
                 "if(window.__onNativeNotificationPermissionResult){window.__onNativeNotificationPermissionResult($granted);}",
@@ -88,30 +100,36 @@ class MainActivity : ComponentActivity() {
 
     fun requestNotificationPermissionIfNeeded() {
         CgpediaNotificationHelper.ensureChannels(this)
+        val prefs = getSharedPreferences("cgpedia_prefs", Context.MODE_PRIVATE)
+        val alreadyHandledFirstTime = prefs.getBoolean("first_notif_perm_handled_v2", false)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val alreadyGranted = ContextCompat.checkSelfPermission(
                 this,
                 Manifest.permission.POST_NOTIFICATIONS
             ) == PackageManager.PERMISSION_GRANTED
-            if (!alreadyGranted) {
+            if (!alreadyGranted && !alreadyHandledFirstTime) {
                 runCatching {
                     notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                 }
-            } else {
-                activeWebView?.post {
-                    activeWebView?.evaluateJavascript(
-                        "if(window.__onNativeNotificationPermissionResult){window.__onNativeNotificationPermissionResult(true);}",
-                        null
-                    )
-                }
-            }
-        } else {
-            activeWebView?.post {
-                activeWebView?.evaluateJavascript(
-                    "if(window.__onNativeNotificationPermissionResult){window.__onNativeNotificationPermissionResult(true);}",
-                    null
+            } else if (alreadyGranted && !alreadyHandledFirstTime) {
+                prefs.edit().putBoolean("first_notif_perm_handled_v2", true).apply()
+                CgpediaNotificationHelper.notifyGenericAlert(
+                    context = this,
+                    title = "CGpedia • छत्तीसगढ़ प्रतियोगी परीक्षा",
+                    message = "CGpedia में आपका स्वागत है! लाइव टेस्ट, करेंट अफेयर्स और डेली डोज़ अपडेट्स यहाँ मिलेंगे।",
+                    category = "broadcast",
+                    notificationKey = "welcome_init"
                 )
             }
+        } else if (!alreadyHandledFirstTime) {
+            prefs.edit().putBoolean("first_notif_perm_handled_v2", true).apply()
+            CgpediaNotificationHelper.notifyGenericAlert(
+                context = this,
+                title = "CGpedia • छत्तीसगढ़ प्रतियोगी परीक्षा",
+                message = "CGpedia में आपका स्वागत है! लाइव टेस्ट, करेंट अफेयर्स और डेली डोज़ अपडेट्स यहाँ मिलेंगे।",
+                category = "broadcast",
+                notificationKey = "welcome_init"
+            )
         }
     }
 
@@ -441,6 +459,8 @@ fun CgpediaWebAppHost(
                     if (activity is MainActivity) {
                         activity.activeWebView = this
                     }
+                    isFocusable = true
+                    isFocusableInTouchMode = true
                     settings.apply {
                         javaScriptEnabled = true
                         domStorageEnabled = true
@@ -450,8 +470,9 @@ fun CgpediaWebAppHost(
                         allowFileAccessFromFileURLs = true
                         allowUniversalAccessFromFileURLs = true
                         mediaPlaybackRequiresUserGesture = false
-                        useWideViewPort = true
-                        loadWithOverviewMode = true
+                        useWideViewPort = false
+                        loadWithOverviewMode = false
+                        textZoom = 100
                         setSupportZoom(true)
                         builtInZoomControls = true
                         displayZoomControls = false
