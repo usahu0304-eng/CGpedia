@@ -18,6 +18,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.ParcelFileDescriptor
 import android.util.Base64
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.JavascriptInterface
 import android.webkit.ValueCallback
@@ -454,6 +455,10 @@ fun CgpediaWebAppHost(
             factory = { context ->
                 val bridge = CgpediaAndroidBridge(activity)
                 WebView(context).apply {
+                    layoutParams = ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
                     bridge.webViewRef = this
                     webViewHolder.view = this
                     if (activity is MainActivity) {
@@ -470,15 +475,16 @@ fun CgpediaWebAppHost(
                         allowFileAccessFromFileURLs = true
                         allowUniversalAccessFromFileURLs = true
                         mediaPlaybackRequiresUserGesture = false
-                        useWideViewPort = false
-                        loadWithOverviewMode = false
+                        useWideViewPort = true
+                        loadWithOverviewMode = true
                         textZoom = 100
                         setSupportZoom(true)
                         builtInZoomControls = true
                         displayZoomControls = false
-                        cacheMode = WebSettings.LOAD_DEFAULT
+                        cacheMode = WebSettings.LOAD_NO_CACHE
                     }
 
+                    clearCache(true)
                     addJavascriptInterface(bridge, "AndroidBridge")
 
                     webViewClient = object : WebViewClient() {

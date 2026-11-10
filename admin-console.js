@@ -3025,28 +3025,70 @@
     return `${prefix}_${clean || Date.now()}`;
   }
 
+  function normalizeFolderKey(str) {
+    return String(str == null ? '' : str)
+      .normalize('NFC')
+      .trim()
+      .toLowerCase()
+      .replace(/[\s\-_\/]+/g, ' ')
+      .replace(/[()[\]{}.,:;'"!?]+/g, '')
+      .trim();
+  }
+
   function getTaxonomyCatalog(state) {
-    const baseExams = window.CGpediaCloud && Array.isArray(window.CGpediaCloud.EXAM_CATEGORIES)
-      ? window.CGpediaCloud.EXAM_CATEGORIES
+    const cloudDefs = window.CGpediaTaxonomyDefaults || window.CGpediaCloud || {};
+    const baseMainCategories = Array.isArray(cloudDefs.MAIN_CATEGORIES) && cloudDefs.MAIN_CATEGORIES.length > 0
+      ? cloudDefs.MAIN_CATEGORIES
       : [
-          { id: 'exam_cgpsc', examId: 'exam_cgpsc', code: 'CGPSC', nameEn: 'CGPSC State Services', nameHi: 'छत्तीसगढ़ पीएससी (CGPSC)', icon: '🏛️', subjectIds: [] },
-          { id: 'exam_cg_vyapam', examId: 'exam_cg_vyapam', code: 'CG_VYAPAM', nameEn: 'CG Vyapam', nameHi: 'छत्तीसगढ़ व्यापम (CG Vyapam)', icon: '📑', subjectIds: [] },
-          { id: 'exam_adeo', examId: 'exam_adeo', code: 'ADEO', nameEn: 'ADEO', nameHi: 'सहायक विकास विस्तार अधिकारी (ADEO)', icon: '🌾', subjectIds: [] },
-          { id: 'exam_patwari', examId: 'exam_patwari', code: 'PATWARI', nameEn: 'Patwari', nameHi: 'पटवारी भर्ती परीक्षा', icon: '📐', subjectIds: [] },
-          { id: 'exam_sub_inspector', examId: 'exam_sub_inspector', code: 'SUB_INSPECTOR', nameEn: 'Sub Inspector', nameHi: 'सब इंस्पेक्टर (SI)', icon: '🚓', subjectIds: [] },
-          { id: 'exam_teacher', examId: 'exam_teacher', code: 'TEACHER_RECRUITMENT', nameEn: 'Teacher Recruitment', nameHi: 'शिक्षक भर्ती परीक्षा', icon: '👩‍🏫', subjectIds: [] },
-          { id: 'exam_tet', examId: 'exam_tet', code: 'TET', nameEn: 'TET (CG TET / CTET)', nameHi: 'शिक्षक पात्रता परीक्षा (TET)', icon: '🎓', subjectIds: [] },
-          { id: 'exam_upsc', examId: 'exam_upsc', code: 'UPSC', nameEn: 'UPSC Civil Services', nameHi: 'संघ लोक सेवा आयोग (UPSC)', icon: '🇮🇳', subjectIds: [] },
-          { id: 'exam_ssc', examId: 'exam_ssc', code: 'SSC', nameEn: 'SSC Examinations', nameHi: 'एसएससी परीक्षाएं', icon: '📋', subjectIds: [] }
+          { id: 'cat_cg_gk', mainCategoryId: 'cat_cg_gk', code: 'CHHATTISGARH_GK', titleEn: 'Chhattisgarh GK', titleHi: 'छत्तीसगढ़ सामान्य ज्ञान (Chhattisgarh GK)', icon: '🏛️', hasSubjectFolders: true, order: 1, aliases: ['chhattisgarh gk', 'cg gk', 'cg gs', 'chhattisgarh general knowledge', 'छत्तीसगढ़ सामान्य ज्ञान'] },
+          { id: 'cat_indian_gs', mainCategoryId: 'cat_indian_gs', code: 'INDIAN_GS', titleEn: 'Indian GS', titleHi: 'भारतीय सामान्य अध्ययन (Indian GS)', icon: '🇮🇳', hasSubjectFolders: true, order: 2, aliases: ['indian gs', 'general studies', 'भारतीय सामान्य अध्ययन', 'सामान्य अध्ययन'] },
+          { id: 'cat_maths', mainCategoryId: 'cat_maths', code: 'MATHS', titleEn: 'Maths', titleHi: 'गणित (Maths)', icon: '📐', hasSubjectFolders: false, directSubjectId: 'sub_maths', order: 3, aliases: ['maths', 'mathematics', 'quantitative aptitude', 'गणित'] },
+          { id: 'cat_english', mainCategoryId: 'cat_english', code: 'ENGLISH', titleEn: 'English', titleHi: 'अंग्रेजी (English)', icon: '🔤', hasSubjectFolders: false, directSubjectId: 'sub_english', order: 4, aliases: ['english', 'general english', 'अंग्रेजी'] },
+          { id: 'cat_hindi', mainCategoryId: 'cat_hindi', code: 'HINDI', titleEn: 'Hindi', titleHi: 'हिन्दी (Hindi)', icon: '🕉️', hasSubjectFolders: false, directSubjectId: 'sub_hindi', order: 5, aliases: ['hindi', 'general hindi', 'हिन्दी', 'हिंदी'] },
+          { id: 'cat_reasoning', mainCategoryId: 'cat_reasoning', code: 'REASONING', titleEn: 'Reasoning', titleHi: 'तर्कशक्ति (Reasoning)', icon: '🧠', hasSubjectFolders: false, directSubjectId: 'sub_reasoning', order: 6, aliases: ['reasoning', 'logical reasoning', 'तर्कशक्ति', 'रीजनिंग'] },
+          { id: 'cat_uncategorised', mainCategoryId: 'cat_uncategorised', code: 'UNCATEGORISED', titleEn: 'Uncategorised', titleHi: 'अवर्गीकृत प्रश्न (Uncategorised)', icon: '📂', hasSubjectFolders: false, directSubjectId: 'sub_uncategorised', order: 99, aliases: ['uncategorised', 'uncategorized', 'needs categorisation', 'अवर्गीकृत'] }
         ];
 
-    const customTax = (state && state.customTaxonomy) || { customCategories: [], customSubjects: [] };
+    const baseExams = Array.isArray(cloudDefs.EXAM_CATEGORIES) && cloudDefs.EXAM_CATEGORIES.length > 0
+      ? cloudDefs.EXAM_CATEGORIES
+      : [
+          { id: 'exam_cgpsc', examId: 'exam_cgpsc', code: 'CGPSC', nameEn: 'CGPSC', nameHi: 'छत्तीसगढ़ पीएससी (CGPSC)', icon: '🏛️', pyqCategory: 'CGPSC' },
+          { id: 'exam_cg_vyapam', examId: 'exam_cg_vyapam', code: 'CG_VYAPAM', nameEn: 'CG Vyapam', nameHi: 'छत्तीसगढ़ व्यापम (CG Vyapam)', icon: '📋', pyqCategory: 'CG Vyapam' },
+          { id: 'exam_upsc', examId: 'exam_upsc', code: 'UPSC', nameEn: 'UPSC', nameHi: 'संघ लोक सेवा आयोग (UPSC)', icon: '🇮🇳', pyqCategory: 'UPSC' },
+          { id: 'exam_ssc', examId: 'exam_ssc', code: 'SSC', nameEn: 'SSC', nameHi: 'एसएससी परीक्षाएं (SSC)', icon: '🏢', pyqCategory: 'SSC' },
+          { id: 'exam_railway', examId: 'exam_railway', code: 'RAILWAY', nameEn: 'Railway', nameHi: 'रेलवे भर्ती बोर्ड (Railway)', icon: '🚆', pyqCategory: 'Railway' },
+          { id: 'exam_banking', examId: 'exam_banking', code: 'BANKING', nameEn: 'Banking', nameHi: 'बैंकिंग परीक्षाएं (Banking)', icon: '🏦', pyqCategory: 'Banking' },
+          { id: 'exam_teaching', examId: 'exam_teaching', code: 'TEACHING_EXAMS', nameEn: 'Teaching Exams', nameHi: 'शिक्षक भर्ती एवं पात्रता (Teaching)', icon: '🎓', pyqCategory: 'Teaching Exams' },
+          { id: 'exam_other', examId: 'exam_other', code: 'OTHER_EXAMS', nameEn: 'Other Exams', nameHi: 'अन्य प्रतियोगी परीक्षाएं', icon: '📚', pyqCategory: 'Other Exams' }
+        ];
+
+    const basePyqHierarchy = Array.isArray(cloudDefs.PYQ_EXAM_CATEGORIES) && cloudDefs.PYQ_EXAM_CATEGORIES.length > 0
+      ? cloudDefs.PYQ_EXAM_CATEGORIES
+      : [];
+
+    const customTax = (state && state.customTaxonomy) || { customCategories: [], customSubjects: [], pyqCategories: [] };
     const stateExamMaster = (state && Array.isArray(state.examMaster)) ? state.examMaster : [];
     const stateSubjectMaster = (state && Array.isArray(state.subjectMaster)) ? state.subjectMaster : [];
     const stateTopicMaster = (state && Array.isArray(state.topicMaster)) ? state.topicMaster : [];
     const stateSubtopicMaster = (state && Array.isArray(state.subtopicMaster)) ? state.subtopicMaster : [];
 
-    // 1. Build Exam Master Map
+    // 0. Main Categories Map
+    const mainCategoriesMap = new Map();
+    const mainCatLookup = new Map();
+    baseMainCategories.forEach((mc) => {
+      const catObj = Object.assign({}, mc, {
+        aliases: Array.isArray(mc.aliases) ? [...mc.aliases] : []
+      });
+      mainCategoriesMap.set(catObj.mainCategoryId, catObj);
+      mainCatLookup.set(normalizeFolderKey(catObj.mainCategoryId), catObj);
+      mainCatLookup.set(normalizeFolderKey(catObj.code), catObj);
+      mainCatLookup.set(normalizeFolderKey(catObj.titleEn), catObj);
+      mainCatLookup.set(normalizeFolderKey(catObj.titleHi), catObj);
+      catObj.aliases.forEach((al) => mainCatLookup.set(normalizeFolderKey(al), catObj));
+    });
+    const mainCategories = Array.from(mainCategoriesMap.values()).sort((a, b) => (a.order || 50) - (b.order || 50));
+
+    // 1. Build Exam Master Map & PYQ Hierarchy
     const examsMap = new Map();
     function registerExam(ex) {
       if (!ex) return;
@@ -3063,11 +3105,13 @@
           nameHi: String(ex.nameHi || ex.titleHi || ex.nameEn || code).trim(),
           icon: ex.icon || '📘',
           badge: ex.badge || 'Competitive Exam',
+          pyqCategory: ex.pyqCategory || 'Other Exams',
           subjectIds: Array.isArray(ex.subjectIds) ? [...ex.subjectIds] : []
         });
       } else {
         if (ex.nameEn) existing.nameEn = String(ex.nameEn).trim();
         if (ex.nameHi) existing.nameHi = String(ex.nameHi).trim();
+        if (ex.pyqCategory) existing.pyqCategory = ex.pyqCategory;
         if (Array.isArray(ex.subjectIds)) {
           existing.subjectIds = Array.from(new Set([...existing.subjectIds, ...ex.subjectIds]));
         }
@@ -3078,177 +3122,296 @@
     stateExamMaster.forEach(registerExam);
     const examCategories = Array.from(examsMap.values());
 
-    // 2. Build Subject Master Map
-    const baseSubjects = window.CGpediaCloud && Array.isArray(window.CGpediaCloud.DEFAULT_SUBJECTS)
-      ? window.CGpediaCloud.DEFAULT_SUBJECTS
-      : [];
-    const builtinSubjectFallbacks = [
-      { id: 'sub_cg_gs', subjectId: 'sub_cg_gs', titleEn: 'Chhattisgarh General Knowledge', titleHi: 'छत्तीसगढ़ सामान्य ज्ञान', examCode: 'CGPSC', aliases: ['sub_cg_gk', 'Chhattisgarh General Studies', 'Chhattisgarh GS', 'CG GK', 'CG GS', 'Chhattisgarh History', 'Chhattisgarh Geography', 'छत्तीसगढ़ सामान्य अध्ययन', 'छत्तीसगढ़ जीके', 'छत्तीसगढ़'], topics: ['History of Chhattisgarh', 'Geography & Climate of CG', 'Tribes, Art & Culture', 'Panchayati Raj & Local Administration', 'CG Economy, Forest & Agriculture', 'Chhattisgarh Current Affairs'] },
-      { id: 'sub_history', subjectId: 'sub_history', titleEn: 'History', titleHi: 'इतिहास', examCode: 'ALL', aliases: ['Indian History', 'History of India', 'Ancient History', 'Modern History', 'भारत का इतिहास', 'इतिहास'], topics: ['Ancient Indian History', 'Medieval Indian History', 'Modern Indian History', 'Indian National Movement', 'Art & Architecture'] },
-      { id: 'sub_geography', subjectId: 'sub_geography', titleEn: 'Geography', titleHi: 'भूगोल', examCode: 'ALL', aliases: ['Indian Geography', 'World Geography', 'Physical Geography', 'Indian & World Geography', 'भारत का भूगोल', 'विश्व का भूगोल', 'भूगोल'], topics: ['Indian Geography', 'World Geography', 'Physical Geography', 'Chhattisgarh Geography', 'Environment & Ecology'] },
-      { id: 'sub_polity', subjectId: 'sub_polity', titleEn: 'Indian Polity', titleHi: 'भारतीय राजव्यवस्था एवं संविधान', examCode: 'ALL', aliases: ['Polity', 'Indian Polity & Governance', 'Constitution', 'Governance', 'संविधान', 'राजव्यवस्था', 'भारतीय संविधान'], topics: ['Constitution', 'Fundamental Rights', 'Directive Principles', 'Parliament', 'President and Governor', 'Judiciary & Panchayati Raj'] },
-      { id: 'sub_economy', subjectId: 'sub_economy', titleEn: 'Economics', titleHi: 'अर्थव्यवस्था', examCode: 'ALL', aliases: ['sub_economics', 'Indian Economy', 'Economy', 'भारतीय अर्थव्यवस्था', 'अर्थशास्त्र'], topics: ['National Income & Planning', 'Banking, RBI & Monetary Policy', 'Union & State Budget, Economic Survey', 'Agriculture, Industry & Infrastructure'] },
-      { id: 'sub_science', subjectId: 'sub_science', titleEn: 'General Science', titleHi: 'सामान्य विज्ञान एवं प्रौद्योगिकी', examCode: 'ALL', aliases: ['Science', 'General Science & Tech', 'Science & Technology', 'विज्ञान', 'सामान्य विज्ञान', 'भौतिकी', 'रसायन', 'जीव विज्ञान'], topics: ['Physics & Chemistry in Daily Life', 'Biology & Human Health', 'Space (ISRO), Defence (DRDO) & IT', 'Environment & Ecology'] },
-      { id: 'sub_mathematics', subjectId: 'sub_mathematics', titleEn: 'Mathematics', titleHi: 'गणित एवं संख्यात्मक अभियोग्यता', examCode: 'ALL', aliases: ['Maths', 'Quantitative Aptitude', 'Arithmetic', 'CSAT Maths', 'गणित'], topics: ['Number System & Simplification', 'Percentage, Profit & Loss, SI & CI', 'Ratio, Time & Work, Speed & Distance', 'Algebra, Geometry & Mensuration'] },
-      { id: 'sub_reasoning', subjectId: 'sub_reasoning', titleEn: 'Reasoning', titleHi: 'तार्किक अभियोग्यता (Reasoning)', examCode: 'ALL', aliases: ['Logical Reasoning', 'General Intelligence & Reasoning', 'Aptitude & Reasoning', 'CSAT Quantitative Aptitude & Reasoning', 'रीजनिंग', 'तर्कशक्ति'], topics: ['Coding-Decoding & Series', 'Blood Relations & Direction Sense', 'Syllogism, Statement & Conclusion', 'Puzzles, Seating & Non-Verbal Reasoning'] },
-      { id: 'sub_hindi', subjectId: 'sub_hindi', titleEn: 'Hindi', titleHi: 'सामान्य हिन्दी व्याकरण एवं भाषा', examCode: 'ALL', aliases: ['General Hindi', 'Hindi Language', 'Hindi Grammar', 'General Hindi & Chhattisgarhi Language', 'सामान्य हिन्दी', 'हिन्दी', 'हिंदी', 'हिन्दी व्याकरण', 'छत्तीसगढ़ी भाषा'], topics: ['वर्णमाला, संधि एवं समास (Sandhi & Samas)', 'तत्सम-तद्भव, पर्यायवाची एवं विलोम', 'पर्यायवाची, विलोम एवं मुहावरे', 'छत्तीसगढ़ी भाषा एवं व्याकरण'] },
-      { id: 'sub_english', subjectId: 'sub_english', titleEn: 'English', titleHi: 'General English & Comprehension', examCode: 'ALL', aliases: ['General English', 'English Language', 'English Grammar', 'अंग्रेजी', 'सामान्य अंग्रेजी'], topics: ['Parts of Speech, Tenses & Voice', 'Direct/Indirect Speech & Error Spotting', 'Synonyms, Antonyms, Idioms & One-Word', 'Reading Comprehension & Cloze Test'] },
-      { id: 'sub_computer', subjectId: 'sub_computer', titleEn: 'Computer Knowledge', titleHi: 'कम्प्यूटर सामान्य ज्ञान', examCode: 'ALL', aliases: ['Computer', 'Computer Awareness', 'ICT', 'कंप्यूटर', 'कम्प्यूटर'], topics: ['Computer Architecture, Hardware & Memory', 'Operating System & MS Office (Word, Excel, PowerPoint)', 'Internet, Networking, Email & Cyber Security', 'Multimedia, Printers & Antivirus'] },
-      { id: 'sub_pedagogy', subjectId: 'sub_pedagogy', titleEn: 'Child Development & Pedagogy', titleHi: 'बाल विकास एवं शिक्षाशास्त्र (CDP)', examCode: 'TET', aliases: ['sub_cdp', 'CDP', 'Pedagogy', 'Teaching Aptitude', 'बाल विकास', 'शिक्षाशास्त्र'], topics: ['Learning Theories', 'Inclusive Education', 'Teaching Aptitude & Assessment'] },
-      { id: 'sub_current_affairs', subjectId: 'sub_current_affairs', titleEn: 'Current Affairs', titleHi: 'समसामयिकी (Current Affairs)', examCode: 'ALL', aliases: ['Chhattisgarh, National & International Current Affairs', 'Daily Current Affairs', 'समसामयिकी', 'करंट अफेयर्स'], topics: ['National & International Events', 'Chhattisgarh Current Affairs & Schemes', 'Awards, Sports, Summits & Reports'] }
-    ];
+    // Merge PYQ Categories (base + custom + dynamically discovered from questions)
+    const pyqCatMap = new Map();
+    function ensurePyqCategory(catName, titleHi, icon) {
+      const cleanName = String(catName || 'Other Exams').trim() || 'Other Exams';
+      const normKey = normalizeFolderKey(cleanName);
+      for (const existing of pyqCatMap.values()) {
+        if (normalizeFolderKey(existing.categoryName) === normKey) return existing;
+      }
+      const created = {
+        id: makeSlugId('pyq_cat', cleanName),
+        categoryName: cleanName,
+        titleHi: titleHi || cleanName,
+        icon: icon || '🏛️',
+        exams: []
+      };
+      pyqCatMap.set(created.categoryName, created);
+      return created;
+    }
 
+    function ensurePyqExamEntry(catName, examName, yearsArr, papersArr) {
+      const catObj = ensurePyqCategory(catName);
+      const cleanExam = String(examName || '').trim();
+      if (!cleanExam) return catObj;
+      const normEx = normalizeFolderKey(cleanExam);
+      let exEntry = catObj.exams.find((e) => normalizeFolderKey(e.examName) === normEx);
+      if (!exEntry) {
+        exEntry = {
+          examName: cleanExam,
+          years: [],
+          papers: []
+        };
+        catObj.exams.push(exEntry);
+      }
+      (yearsArr || []).forEach((y) => {
+        const cleanY = String(y || '').trim();
+        if (cleanY && !exEntry.years.includes(cleanY)) exEntry.years.push(cleanY);
+      });
+      (papersArr || []).forEach((p) => {
+        const cleanP = String(p || '').trim();
+        if (cleanP && !exEntry.papers.includes(cleanP)) exEntry.papers.push(cleanP);
+      });
+      exEntry.years.sort((a, b) => String(b).localeCompare(String(a)));
+      return catObj;
+    }
+
+    basePyqHierarchy.forEach((pc) => {
+      ensurePyqCategory(pc.categoryName, pc.titleHi, pc.icon);
+      (pc.exams || []).forEach((ex) => {
+        ensurePyqExamEntry(pc.categoryName, ex.examName, ex.years, ex.papers);
+      });
+    });
+
+    (customTax.pyqCategories || []).forEach((pc) => {
+      ensurePyqCategory(pc.categoryName, pc.titleHi, pc.icon);
+      (pc.exams || []).forEach((ex) => {
+        ensurePyqExamEntry(pc.categoryName, ex.examName, ex.years, ex.papers);
+      });
+    });
+
+    // Also include any PYQ references present on questions in state.questionBank
+    ((state && state.questionBank) || []).forEach((q) => {
+      if (!q || q.isDeleted) return;
+      const refs = Array.isArray(q.pyqReferences) ? q.pyqReferences : [];
+      refs.forEach((ref) => {
+        if (ref && ref.examCategory) {
+          const pList = [];
+          if (ref.paperName && ref.shift) pList.push(`${ref.paperName} - ${ref.shift}`);
+          else if (ref.paperName) pList.push(ref.paperName);
+          else if (ref.shift) pList.push(ref.shift);
+          ensurePyqExamEntry(
+            ref.examCategory,
+            ref.examName || ref.examCategory,
+            ref.examYear ? [String(ref.examYear)] : [],
+            pList
+          );
+        }
+      });
+    });
+
+    const pyqCategories = Array.from(pyqCatMap.values());
+
+    // 2. Build Subject Master Map (preventing duplicate subject folders)
+    const baseSubjects = Array.isArray(cloudDefs.DEFAULT_SUBJECTS) ? cloudDefs.DEFAULT_SUBJECTS : [];
     const subjectsById = new Map();
     const subjectLookupMap = new Map();
 
-    function registerSubject(subObj) {
-      if (!subObj || (!subObj.titleEn && !subObj.nameEn)) return;
-      const titleEn = String(subObj.titleEn || subObj.nameEn).trim();
-      const titleHi = String(subObj.titleHi || subObj.nameHi || titleEn).trim();
-      const lowEn = titleEn.toLowerCase();
+    function inferMainCategoryForSubject(subObj) {
+      if (subObj.mainCategoryId && mainCategoriesMap.has(subObj.mainCategoryId)) {
+        return mainCategoriesMap.get(subObj.mainCategoryId);
+      }
+      if (subObj.mainCategory && mainCatLookup.has(normalizeFolderKey(subObj.mainCategory))) {
+        return mainCatLookup.get(normalizeFolderKey(subObj.mainCategory));
+      }
+      const txt = `${subObj.subjectId || ''} ${subObj.titleEn || ''} ${subObj.titleHi || ''}`.toLowerCase();
+      if (/छत्तीसगढ़|chhattisgarh|\bcg\b|sub_cg/.test(txt)) return mainCategoriesMap.get('cat_cg_gk');
+      if (/गणित|math|quant|अंकगणित|क्षेत्रमिति|बीजगणित|ज्यामिति|त्रिकोणमिति/.test(txt)) return mainCategoriesMap.get('cat_maths');
+      if (/english|अंग्रेजी/.test(txt)) return mainCategoriesMap.get('cat_english');
+      if (/हिन्दी|हिंदी|\bhindi\b|व्याकरण/.test(txt)) return mainCategoriesMap.get('cat_hindi');
+      if (/तर्कशक्ति|रीजनिंग|reasoning|mental ability/.test(txt)) return mainCategoriesMap.get('cat_reasoning');
+      if (/uncategorised|uncategorized|needs_categorisation|अवर्गीकृत/.test(txt)) return mainCategoriesMap.get('cat_uncategorised');
+      return mainCategoriesMap.get('cat_indian_gs');
+    }
 
-      // Check if this subject matches an existing registered subject via ID, title, or alias
+    function registerSubject(subObj) {
+      if (!subObj || (!subObj.titleEn && !subObj.nameEn && !subObj.titleHi)) return;
+      const titleEn = String(subObj.titleEn || subObj.nameEn || subObj.titleHi).trim();
+      const titleHi = String(subObj.titleHi || subObj.nameHi || titleEn).trim();
+      const normEn = normalizeFolderKey(titleEn);
+      const normHi = normalizeFolderKey(titleHi);
+      const normId = normalizeFolderKey(subObj.subjectId || subObj.id || '');
+
       let matched = null;
       if (subObj.subjectId && subjectsById.has(subObj.subjectId)) {
         matched = subjectsById.get(subObj.subjectId);
       } else if (subObj.id && subjectsById.has(subObj.id)) {
         matched = subjectsById.get(subObj.id);
-      } else if (subjectLookupMap.has(lowEn)) {
-        matched = subjectLookupMap.get(lowEn);
+      } else if (normId && subjectLookupMap.has(normId)) {
+        matched = subjectLookupMap.get(normId);
+      } else if (normEn && subjectLookupMap.has(normEn)) {
+        matched = subjectLookupMap.get(normEn);
+      } else if (normHi && subjectLookupMap.has(normHi)) {
+        matched = subjectLookupMap.get(normHi);
       }
+
+      const mainCatObj = inferMainCategoryForSubject(subObj);
 
       if (!matched) {
         const subjectId = String(subObj.subjectId || subObj.id || makeSlugId('sub', titleEn)).trim();
         matched = {
           id: subjectId,
           subjectId,
+          mainCategoryId: mainCatObj ? mainCatObj.mainCategoryId : 'cat_indian_gs',
+          mainCategory: mainCatObj ? mainCatObj.titleEn : 'Indian GS',
           titleEn,
           titleHi,
           examCode: subObj.examCode || 'ALL',
-          aliases: Array.isArray(subObj.aliases) ? [...subObj.aliases] : [],
+          aliases: Array.isArray(subObj.aliases) ? [...subObj.aliases] : (Array.isArray(subObj.legacyAliases) ? [...subObj.legacyAliases] : []),
+          keywords: Array.isArray(subObj.keywords) ? [...subObj.keywords] : [],
           topics: Array.isArray(subObj.topics) ? [...subObj.topics] : []
         };
         subjectsById.set(subjectId, matched);
       } else {
-        if (Array.isArray(subObj.aliases)) {
-          subObj.aliases.forEach((al) => {
-            if (al && !matched.aliases.some((x) => x.toLowerCase() === String(al).toLowerCase())) {
-              matched.aliases.push(String(al).trim());
-            }
+        const incomingAliases = [...(subObj.aliases || []), ...(subObj.legacyAliases || []), titleEn, titleHi];
+        incomingAliases.forEach((al) => {
+          const cleanAl = String(al || '').trim();
+          if (cleanAl && !matched.aliases.some((x) => normalizeFolderKey(x) === normalizeFolderKey(cleanAl))) {
+            matched.aliases.push(cleanAl);
+          }
+        });
+        if (Array.isArray(subObj.keywords)) {
+          subObj.keywords.forEach((kw) => {
+            if (kw && !matched.keywords.includes(kw)) matched.keywords.push(kw);
           });
         }
         if (Array.isArray(subObj.topics)) {
           subObj.topics.forEach((t) => {
             const cleanT = String(t || '').trim();
-            if (cleanT && !matched.topics.some((et) => et.toLowerCase() === cleanT.toLowerCase())) {
+            if (cleanT && !matched.topics.some((et) => normalizeFolderKey(et) === normalizeFolderKey(cleanT))) {
               matched.topics.push(cleanT);
             }
           });
         }
       }
 
-      subjectLookupMap.set(matched.subjectId.toLowerCase(), matched);
-      subjectLookupMap.set(matched.titleEn.toLowerCase(), matched);
-      subjectLookupMap.set(matched.titleHi.toLowerCase(), matched);
+      subjectLookupMap.set(normalizeFolderKey(matched.subjectId), matched);
+      subjectLookupMap.set(normalizeFolderKey(matched.titleEn), matched);
+      subjectLookupMap.set(normalizeFolderKey(matched.titleHi), matched);
       (matched.aliases || []).forEach((al) => {
-        if (al) subjectLookupMap.set(String(al).trim().toLowerCase(), matched);
+        if (al) subjectLookupMap.set(normalizeFolderKey(al), matched);
       });
     }
 
     baseSubjects.forEach(registerSubject);
-    builtinSubjectFallbacks.forEach(registerSubject);
     (customTax.customSubjects || []).forEach(registerSubject);
     stateSubjectMaster.forEach(registerSubject);
 
     const subjects = Array.from(subjectsById.values());
 
-    // 3. Build Hierarchical Topic Master
-    const baseTopics = window.CGpediaCloud && Array.isArray(window.CGpediaCloud.DEFAULT_TOPICS)
-      ? window.CGpediaCloud.DEFAULT_TOPICS
-      : [];
+    // 3. Build Hierarchical Topic Master (preventing duplicate topic folders under same parent)
+    const baseTopics = Array.isArray(cloudDefs.DEFAULT_TOPICS) ? cloudDefs.DEFAULT_TOPICS : [];
     const topicsById = new Map();
+    const topicAliasLookup = new Map(); // normalized key -> topicObj
 
     function registerTopic(topObj) {
-      if (!topObj || (!topObj.titleEn && !topObj.nameEn)) return;
-      const titleEn = String(topObj.titleEn || topObj.nameEn).trim();
+      if (!topObj || (!topObj.titleEn && !topObj.nameEn && !topObj.titleHi)) return;
+      const titleEn = String(topObj.titleEn || topObj.nameEn || topObj.titleHi).trim();
       const titleHi = String(topObj.titleHi || topObj.nameHi || titleEn).trim();
-      const parentSub = subjectLookupMap.get(String(topObj.subjectId || topObj.subject || '').trim().toLowerCase()) || subjects[0];
-      const subjectId = parentSub ? parentSub.subjectId : String(topObj.subjectId || 'sub_cg_gk');
-      const topicId = String(topObj.topicId || topObj.id || makeSlugId(`top_${subjectId.replace(/^sub_/, '')}`, titleEn)).trim();
+      const normEn = normalizeFolderKey(titleEn);
+      const normHi = normalizeFolderKey(titleHi);
 
-      let existing = topicsById.get(topicId);
+      // Skip legacy generic placeholder topic names if they aren't canonical
+      if (['general', 'general topic', 'unknown', 'needs categorisation'].includes(normEn) && topObj.id !== 'top_uncategorised') {
+        return;
+      }
+
+      // Check if this topic matches an existing registered topic via ID or alias
+      let existing = null;
+      if (topObj.topicId && topicsById.has(topObj.topicId)) {
+        existing = topicsById.get(topObj.topicId);
+      } else if (topObj.id && topicsById.has(topObj.id)) {
+        existing = topicsById.get(topObj.id);
+      }
+
+      const rawParentSub = subjectLookupMap.get(normalizeFolderKey(topObj.subjectId || topObj.subject || ''));
       if (!existing) {
-        // Also check same subjectId + titleEn
         for (const t of topicsById.values()) {
-          if (t.subjectId === subjectId && t.titleEn.toLowerCase() === titleEn.toLowerCase()) {
+          const sameSub = !rawParentSub || t.subjectId === rawParentSub.subjectId;
+          const matchesTitle = normalizeFolderKey(t.titleEn) === normEn ||
+            normalizeFolderKey(t.titleHi) === normHi ||
+            (t.aliases || []).some((a) => normalizeFolderKey(a) === normEn || normalizeFolderKey(a) === normHi);
+          if (sameSub && matchesTitle) {
             existing = t;
             break;
           }
         }
       }
+      // Also check global alias lookup if legacy topic is being remapped to a new subject
+      if (!existing && topicAliasLookup.has(normEn)) {
+        existing = topicAliasLookup.get(normEn);
+      } else if (!existing && topicAliasLookup.has(normHi)) {
+        existing = topicAliasLookup.get(normHi);
+      }
+
+      const parentSub = rawParentSub || (existing ? subjectsById.get(existing.subjectId) : null) || subjectsById.get('sub_cg_general_info') || subjects[0];
+      const subjectId = parentSub ? parentSub.subjectId : 'sub_cg_general_info';
+      const mainCategoryId = (topObj.mainCategoryId && mainCategoriesMap.has(topObj.mainCategoryId))
+        ? topObj.mainCategoryId
+        : (parentSub ? parentSub.mainCategoryId : 'cat_cg_gk');
 
       if (!existing) {
+        const topicId = String(topObj.topicId || topObj.id || makeSlugId(`top_${subjectId.replace(/^sub_/, '')}`, titleEn)).trim();
         existing = {
           id: topicId,
           topicId,
           subjectId,
+          mainCategoryId,
           titleEn,
           titleHi,
+          aliases: Array.isArray(topObj.aliases) ? [...topObj.aliases] : [],
           keywords: Array.isArray(topObj.keywords) ? [...topObj.keywords] : []
         };
         topicsById.set(topicId, existing);
       } else {
-        existing.titleEn = titleEn;
-        existing.titleHi = titleHi;
+        if (Array.isArray(topObj.aliases)) {
+          topObj.aliases.forEach((al) => {
+            if (al && !existing.aliases.some((x) => normalizeFolderKey(x) === normalizeFolderKey(al))) {
+              existing.aliases.push(al);
+            }
+          });
+        }
         if (Array.isArray(topObj.keywords)) {
           existing.keywords = Array.from(new Set([...(existing.keywords || []), ...topObj.keywords]));
         }
       }
 
-      if (parentSub && !parentSub.topics.some((t) => t.toLowerCase() === titleEn.toLowerCase())) {
-        parentSub.topics.push(titleEn);
+      topicAliasLookup.set(normalizeFolderKey(existing.topicId), existing);
+      topicAliasLookup.set(normalizeFolderKey(existing.titleEn), existing);
+      topicAliasLookup.set(normalizeFolderKey(existing.titleHi), existing);
+      (existing.aliases || []).forEach((al) => {
+        if (al) topicAliasLookup.set(normalizeFolderKey(al), existing);
+      });
+
+      const canonicalParentSub = subjectsById.get(existing.subjectId);
+      if (canonicalParentSub && !canonicalParentSub.topics.some((t) => normalizeFolderKey(t) === normalizeFolderKey(existing.titleEn))) {
+        canonicalParentSub.topics.push(existing.titleEn);
       }
     }
 
     baseTopics.forEach(registerTopic);
-    // Ensure every topic string on every subject is also registered in Topic Master
-    subjects.forEach((s) => {
-      (s.topics || []).forEach((tName) => {
-        registerTopic({
-          subjectId: s.subjectId,
-          titleEn: tName,
-          titleHi: tName,
-          keywords: [tName.toLowerCase()]
-        });
-      });
-    });
     stateTopicMaster.forEach(registerTopic);
 
     const topicMaster = Array.from(topicsById.values());
 
     // 4. Build Hierarchical Subtopic Master
-    const baseSubtopics = window.CGpediaCloud && Array.isArray(window.CGpediaCloud.DEFAULT_SUBTOPICS)
-      ? window.CGpediaCloud.DEFAULT_SUBTOPICS
-      : [];
+    const baseSubtopics = Array.isArray(cloudDefs.DEFAULT_SUBTOPICS) ? cloudDefs.DEFAULT_SUBTOPICS : [];
     const subtopicsById = new Map();
 
     function registerSubtopic(stObj) {
-      if (!stObj || (!stObj.titleEn && !stObj.nameEn)) return;
-      const titleEn = String(stObj.titleEn || stObj.nameEn).trim();
+      if (!stObj || (!stObj.titleEn && !stObj.nameEn && !stObj.titleHi)) return;
+      const titleEn = String(stObj.titleEn || stObj.nameEn || stObj.titleHi).trim();
       const titleHi = String(stObj.titleHi || stObj.nameHi || titleEn).trim();
-      let parentTop = topicsById.get(String(stObj.topicId || '').trim());
-      if (!parentTop && stObj.topic) {
-        const lowT = String(stObj.topic).trim().toLowerCase();
-        parentTop = topicMaster.find((t) => t.titleEn.toLowerCase() === lowT || t.titleHi.toLowerCase() === lowT);
-      }
-      const topicId = parentTop ? parentTop.topicId : String(stObj.topicId || (topicMaster[0] && topicMaster[0].topicId) || 'top_cg_history');
-      const subjectId = parentTop ? parentTop.subjectId : String(stObj.subjectId || 'sub_cg_gk');
+      let parentTop = topicsById.get(String(stObj.topicId || '').trim()) || topicAliasLookup.get(normalizeFolderKey(stObj.topicId || stObj.topic || ''));
+      const topicId = parentTop ? parentTop.topicId : String(stObj.topicId || (topicMaster[0] && topicMaster[0].topicId) || 'top_cg_hist_medieval');
+      const subjectId = parentTop ? parentTop.subjectId : String(stObj.subjectId || 'sub_cg_history');
       const subtopicId = String(stObj.subtopicId || stObj.id || makeSlugId('subtop', `${topicId}_${titleEn}`)).trim();
 
       let existing = subtopicsById.get(subtopicId);
       if (!existing) {
         for (const st of subtopicsById.values()) {
-          if (st.topicId === topicId && st.titleEn.toLowerCase() === titleEn.toLowerCase()) {
+          if (st.topicId === topicId && normalizeFolderKey(st.titleEn) === normalizeFolderKey(titleEn)) {
             existing = st;
             break;
           }
@@ -3280,13 +3443,16 @@
     const subtopicMaster = Array.from(subtopicsById.values());
 
     const allTopicsSet = new Set();
-    topicMaster.forEach((t) => allTopicsSet.add(t.titleEn));
-    subjects.forEach((s) => (s.topics || []).forEach((t) => allTopicsSet.add(t)));
+    topicMaster.forEach((t) => {
+      if (t.topicId !== 'top_uncategorised') allTopicsSet.add(t.titleHi || t.titleEn);
+    });
 
     const allSubtopicsSet = new Set();
     subtopicMaster.forEach((st) => allSubtopicsSet.add(st.titleEn));
 
     return {
+      mainCategories,
+      pyqCategories,
       examCategories,
       subjects,
       topicMaster,
@@ -3295,6 +3461,36 @@
       subtopics: subtopicMaster,
       allTopics: Array.from(allTopicsSet),
       allSubtopics: Array.from(allSubtopicsSet),
+
+      findMainCategory(val) {
+        if (!val) return null;
+        const norm = normalizeFolderKey(val);
+        if (mainCatLookup.has(norm)) return mainCatLookup.get(norm);
+        return mainCategories.find((mc) =>
+          normalizeFolderKey(mc.mainCategoryId) === norm ||
+          normalizeFolderKey(mc.titleEn) === norm ||
+          normalizeFolderKey(mc.titleHi) === norm ||
+          (mc.aliases || []).some((a) => normalizeFolderKey(a) === norm)
+        ) || null;
+      },
+
+      getSubjectsForMainCategory(mainCatVal) {
+        if (!mainCatVal || String(mainCatVal).toUpperCase() === 'ALL') {
+          return subjects.filter((s) => s.subjectId !== 'sub_uncategorised');
+        }
+        const mc = this.findMainCategory(mainCatVal);
+        if (!mc) return subjects.filter((s) => s.subjectId !== 'sub_uncategorised');
+        return subjects.filter((s) => s.mainCategoryId === mc.mainCategoryId);
+      },
+
+      getTopicsForMainCategory(mainCatVal) {
+        if (!mainCatVal || String(mainCatVal).toUpperCase() === 'ALL') {
+          return topicMaster.filter((t) => t.topicId !== 'top_uncategorised');
+        }
+        const mc = this.findMainCategory(mainCatVal);
+        if (!mc) return topicMaster.filter((t) => t.topicId !== 'top_uncategorised');
+        return topicMaster.filter((t) => t.mainCategoryId === mc.mainCategoryId);
+      },
 
       findExam(val) {
         if (!val) return null;
@@ -3319,71 +3515,105 @@
 
       findSubject(subVal) {
         if (!subVal) return null;
-        const low = String(subVal).trim().toLowerCase();
-        if (subjectLookupMap.has(low)) return subjectLookupMap.get(low);
+        const norm = normalizeFolderKey(subVal);
+        if (!norm) return null;
+        if (subjectLookupMap.has(norm)) return subjectLookupMap.get(norm);
         return subjects.find((s) =>
-          s.subjectId.toLowerCase() === low ||
-          s.titleEn.toLowerCase() === low ||
-          s.titleHi.toLowerCase() === low ||
-          (s.aliases || []).some((a) => a.toLowerCase() === low)
+          normalizeFolderKey(s.subjectId) === norm ||
+          normalizeFolderKey(s.titleEn) === norm ||
+          normalizeFolderKey(s.titleHi) === norm ||
+          (s.aliases || []).some((a) => normalizeFolderKey(a) === norm)
         ) || null;
       },
 
       findTopic(subVal, topicVal) {
         if (!topicVal) return null;
-        const lowT = String(topicVal).trim().toLowerCase();
+        const normT = normalizeFolderKey(topicVal);
+        if (!normT) return null;
         const subObj = subVal ? this.findSubject(subVal) : null;
         if (subObj) {
           const scoped = topicMaster.find((t) =>
             t.subjectId === subObj.subjectId &&
-            (t.topicId.toLowerCase() === lowT || t.titleEn.toLowerCase() === lowT || t.titleHi.toLowerCase() === lowT)
+            (normalizeFolderKey(t.topicId) === normT ||
+              normalizeFolderKey(t.titleEn) === normT ||
+              normalizeFolderKey(t.titleHi) === normT ||
+              (t.aliases || []).some((a) => normalizeFolderKey(a) === normT))
           );
           if (scoped) return scoped;
         }
+        if (topicAliasLookup.has(normT)) return topicAliasLookup.get(normT);
         return topicMaster.find((t) =>
-          t.topicId.toLowerCase() === lowT ||
-          t.titleEn.toLowerCase() === lowT ||
-          t.titleHi.toLowerCase() === lowT
+          normalizeFolderKey(t.topicId) === normT ||
+          normalizeFolderKey(t.titleEn) === normT ||
+          normalizeFolderKey(t.titleHi) === normT ||
+          (t.aliases || []).some((a) => normalizeFolderKey(a) === normT)
         ) || null;
+      },
+
+      suggestSimilarFolders(rawSubject, rawTopic) {
+        const normTop = normalizeFolderKey(rawTopic || '');
+        const normSub = normalizeFolderKey(rawSubject || '');
+        const suggestions = [];
+        topicMaster.forEach((t) => {
+          if (t.topicId === 'top_uncategorised') return;
+          const parentSub = subjectsById.get(t.subjectId);
+          const scoreTop = normTop ? computeTextSimilarity(normTop, `${t.titleHi} ${t.titleEn}`) : 0;
+          const scoreSub = (normSub && parentSub) ? computeTextSimilarity(normSub, `${parentSub.titleHi} ${parentSub.titleEn}`) : 0;
+          const totalScore = scoreTop * 0.75 + scoreSub * 0.25;
+          if (totalScore >= 0.25 || (normTop && (normalizeFolderKey(t.titleHi).includes(normTop) || normalizeFolderKey(t.titleEn).includes(normTop)))) {
+            suggestions.push({
+              topicId: t.topicId,
+              topicTitle: t.titleHi || t.titleEn,
+              subjectId: t.subjectId,
+              subjectTitle: parentSub ? (parentSub.titleHi || parentSub.titleEn) : '',
+              mainCategoryId: t.mainCategoryId,
+              mainCategoryTitle: (mainCategoriesMap.get(t.mainCategoryId) || {}).titleEn || 'Chhattisgarh GK',
+              score: totalScore
+            });
+          }
+        });
+        suggestions.sort((a, b) => b.score - a.score);
+        return suggestions.slice(0, 5);
       },
 
       findSubtopic(topicVal, subtopicVal, subVal) {
         if (!subtopicVal) return null;
-        const lowSt = String(subtopicVal).trim().toLowerCase();
+        const normSt = normalizeFolderKey(subtopicVal);
         const topObj = topicVal ? this.findTopic(subVal, topicVal) : null;
         if (topObj) {
           const scoped = subtopicMaster.find((st) =>
             st.topicId === topObj.topicId &&
-            (st.subtopicId.toLowerCase() === lowSt || st.titleEn.toLowerCase() === lowSt || st.titleHi.toLowerCase() === lowSt)
+            (normalizeFolderKey(st.subtopicId) === normSt || normalizeFolderKey(st.titleEn) === normSt || normalizeFolderKey(st.titleHi) === normSt)
           );
           if (scoped) return scoped;
         }
         return subtopicMaster.find((st) =>
-          st.subtopicId.toLowerCase() === lowSt ||
-          st.titleEn.toLowerCase() === lowSt ||
-          st.titleHi.toLowerCase() === lowSt
+          normalizeFolderKey(st.subtopicId) === normSt ||
+          normalizeFolderKey(st.titleEn) === normSt ||
+          normalizeFolderKey(st.titleHi) === normSt
         ) || null;
       },
 
       isKnownTopic(subName, topicName) {
-        if (!topicName) return true;
-        const lowT = String(topicName).trim().toLowerCase();
-        if (lowT === 'general' || lowT === 'general knowledge' || lowT === 'miscellaneous' || lowT === 'all') return true;
+        if (!topicName) return false;
+        const normT = normalizeFolderKey(topicName);
+        if (!normT || ['general', 'general knowledge', 'miscellaneous', 'unknown', 'needs categorisation'].includes(normT)) return false;
         return Boolean(this.findTopic(subName, topicName));
       },
 
       getSubjectsForExam(examVal) {
-        if (!examVal || String(examVal).toUpperCase() === 'ALL') return subjects;
+        const validSubjects = subjects.filter((s) => s.subjectId !== 'sub_uncategorised');
+        if (!examVal || String(examVal).toUpperCase() === 'ALL') return validSubjects;
         const ex = this.findExam(examVal);
-        if (!ex || !Array.isArray(ex.subjectIds) || ex.subjectIds.length === 0) return subjects;
-        const filtered = subjects.filter((s) => ex.subjectIds.includes(s.subjectId) || s.examCode === ex.code || s.examCode === 'ALL');
-        return filtered.length > 0 ? filtered : subjects;
+        if (!ex || !Array.isArray(ex.subjectIds) || ex.subjectIds.length === 0) return validSubjects;
+        const filtered = validSubjects.filter((s) => ex.subjectIds.includes(s.subjectId) || s.examCode === ex.code || s.examCode === 'ALL');
+        return filtered.length > 0 ? filtered : validSubjects;
       },
 
       getTopicsForSubject(subVal) {
-        if (!subVal || String(subVal).toUpperCase() === 'ALL') return topicMaster;
+        if (!subVal || String(subVal).toUpperCase() === 'ALL') return topicMaster.filter((t) => t.topicId !== 'top_uncategorised');
         const subObj = this.findSubject(subVal);
-        if (!subObj) return topicMaster;
+        if (!subObj) return topicMaster.filter((t) => t.topicId !== 'top_uncategorised');
         return topicMaster.filter((t) => t.subjectId === subObj.subjectId);
       },
 
@@ -3418,30 +3648,36 @@
         });
         if (resolvedExamCodes.length === 0) resolvedExamCodes.push('CGPSC');
 
-        const subObj = this.findSubject(raw.subjectId || raw.subjectTag || raw.subject);
-        const topObj = this.findTopic(subObj ? subObj.subjectId : (raw.subjectTag || ''), raw.topicId || raw.topic);
+        const topObj = this.findTopic(raw.subjectId || raw.subjectTag || raw.subject, raw.topicId || raw.topic);
+        const subObj = (topObj ? this.findSubject(topObj.subjectId) : null) || this.findSubject(raw.subjectId || raw.subjectTag || raw.subject);
+        const mainCatObj = (subObj ? this.findMainCategory(subObj.mainCategoryId) : null) ||
+          this.findMainCategory(raw.mainCategoryId || raw.mainCategory) ||
+          null;
         const subtopObj = this.findSubtopic(topObj ? topObj.topicId : (raw.topic || ''), raw.subtopicId || raw.subtopic, subObj ? subObj.subjectId : '');
 
-        const finalSubjectObj = subObj || (topObj ? this.findSubject(topObj.subjectId) : null);
-        const isGenericPlaceholderTopic = !topObj && (!raw.topic || ['general knowledge', 'general', 'unknown', 'uncategorized'].includes(String(raw.topic).trim().toLowerCase()));
+        const finalSubjectObj = subObj || (mainCatObj && mainCatObj.directSubjectId ? this.findSubject(mainCatObj.directSubjectId) : null);
+        const finalMainCatObj = mainCatObj || (finalSubjectObj ? this.findMainCategory(finalSubjectObj.mainCategoryId) : null);
+        const isUncat = !finalSubjectObj || !topObj || finalSubjectObj.subjectId === 'sub_uncategorised' || topObj.topicId === 'top_uncategorised';
 
         return {
           examIds: resolvedExamCodes,
           examCode: resolvedExamCodes[0] || 'CGPSC',
+          mainCategoryId: finalMainCatObj ? finalMainCatObj.mainCategoryId : (isUncat ? 'cat_uncategorised' : 'cat_cg_gk'),
+          mainCategory: finalMainCatObj ? finalMainCatObj.titleEn : (isUncat ? 'Uncategorised' : 'Chhattisgarh GK'),
           subjectId: finalSubjectObj ? finalSubjectObj.subjectId : '',
-          subjectTag: finalSubjectObj ? finalSubjectObj.titleEn : String(raw.subjectTag || raw.subject || '').trim(),
+          subjectTag: finalSubjectObj ? (finalSubjectObj.titleHi || finalSubjectObj.titleEn) : String(raw.subjectTag || raw.subject || '').trim(),
           topicId: topObj ? topObj.topicId : '',
-          topic: topObj ? topObj.titleEn : String(raw.topic || '').trim(),
+          topic: topObj ? (topObj.titleHi || topObj.titleEn) : String(raw.topic || '').trim(),
           subtopicId: subtopObj ? subtopObj.subtopicId : '',
           subtopic: subtopObj ? subtopObj.titleEn : String(raw.subtopic || '').trim(),
-          isFullyCategorised: Boolean(finalSubjectObj && topObj && !isGenericPlaceholderTopic)
+          isFullyCategorised: !isUncat
         };
       }
     };
   }
 
-  function addCustomTaxonomyEntry(state, api, { examCode, subjectName, topicName, subtopicName }) {
-    state.customTaxonomy = state.customTaxonomy || { customCategories: [], customSubjects: [] };
+  function addCustomTaxonomyEntry(state, api, { mainCategoryId, examCode, subjectName, topicName, subtopicName }) {
+    state.customTaxonomy = state.customTaxonomy || { customCategories: [], customSubjects: [], pyqCategories: [] };
     state.customTaxonomy.customCategories = state.customTaxonomy.customCategories || [];
     state.customTaxonomy.customSubjects = state.customTaxonomy.customSubjects || [];
     state.examMaster = state.examMaster || [];
@@ -3472,12 +3708,16 @@
     }
 
     catalog = getTaxonomyCatalog(state);
-    let subObj = cleanSub ? catalog.findSubject(cleanSub) : null;
+    const mainCatObj = catalog.findMainCategory(mainCategoryId) || catalog.findMainCategory('cat_cg_gk');
+    let subObj = cleanSub ? catalog.findSubject(cleanSub) : (mainCatObj && mainCatObj.directSubjectId ? catalog.findSubject(mainCatObj.directSubjectId) : null);
+
     if (cleanSub && !subObj) {
       const subjectId = makeSlugId('sub', cleanSub);
       const newSub = {
         id: subjectId,
         subjectId,
+        mainCategoryId: mainCatObj ? mainCatObj.mainCategoryId : 'cat_cg_gk',
+        mainCategory: mainCatObj ? mainCatObj.titleEn : 'Chhattisgarh GK',
         titleEn: cleanSub,
         titleHi: cleanSub,
         examCode: cleanExam || 'ALL',
@@ -3498,6 +3738,7 @@
         id: topicId,
         topicId,
         subjectId: subObj.subjectId,
+        mainCategoryId: subObj.mainCategoryId || (mainCatObj ? mainCatObj.mainCategoryId : 'cat_cg_gk'),
         titleEn: cleanTopic,
         titleHi: cleanTopic,
         keywords: [cleanTopic.toLowerCase()]
@@ -3541,9 +3782,10 @@
 
   function upsertCategoryMasterItem(state, api, type, payload) {
     if (!state || !payload) return null;
-    state.customTaxonomy = state.customTaxonomy || { customCategories: [], customSubjects: [] };
+    state.customTaxonomy = state.customTaxonomy || { customCategories: [], customSubjects: [], pyqCategories: [] };
     state.customTaxonomy.customCategories = state.customTaxonomy.customCategories || [];
     state.customTaxonomy.customSubjects = state.customTaxonomy.customSubjects || [];
+    state.customTaxonomy.pyqCategories = state.customTaxonomy.pyqCategories || [];
     state.examMaster = state.examMaster || [];
     state.subjectMaster = state.subjectMaster || [];
     state.topicMaster = state.topicMaster || [];
@@ -3551,6 +3793,37 @@
 
     const cleanType = String(type || '').toLowerCase();
     const nowIso = new Date().toISOString();
+    const catalog = getTaxonomyCatalog(state);
+
+    if (cleanType === 'pyq_exam') {
+      const catName = String(payload.examCategory || 'CGPSC').trim();
+      const exName = String(payload.examName || catName).trim();
+      const yearStr = String(payload.examYear || '').trim();
+      const paperStr = String(payload.paperName || '').trim();
+      let cEntry = state.customTaxonomy.pyqCategories.find((c) => normalizeFolderKey(c.categoryName) === normalizeFolderKey(catName));
+      if (!cEntry) {
+        cEntry = {
+          id: makeSlugId('pyq_cat', catName),
+          categoryName: catName,
+          titleHi: payload.titleHi || catName,
+          icon: payload.icon || '🏛️',
+          exams: []
+        };
+        state.customTaxonomy.pyqCategories.push(cEntry);
+      }
+      let eEntry = cEntry.exams.find((e) => normalizeFolderKey(e.examName) === normalizeFolderKey(exName));
+      if (!eEntry) {
+        eEntry = { examName: exName, years: [], papers: [] };
+        cEntry.exams.push(eEntry);
+      }
+      if (yearStr && !eEntry.years.includes(yearStr)) eEntry.years.push(yearStr);
+      if (paperStr && !eEntry.papers.includes(paperStr)) eEntry.papers.push(paperStr);
+      if (api && typeof api.saveState === 'function') api.saveState();
+      if (window.CGpediaCloud) {
+        window.CGpediaCloud.saveCloudDoc('app_config', 'taxonomy', Object.assign({ configKey: 'taxonomy' }, state.customTaxonomy));
+      }
+      return eEntry;
+    }
 
     if (cleanType === 'exam') {
       const code = String(payload.code || payload.examId || payload.nameEn || 'CUSTOM_EXAM').trim().toUpperCase().replace(/\s+/g, '_');
@@ -3563,6 +3836,7 @@
         nameHi: String(payload.nameHi || payload.nameEn || code).trim(),
         icon: payload.icon || '📘',
         badge: payload.badge || 'Active',
+        pyqCategory: payload.pyqCategory || 'Other Exams',
         subjectIds: Array.isArray(payload.subjectIds) ? payload.subjectIds : [],
         updatedAtIso: nowIso
       };
@@ -3583,23 +3857,33 @@
     }
 
     if (cleanType === 'subject') {
-      const titleEn = String(payload.titleEn || payload.subjectId || 'General Studies').trim();
-      const subjectId = String(payload.subjectId || payload.id || makeSlugId('sub', titleEn)).trim();
+      const titleEn = String(payload.titleEn || payload.titleHi || payload.subjectId || 'General Studies').trim();
+      const titleHi = String(payload.titleHi || titleEn).trim();
+      // Duplicate Folder Prevention: check if a Subject with same normalized name already exists
+      const existingSub = catalog.findSubject(payload.subjectId || titleHi || titleEn);
+      const mainCatObj = catalog.findMainCategory(payload.mainCategoryId || payload.mainCategory) ||
+        (existingSub ? catalog.findMainCategory(existingSub.mainCategoryId) : catalog.findMainCategory('cat_cg_gk'));
+      const subjectId = existingSub
+        ? existingSub.subjectId
+        : String(payload.subjectId || payload.id || makeSlugId('sub', titleEn)).trim();
+
       const subObj = {
         id: subjectId,
         subjectId,
+        mainCategoryId: mainCatObj ? mainCatObj.mainCategoryId : 'cat_cg_gk',
+        mainCategory: mainCatObj ? mainCatObj.titleEn : 'Chhattisgarh GK',
         titleEn,
-        titleHi: String(payload.titleHi || titleEn).trim(),
+        titleHi,
         examCode: payload.examCode || 'ALL',
-        aliases: Array.isArray(payload.aliases) ? payload.aliases : [],
-        topics: Array.isArray(payload.topics) ? payload.topics : [],
+        aliases: Array.isArray(payload.aliases) ? payload.aliases : (existingSub ? existingSub.aliases : []),
+        topics: Array.isArray(payload.topics) ? payload.topics : (existingSub ? existingSub.topics : []),
         updatedAtIso: nowIso
       };
-      const idx = state.subjectMaster.findIndex((s) => (s.subjectId || s.id) === subjectId || String(s.titleEn || '').toLowerCase() === titleEn.toLowerCase());
+      const idx = state.subjectMaster.findIndex((s) => (s.subjectId || s.id) === subjectId || normalizeFolderKey(s.titleEn) === normalizeFolderKey(titleEn));
       if (idx >= 0) state.subjectMaster[idx] = Object.assign({}, state.subjectMaster[idx], subObj);
       else state.subjectMaster.push(subObj);
 
-      const cIdx = state.customTaxonomy.customSubjects.findIndex((s) => (s.subjectId || s.id) === subjectId || String(s.titleEn || '').toLowerCase() === titleEn.toLowerCase());
+      const cIdx = state.customTaxonomy.customSubjects.findIndex((s) => (s.subjectId || s.id) === subjectId || normalizeFolderKey(s.titleEn) === normalizeFolderKey(titleEn));
       if (cIdx >= 0) state.customTaxonomy.customSubjects[cIdx] = Object.assign({}, state.customTaxonomy.customSubjects[cIdx], subObj);
       else state.customTaxonomy.customSubjects.push(subObj);
 
@@ -3612,19 +3896,29 @@
     }
 
     if (cleanType === 'topic') {
-      const subjectId = String(payload.subjectId || 'sub_general_studies').trim();
-      const titleEn = String(payload.titleEn || 'General Topic').trim();
-      const topicId = String(payload.topicId || payload.id || makeSlugId(`top_${subjectId.replace(/^sub_/, '')}`, titleEn)).trim();
+      const parentSub = catalog.findSubject(payload.subjectId) || catalog.findSubject('sub_cg_general_info');
+      const subjectId = parentSub ? parentSub.subjectId : String(payload.subjectId || 'sub_cg_general_info').trim();
+      const mainCategoryId = payload.mainCategoryId || (parentSub ? parentSub.mainCategoryId : 'cat_cg_gk');
+      const titleEn = String(payload.titleEn || payload.titleHi || 'General Topic').trim();
+      const titleHi = String(payload.titleHi || titleEn).trim();
+
+      // Duplicate Folder Prevention: check if Topic already exists under this Subject
+      const existingTop = catalog.findTopic(subjectId, payload.topicId || titleHi || titleEn);
+      const topicId = (existingTop && existingTop.subjectId === subjectId)
+        ? existingTop.topicId
+        : String(payload.topicId || payload.id || makeSlugId(`top_${subjectId.replace(/^sub_/, '')}`, titleEn)).trim();
+
       const topObj = {
         id: topicId,
         topicId,
         subjectId,
+        mainCategoryId,
         titleEn,
-        titleHi: String(payload.titleHi || titleEn).trim(),
-        keywords: Array.isArray(payload.keywords) ? payload.keywords : [titleEn.toLowerCase()],
+        titleHi,
+        keywords: Array.isArray(payload.keywords) ? payload.keywords : [titleEn.toLowerCase(), titleHi.toLowerCase()],
         updatedAtIso: nowIso
       };
-      const idx = state.topicMaster.findIndex((t) => (t.topicId || t.id) === topicId || (t.subjectId === subjectId && String(t.titleEn || '').toLowerCase() === titleEn.toLowerCase()));
+      const idx = state.topicMaster.findIndex((t) => (t.topicId || t.id) === topicId || (t.subjectId === subjectId && normalizeFolderKey(t.titleEn) === normalizeFolderKey(titleEn)));
       if (idx >= 0) state.topicMaster[idx] = Object.assign({}, state.topicMaster[idx], topObj);
       else state.topicMaster.push(topObj);
 
@@ -3650,7 +3944,7 @@
         keywords: Array.isArray(payload.keywords) ? payload.keywords : [titleEn.toLowerCase()],
         updatedAtIso: nowIso
       };
-      const idx = state.subtopicMaster.findIndex((st) => (st.subtopicId || st.id) === subtopicId || (st.topicId === topicId && String(st.titleEn || '').toLowerCase() === titleEn.toLowerCase()));
+      const idx = state.subtopicMaster.findIndex((st) => (st.subtopicId || st.id) === subtopicId || (st.topicId === topicId && normalizeFolderKey(st.titleEn) === normalizeFolderKey(titleEn)));
       if (idx >= 0) state.subtopicMaster[idx] = Object.assign({}, state.subtopicMaster[idx], stObj);
       else state.subtopicMaster.push(stObj);
 
@@ -3670,6 +3964,7 @@
     const cleanEn = String(newEn).trim();
     const cleanHi = String(newHi || cleanEn).trim();
     const catalog = getTaxonomyCatalog(state);
+    const updatedQuestions = [];
 
     if (cleanType === 'exam') {
       const existing = catalog.findExam(id);
@@ -3683,6 +3978,7 @@
     } else if (cleanType === 'subject') {
       const existing = catalog.findSubject(id);
       const oldEn = existing ? existing.titleEn : '';
+      const oldHi = existing ? existing.titleHi : '';
       upsertCategoryMasterItem(state, api, 'subject', Object.assign({}, existing || {}, {
         id,
         subjectId: id,
@@ -3690,25 +3986,36 @@
         titleHi: cleanHi
       }));
       (state.questionBank || []).forEach((q) => {
-        if (q.subjectId === id || (oldEn && String(q.subjectTag || '').toLowerCase() === oldEn.toLowerCase())) {
+        if (
+          q.subjectId === id ||
+          (oldEn && normalizeFolderKey(q.subjectTag) === normalizeFolderKey(oldEn)) ||
+          (oldHi && normalizeFolderKey(q.subjectTag) === normalizeFolderKey(oldHi))
+        ) {
           q.subjectId = id;
-          q.subjectTag = cleanEn;
+          q.subjectTag = cleanHi || cleanEn;
+          updatedQuestions.push(q);
         }
       });
     } else if (cleanType === 'topic') {
       const existing = (catalog.topics || []).find((t) => t.topicId === id);
       const oldEn = existing ? existing.titleEn : '';
+      const oldHi = existing ? existing.titleHi : '';
       upsertCategoryMasterItem(state, api, 'topic', Object.assign({}, existing || {}, {
         id,
         topicId: id,
-        subjectId: (existing && existing.subjectId) || 'sub_general_studies',
+        subjectId: (existing && existing.subjectId) || 'sub_cg_general_info',
         titleEn: cleanEn,
         titleHi: cleanHi
       }));
       (state.questionBank || []).forEach((q) => {
-        if (q.topicId === id || (oldEn && String(q.topic || '').toLowerCase() === oldEn.toLowerCase())) {
+        if (
+          q.topicId === id ||
+          (oldEn && normalizeFolderKey(q.topic) === normalizeFolderKey(oldEn)) ||
+          (oldHi && normalizeFolderKey(q.topic) === normalizeFolderKey(oldHi))
+        ) {
           q.topicId = id;
-          q.topic = cleanEn;
+          q.topic = cleanHi || cleanEn;
+          updatedQuestions.push(q);
         }
       });
     } else if (cleanType === 'subtopic') {
@@ -3723,128 +4030,41 @@
         titleHi: cleanHi
       }));
       (state.questionBank || []).forEach((q) => {
-        if (q.subtopicId === id || (oldEn && String(q.subtopic || '').toLowerCase() === oldEn.toLowerCase())) {
+        if (q.subtopicId === id || (oldEn && normalizeFolderKey(q.subtopic) === normalizeFolderKey(oldEn))) {
           q.subtopicId = id;
           q.subtopic = cleanEn;
+          updatedQuestions.push(q);
         }
       });
     }
 
     if (api && typeof api.saveState === 'function') api.saveState();
+    if (updatedQuestions.length > 0 && window.CGpediaCloud && window.CGpediaCloud.batchSaveCloudDocs) {
+      window.CGpediaCloud.batchSaveCloudDocs('question_bank', updatedQuestions);
+    }
   }
 
-  // Expanded Hindi (Devanagari) & English Keyword Rules for High-Accuracy Categorisation
-  const EXTRA_SUBJECT_TOPIC_RULES = [
-    {
-      subjectId: 'sub_cg_gs',
-      topicTitle: 'History of Chhattisgarh',
-      keywords: ['कलचुरी', 'रतनपुर', 'रायपुर शाखा', 'कलिंगराज', 'रत्नदेव', 'जाजल्लदेव', 'प्रतापमल्ल', 'मराठा', 'बिंबाजी', 'भोंसले', 'सूबा शासन', 'हल्बा विद्रोह', 'परलकोट', 'गेंदसिंह', 'वीर नारायण सिंह', 'सोनाखान', 'भूमकाल', 'गुण्डाधूर', 'सिरपुर', 'शरभपुरीय', 'पाण्डु वंश', 'बाण वंश', 'छिंदक नागवंश', 'काकतीय', 'अन्नमदेव', 'बस्तर का इतिहास', 'जंगल सत्याग्रह', 'गट्टासिल्ली', 'रुद्री नवागांव', 'kalchuri', 'ratanpur', 'sonakhan', 'veer narayan', 'bhumkal', 'gundadhur', 'sirpur']
-    },
-    {
-      subjectId: 'sub_cg_gs',
-      topicTitle: 'Tribes, Art & Culture',
-      keywords: ['जनजाति', 'गोंड', 'बैगा', 'अबूझमाड़िया', 'कमार', 'कोरवा', 'बिरहोर', 'उरांव', 'कंवर', 'हलबा', 'भतरा', 'मुरिया', 'माड़िया', 'घोटुल', 'धुमकुड़िया', 'सुआ नृत्य', 'पंथी', 'राउत नाचा', 'करमा', 'सरहुल', 'ककसार', 'गौर नृत्य', 'पंडवानी', 'तीजन बाई', 'चक्रधर समारोह', 'बस्तर दशहरा', 'हरेली', 'छेरछेरा', 'पोला', 'भोजली', 'तीजा', 'कमरछठ', 'मातर', 'मड़ई', 'गोदना', 'बांस गीत', 'ददरिया', 'भरथरी', 'चंदैनी गोंदा', 'नाचा', 'दाऊ मंदराजी', 'हबीब तनवीर', 'gond', 'baiga', 'abujhmaria', 'pandwani', 'panthi', 'karma', 'raut nacha', 'hareli', 'cherchera', 'bastar dussehra']
-    },
-    {
-      subjectId: 'sub_cg_gs',
-      topicTitle: 'Geography & Climate of CG',
-      keywords: ['छत्तीसगढ़', 'रायपुर', 'बिलासपुर', 'बस्तर', 'सरगुजा', 'दुर्ग', 'राजनांदगांव', 'कोरबा', 'रायगढ़', 'जगदलपुर', 'अंबिकापुर', 'धमतरी', 'महासमुंद', 'कांकेर', 'दंतेवाड़ा', 'बीजापुर', 'सुकमा', 'नारायणपुर', 'कोंडागांव', 'कबीरधाम', 'कवर्धा', 'बेमेतरा', 'बालोद', 'बलौदाबाजार', 'गरियाबंद', 'मुंगेली', 'जांजगीर', 'चांपा', 'सूरजपुर', 'बलरामपुर', 'जशपुर', 'कोरिया', 'मनेंद्रगढ़', 'सक्ती', 'सारंगढ़', 'मोहला', 'खैरागढ़', 'महानदी', 'शिवनाथ', 'इंद्रावती', 'हसदेव', 'अरपा', 'पैरी', 'सोंढूर', 'खारून', 'सबरी', 'कोटरी', 'रिहंद', 'कन्हार', 'केलो', 'मांड', 'जोंक', 'सिहावा', 'चित्रकोट', 'तीरथगढ़', 'अमृतधारा', 'सातधारा', 'रानीदाह', 'केंदई', 'गौरलाटा', 'सामरी पाट', 'मैनपाट', 'जशपुर पाट', 'दण्डकारण्य', 'बैलाडीला', 'नंदराज', 'दलहा पहाड़', 'मैक़ल', 'छुरी उदयपुर', 'कांगेर घाटी', 'इंद्रावती राष्ट्रीय उद्यान', 'गुरु घासीदास', 'अचानकमार', 'उदंती', 'सीतानदी', 'बारनवापारा', 'तमोर पिंगला', 'सेमरसोत', 'बादलखोल', 'भोरमदेव', 'गंगरेल', 'मिनीमाता बांगो', 'तांदुला', 'दुधवा', 'खूंटाघाट', 'कोडार', 'chhattisgarh', 'mahanadi', 'indravati', 'shivnath', 'hasdeo', 'chitrakote', 'tirathgarh', 'bailadila', 'mainpat', 'gaurlata']
-    },
-    {
-      subjectId: 'sub_cg_gs',
-      topicTitle: 'Panchayati Raj & Local Administration',
-      keywords: ['पंचायती राज', 'ग्राम सभा', 'ग्राम पंचायत', 'जनपद पंचायत', 'जिला पंचायत', 'सरपंच', 'उपसरपंच', 'पंच', '73वां संशोधन', '74वां संशोधन', 'नगर निगम', 'नगर पालिका', 'नगर पंचायत', 'महापौर', 'पार्षद', 'बलवंत राय मेहता', 'अशोक मेहता', 'अनुसूचित क्षेत्र', 'पेसा', 'pesa', 'panchayati raj', 'gram sabha', 'zila panchayat', 'janpad panchayat', 'sarpanch']
-    },
-    {
-      subjectId: 'sub_cg_gs',
-      topicTitle: 'CG Economy, Forest & Agriculture',
-      keywords: ['तेंदूपत्ता', 'साल वन', 'सागौन', 'लाख', 'कोसा', 'टिन', 'कोयला', 'लौह अयस्क', 'बॉक्साइट', 'डोलोमाइट', 'चूना पत्थर', 'कोरंडम', 'हीरा', 'भिलाई इस्पात', 'बाल्को', 'एनटीपीसी', 'धान का कटोरा', 'समर्थन मूल्य', 'आर्थिक सर्वेक्षण', 'छत्तीसगढ़ बजट', 'महतारी वंदन', 'कृषक उन्नति', 'tendu', 'bhilai steel', 'balco', 'tin ore']
-    },
-    {
-      subjectId: 'sub_hindi',
-      topicTitle: 'वर्णमाला, संधि एवं समास (Sandhi & Samas)',
-      keywords: ['वर्णमाला', 'स्वर', 'व्यंजन', 'अल्पप्राण', 'महाप्राण', 'अघोष', 'सघोष', 'कंठ्य', 'तालव्य', 'मूर्धन्य', 'दंत्य', 'ओष्ठ्य', 'अनुस्वार', 'विसर्ग', 'संधि', 'स्वर संधि', 'दीर्घ संधि', 'गुण संधि', 'वृद्धि संधि', 'यण संधि', 'अयादि संधि', 'व्यंजन संधि', 'विसर्ग संधि', 'समास', 'अव्ययीभाव', 'तत्पुरुष', 'कर्मधारय', 'द्विगु', 'द्वंद्व', 'बहुव्रीहि', 'समास विग्रह', 'संधि विच्छेद', 'छत्तीसगढ़ी भाषा', 'छत्तीसगढ़ी व्याकरण', 'जनउला', 'हाना']
-    },
-    {
-      subjectId: 'sub_hindi',
-      topicTitle: 'तत्सम-तद्भव, पर्यायवाची एवं विलोम',
-      keywords: ['तत्सम', 'तद्भव', 'देशज', 'विदेशज', 'उपसर्ग', 'प्रत्यय', 'पर्यायवाची', 'विलोम', 'अनेकार्थी', 'वाक्यांश के लिए एक शब्द', 'मुहावरा', 'मुहावरे', 'लोकोक्ति', 'वर्तनी', 'वाक्य शुद्धि', 'रस', 'छंद', 'अलंकार', 'श्रृंगार रस', 'वीर रस', 'अनुप्रास', 'यमक', 'श्लेष', 'उपमा', 'रूपक', 'उत्प्रेक्षा', 'दोहा', 'चौपाई', 'सोरठा', 'संज्ञा', 'सर्वनाम', 'विशेषण', 'क्रिया', 'अव्यय', 'कारक', 'लिंग', 'वचन', 'काल']
-    },
-    {
-      subjectId: 'sub_polity',
-      topicTitle: 'Constitution',
-      keywords: ['संविधान', 'अनुच्छेद', 'अनुसूची', 'प्रस्तावना', 'मौलिक अधिकार', 'मूल अधिकार', 'नीति निदेशक', 'मूल कर्तव्य', 'मौलिक कर्तव्य', 'संविधान संशोधन', 'संविधान सभा', 'प्रारूप समिति', 'अंबेडकर', 'राष्ट्रपति', 'उपराष्ट्रपति', 'प्रधानमंत्री', 'मंत्रिपरिषद', 'राज्यपाल', 'मुख्यमंत्री', 'संसद', 'लोकसभा', 'राज्यसभा', 'विधानसभा', 'विधान परिषद', 'धन विधेयक', 'वित्त विधेयक', 'अध्यादेश', 'महाभियोग', 'सर्वोच्च न्यायालय', 'उच्चतम न्यायालय', 'उच्च न्यायालय', 'रिट', 'बंदी प्रत्यक्षीकरण', 'निर्वाचन आयोग', 'नियंत्रक एवं महालेखा परीक्षक', 'संघ लोक सेवा आयोग', 'वित्त आयोग', 'आपातकाल', 'article ', 'constitution', 'parliament', 'fundamental right', 'directive principle', 'supreme court', 'president', 'governor', 'lok sabha', 'rajya sabha']
-    },
-    {
-      subjectId: 'sub_history',
-      topicTitle: 'Ancient Indian History',
-      keywords: ['सिंधु घाटी', 'हड़प्पा', 'मोहनजोदड़ो', 'लोथल', 'कालीबंगा', 'धौलावीरा', 'वैदिक', 'ऋग्वेद', 'सामवेद', 'यजुर्वेद', 'अथर्ववेद', 'उपनिषद', 'महाजनपद', 'मगध', 'गौतम बुद्ध', 'बौद्ध धर्म', 'महावीर स्वामी', 'जैन धर्म', 'त्रिपिटक', 'मौर्य', 'चन्द्रगुप्त', 'अशोक', 'चाणक्य', 'कौटिल्य', 'अर्थशास्त्र', 'शिलालेख', 'गुप्त वंश', 'समुद्रगुप्त', 'विक्रमादित्य', 'हर्षवर्धन', 'चोल', 'पल्लव', 'चालुक्य', 'खजुराहो', 'अजंता', 'एलोरा', 'harappa', 'indus valley', 'vedic', 'maurya', 'ashoka', 'gupta', 'buddha', 'jain']
-    },
-    {
-      subjectId: 'sub_history',
-      topicTitle: 'Medieval Indian History',
-      keywords: ['दिल्ली सल्तनत', 'कुतुबुद्दीन ऐबक', 'इल्तुतमिश', 'रजिया', 'बलबन', 'खिलजी', 'अलाउद्दीन', 'तुगलक', 'लोदी', 'मुगल', 'बाबर', 'हुमायूँ', 'अकबर', 'जहाँगीर', 'शाहजहाँ', 'औरंगजेब', 'शेरशाह सूरी', 'पानीपत का युद्ध', 'हल्दीघाटी', 'तराइन', 'शिवाजी', 'मराठा साम्राज्य', 'अष्टप्रधान', 'विजयनगर', 'कृष्णदेव राय', 'भक्ति आंदोलन', 'कबीर', 'तुलसीदास', 'सूफी', 'मनसबदारी', 'जजिया', 'sultanate', 'mughal', 'akbar', 'babur', 'aurangzeb', 'shivaji', 'vijayanagara']
-    },
-    {
-      subjectId: 'sub_history',
-      topicTitle: 'Modern Indian History',
-      keywords: ['1857 की क्रांति', '1857 का विद्रोह', 'मंगल पांडे', 'रानी लक्ष्मीबाई', 'तात्या टोपे', 'कांग्रेस अधिवेशन', 'बंगाल विभाजन', 'स्वदेशी आंदोलन', 'मुस्लिम लीग', 'सूरत विभाजन', 'होमरूल', 'चंपारण', 'खेड़ा', 'रौलेट एक्ट', 'जलियांवाला बाग', 'खिलाफत', 'असहयोग आंदोलन', 'चौरी चौरा', 'स्वराज पार्टी', 'साइमन कमीशन', 'पूर्ण स्वराज', 'दांडी मार्च', 'सविनय अवज्ञा', 'गांधी इरविन', 'पूना पैक्ट', 'भारत छोड़ो आंदोलन', 'सुभाष चंद्र बोस', 'आजाद हिंद फौज', 'भगत सिंह', 'चंद्रशेखर आजाद', 'कैबिनेट मिशन', 'माउंटबेटन', 'गवर्नर जनरल', 'वायसराय', 'ब्रिटिश', 'आर्य समाज', 'ब्रह्म समाज', 'राजा राममोहन राय', 'स्वामी दयानंद', 'स्वामी विवेकानंद', 'mahatma gandhi', 'quit india', 'non-cooperation', 'dandi', '1857', 'viceroy', 'governor general']
-    },
-    {
-      subjectId: 'sub_geography',
-      topicTitle: 'Indian Geography',
-      keywords: ['हिमालय', 'काराकोरम', 'शिवालिक', 'अरावली', 'विंध्याचल', 'सतपुड़ा', 'पश्चिमी घाट', 'पूर्वी घाट', 'नीलगिरि', 'एवरेस्ट', 'कंचनजंगा', 'गंगा', 'यमुना', 'ब्रह्मपुत्र', 'सिंधु', 'गोदावरी', 'कृष्णा', 'कावेरी', 'नर्मदा', 'ताप्ती', 'चिल्का', 'वुलर', 'सांभर', 'लोकटक', 'मानसून', 'जलोढ़ मृदा', 'काली मिट्टी', 'लैटेराइट', 'जनगणना 2011', 'साक्षरता दर', 'लिंगानुपात', 'राष्ट्रीय उद्यान', 'टाइगर रिजर्व', 'जैवमंडल', 'सौरमंडल', 'ग्रह', 'पृथ्वी', 'अक्षांश', 'देशांतर', 'वायुमंडल', 'क्षोभमंडल', 'समतापमंडल', 'ओजोन परत', 'भूकंप', 'ज्वालामुखी', 'चट्टान', 'महाद्वीप', 'महासागर', 'himalaya', 'monsoon', 'ganga', 'brahmaputra', 'godavari', 'narmada', 'atmosphere', 'latitude', 'longitude', 'solar system']
-    },
-    {
-      subjectId: 'sub_economy',
-      topicTitle: 'National Income & Planning',
-      keywords: ['अर्थव्यवस्था', 'राष्ट्रीय आय', 'सकल घरेलू उत्पाद', 'जीडीपी', 'प्रति व्यक्ति आय', 'नीति आयोग', 'योजना आयोग', 'पंचवर्षीय योजना', 'रिजर्व बैंक', 'आरबीआई', 'रेपो दर', 'रिवर्स रेपो', 'सीआरआर', 'एसएलआर', 'मुद्रास्फीति', 'मौद्रिक नीति', 'राजकोषीय घाटा', 'जीएसटी', 'बजट', 'कर प्रणाली', 'नाबार्ड', 'सेबी', 'बैंकिंग', 'बेरोजगारी', 'गरीबी', 'हरित क्रांति', 'श्वेत क्रांति', 'gdp', 'rbi', 'repo rate', 'inflation', 'monetary policy', 'fiscal deficit', 'gst', 'niti aayog', 'five year plan', 'nabard']
-    },
-    {
-      subjectId: 'sub_science',
-      topicTitle: 'Biology & Human Health',
-      keywords: ['कोशिका', 'माइटोकॉन्ड्रिया', 'राइबोसोम', 'डीएनए', 'आरएनए', 'गुणसूत्र', 'रक्त समूह', 'हीमोग्लोबिन', 'हृदय', 'मस्तिष्क', 'वृक्क', 'यकृत', 'पाचन', 'श्वसन', 'प्रकाश संश्लेषण', 'क्लोरोफिल', 'जाइलम', 'फ्लोएम', 'विटामिन', 'प्रोटीन', 'कार्बोहाइड्रेट', 'हार्मोन', 'इंसुलिन', 'जीवाणु', 'विषाणु', 'प्रोटोजोआ', 'कवक', 'टीका', 'मलेरिया', 'डेंगू', 'तपेदिक', 'विद्युत धारा', 'प्रतिरोध', 'ओम का नियम', 'लेंस', 'दर्पण', 'अपवर्तन', 'परावर्तन', 'ध्वनि', 'आवृत्ति', 'गुरुत्वाकर्षण', 'न्यूटन', 'ऊर्जा', 'कार्य', 'शक्ति', 'अम्ल', 'क्षार', 'लवण', 'पीएच मान', 'आवर्त सारणी', 'परमाणु', 'इलेक्ट्रॉन', 'प्रोटॉन', 'न्यूट्रॉन', 'समस्थानिक', 'धातु', 'अधातु', 'मिश्रधातु', 'इसरो', 'उपग्रह', 'चंद्रयान', 'vitamin', 'cell', 'photosynthesis', 'blood', 'hormone', 'bacteria', 'virus', 'ohm', 'lens', 'mirror', 'acid', 'periodic table', 'atom', 'electron']
-    },
-    {
-      subjectId: 'sub_mathematics',
-      topicTitle: 'Percentage, Profit & Loss, SI & CI',
-      keywords: ['प्रतिशत', 'लाभ और हानि', 'लाभ-हानि', 'क्रय मूल्य', 'विक्रय मूल्य', 'बट्टा', 'छूट', 'साधारण ब्याज', 'चक्रवृद्धि ब्याज', 'मूलधन', 'मिश्रधन', 'अनुपात', 'समानुपात', 'औसत', 'समय और कार्य', 'चाल समय दूरी', 'रेलगाड़ी', 'नाव और धारा', 'लघुत्तम समापवर्त्य', 'महत्तम समापवर्तक', 'ल.स.', 'म.स.', 'अभाज्य संख्या', 'वर्गमूल', 'घनमूल', 'क्षेत्रफल', 'आयतन', 'परिमाप', 'त्रिभुज', 'वृत्त', 'आयत', 'वर्ग', 'बेलन', 'शंकु', 'गोला', 'बीजगणित', 'समीकरण', 'percentage', 'profit and loss', 'simple interest', 'compound interest', 'ratio', 'average', 'time and work', 'speed and distance', 'lcm', 'hcf', 'area', 'volume', 'triangle', 'circle']
-    },
-    {
-      subjectId: 'sub_reasoning',
-      topicTitle: 'Coding-Decoding & Series',
-      keywords: ['कोडिंग', 'डिकोडिंग', 'श्रृंखला', 'लुप्त संख्या', 'अगला पद', 'सादृश्यता', 'रक्त संबंध', 'दिशा परीक्षण', 'कथन और निष्कर्ष', 'न्याय निगमन', 'वेन आरेख', 'पासा', 'कैलेंडर', 'घड़ी', 'बैठक व्यवस्था', 'दर्पण प्रतिबिंब', 'जल प्रतिबिंब', 'विषम चुनिए', 'coding', 'decoding', 'blood relation', 'syllogism', 'missing number', 'series', 'direction']
-    },
-    {
-      subjectId: 'sub_computer',
-      topicTitle: 'Computer Architecture, Hardware & Memory',
-      keywords: ['कंप्यूटर', 'कम्प्यूटर', 'सीपीयू', 'रैम', 'रोम', 'कैश मेमोरी', 'हार्ड डिस्क', 'इनपुट डिवाइस', 'आउटपुट डिवाइस', 'कीबोर्ड', 'माउस', 'मॉनिटर', 'प्रिंटर', 'लेजर प्रिंटर', 'इंकजेट', 'स्कैनर', 'प्लॉटर', 'ऑपरेटिंग सिस्टम', 'विंडोज', 'लिनक्स', 'यूनिक्स', 'एमएस वर्ड', 'एमएस एक्सेल', 'पॉवरपॉइंट', 'स्प्रेडशीट', 'शॉर्टकट कुंजी', 'इंटरनेट', 'ब्राउज़र', 'सर्च इंजन', 'ईमेल', 'वायरस', 'एंटीवायरस', 'मैलवेयर', 'फायरवॉल', 'बाइनरी', 'बिट', 'बाइट', 'मेगाबाइट', 'गीगाबाइट', 'cpu', 'ram', 'rom', 'input device', 'output device', 'printer', 'operating system', 'ms word', 'ms excel', 'powerpoint', 'internet', 'browser', 'virus', 'firewall', 'shortcut key']
-    },
-    {
-      subjectId: 'sub_pedagogy',
-      topicTitle: 'Learning Theories',
-      keywords: ['बाल विकास', 'शिक्षाशास्त्र', 'अधिगम', 'जीन पियाजे', 'वायगोत्स्की', 'कोहलबर्ग', 'स्किनर', 'पावलव', 'थार्नडाइक', 'बुद्धि लब्धि', 'समावेशी शिक्षा', 'सतत एवं व्यापक मूल्यांकन', 'शिक्षण विधि', 'एनसीएफ', 'आरटीई', 'राष्ट्रीय शिक्षा नीति', 'piaget', 'vygotsky', 'kohlberg', 'pedagogy', 'child development', 'inclusive education']
-    },
-    {
-      subjectId: 'sub_english',
-      topicTitle: 'Parts of Speech, Tenses & Voice',
-      keywords: ['synonym', 'antonym', 'passive voice', 'active voice', 'indirect speech', 'direct speech', 'narration', 'fill in the blank', 'preposition', 'article', 'idiom', 'one word substitution', 'correctly spelt', 'grammatical error', 'tense']
-    }
-  ];
-
-  // Automatic Categorisation Engine using Subject, Topic & Subtopic Master (Section 6)
+  // ============================================================================
+  // PART 1, PART 6 & PART 7: INTELLIGENT CATEGORISATION INTO 6 MAIN LIBRARIES
+  // ============================================================================
   function autoCategorizeQuestionFromMaster(item, catalog, defaultExamIds) {
-    const combinedText = [
+    const stemAndOptsText = [
       item.questionHi || '',
       item.questionEn || '',
       ...(Array.isArray(item.optionsHi) ? item.optionsHi : []),
       ...(Array.isArray(item.optionsEn) ? item.optionsEn : []),
       item.explanationHi || '',
-      item.explanationEn || '',
+      item.explanationEn || ''
+    ].join(' ').toLowerCase();
+
+    const metaHintText = [
+      item.mainCategory || '',
       item.subjectTag || '',
       item.topic || '',
       item.subtopic || ''
     ].join(' ').toLowerCase();
+
+    const combinedText = `${stemAndOptsText} ${metaHintText}`;
 
     const incomingExams = [];
     if (Array.isArray(item.examIds)) incomingExams.push(...item.examIds);
@@ -3861,64 +4081,45 @@
     const finalExamIds = incomingExams.length > 0 ? incomingExams : ['CGPSC'];
 
     const rawSubInput = String(item.subjectId || item.subjectTag || '').trim();
-    const isGenericSubInput = !rawSubInput || ['general', 'general studies', 'gs', 'gk', 'general knowledge', 'unknown', 'needs categorisation'].includes(rawSubInput.toLowerCase());
+    const isGenericSubInput = !rawSubInput || [
+      'general', 'general studies', 'gs', 'gk', 'general knowledge', 'unknown', 'needs categorisation',
+      'needs_categorisation', 'uncategorised', 'uncategorized', 'chhattisgarh general knowledge',
+      'chhattisgarh gk', 'indian gs', 'history', 'geography', 'science', 'language'
+    ].includes(normalizeFolderKey(rawSubInput));
+
     const rawTopInput = String(item.topicId || item.topic || '').trim();
-    const isGenericTopInput = !rawTopInput || ['general', 'general knowledge', 'miscellaneous', 'unknown', 'needs categorisation'].includes(rawTopInput.toLowerCase());
+    const isGenericTopInput = !rawTopInput || [
+      'general', 'general knowledge', 'miscellaneous', 'unknown', 'needs categorisation',
+      'needs_categorisation', 'uncategorised', 'uncategorized', 'general topic'
+    ].includes(normalizeFolderKey(rawTopInput));
 
-    // 1. Check if item already has explicit Subject/Topic/Subtopic that matches Master
-    let matchedSub = (!isGenericSubInput) ? catalog.findSubject(rawSubInput) : null;
+    // 1. Check explicit Topic / Subject match first
     let matchedTop = (!isGenericTopInput)
-      ? catalog.findTopic(matchedSub ? matchedSub.subjectId : '', rawTopInput)
+      ? catalog.findTopic(!isGenericSubInput ? rawSubInput : '', rawTopInput)
       : null;
-    let matchedSubtop = (item.subtopicId || item.subtopic)
-      ? catalog.findSubtopic(matchedTop ? matchedTop.topicId : '', item.subtopicId || item.subtopic, matchedSub ? matchedSub.subjectId : '')
-      : null;
+    let matchedSub = (!isGenericSubInput)
+      ? catalog.findSubject(rawSubInput)
+      : (matchedTop ? catalog.findSubject(matchedTop.subjectId) : null);
 
+    // If legacy broad subject was used (e.g. "Chhattisgarh General Knowledge" or "History"), refine using question content & topic
     let confidence = 0;
-    if (matchedSub && matchedTop) {
-      confidence = matchedSubtop ? 96 : 88;
+    if (matchedSub && matchedTop && matchedSub.subjectId !== 'sub_uncategorised' && matchedTop.topicId !== 'top_uncategorised') {
+      confidence = 90;
     }
 
-    // 2. Score Subtopic Master keywords first (most specific)
-    if (!matchedSubtop) {
-      let bestSubtop = null;
-      let bestSubtopHits = 0;
-      for (const st of catalog.subtopicMaster) {
-        if (matchedTop && st.topicId !== matchedTop.topicId) continue;
-        if (matchedSub && st.subjectId !== matchedSub.subjectId) continue;
-        let hits = 0;
-        const terms = [st.titleEn.toLowerCase(), st.titleHi.toLowerCase(), ...(st.keywords || [])];
-        terms.forEach((kw) => {
-          const cleanKw = String(kw || '').trim().toLowerCase();
-          if (cleanKw && cleanKw.length >= 2 && combinedText.includes(cleanKw)) {
-            hits += cleanKw.length >= 6 ? 3 : 2;
-          }
-        });
-        if (hits > bestSubtopHits) {
-          bestSubtopHits = hits;
-          bestSubtop = st;
-        }
-      }
-      if (bestSubtop && bestSubtopHits >= 2) {
-        matchedSubtop = bestSubtop;
-        if (!matchedTop) matchedTop = catalog.findTopic('', bestSubtop.topicId);
-        if (!matchedSub && matchedTop) matchedSub = catalog.findSubject(matchedTop.subjectId);
-        confidence = Math.max(confidence, Math.min(98, 74 + bestSubtopHits * 5));
-      }
-    }
-
-    // 3. Score Topic Master keywords + Expanded Hindi/English Domain Rules if Topic not yet matched
-    if (!matchedTop) {
+    // 2. Score all Topics across the 6 Main Libraries using keywords in question text
+    if (!matchedTop || isGenericSubInput) {
       let bestTop = null;
       let bestTopHits = 0;
+
       for (const top of catalog.topicMaster) {
-        if (matchedSub && top.subjectId !== matchedSub.subjectId) continue;
+        if (top.topicId === 'top_uncategorised') continue;
         let hits = 0;
-        const terms = [top.titleEn.toLowerCase(), top.titleHi.toLowerCase(), ...(top.keywords || [])];
+        const terms = [top.titleEn, top.titleHi, ...(top.aliases || []), ...(top.keywords || [])];
         terms.forEach((kw) => {
           const cleanKw = String(kw || '').trim().toLowerCase();
           if (cleanKw && cleanKw.length >= 2 && combinedText.includes(cleanKw)) {
-            hits += cleanKw.length >= 6 ? 3 : 2;
+            hits += cleanKw.length >= 6 ? 4 : 2;
           }
         });
         if (hits > bestTopHits) {
@@ -3927,56 +4128,25 @@
         }
       }
 
-      // Also score against EXTRA_SUBJECT_TOPIC_RULES (rich Hindi Devanagari + English keyword bank)
-      for (const rule of EXTRA_SUBJECT_TOPIC_RULES) {
-        const ruleSub = catalog.findSubject(rule.subjectId);
-        if (matchedSub && ruleSub && ruleSub.subjectId !== matchedSub.subjectId) continue;
-        let hits = 0;
-        rule.keywords.forEach((kw) => {
-          const cleanKw = String(kw || '').trim().toLowerCase();
-          if (cleanKw && combinedText.includes(cleanKw)) {
-            hits += cleanKw.length >= 5 ? 3 : 2;
-          }
-        });
-        if (hits > bestTopHits && ruleSub) {
-          const ruleTop = catalog.findTopic(ruleSub.subjectId, rule.topicTitle) ||
-            (catalog.getTopicsForSubject(ruleSub.subjectId)[0] || null);
-          if (ruleTop) {
-            bestTopHits = hits;
-            bestTop = ruleTop;
-          }
-        }
-      }
-
       if (bestTop && bestTopHits >= 2) {
         matchedTop = bestTop;
-        if (!matchedSub) matchedSub = catalog.findSubject(bestTop.subjectId);
-        confidence = Math.max(confidence, Math.min(94, 66 + bestTopHits * 5));
-        if (!matchedSubtop) {
-          const candidateSubtopics = catalog.getSubtopicsForTopic(matchedTop.topicId);
-          for (const st of candidateSubtopics) {
-            const stTerms = [st.titleEn.toLowerCase(), st.titleHi.toLowerCase(), ...(st.keywords || [])];
-            if (stTerms.some((kw) => kw && kw.length >= 2 && combinedText.includes(kw.toLowerCase()))) {
-              matchedSubtop = st;
-              confidence = Math.min(96, confidence + 8);
-              break;
-            }
-          }
-        }
+        matchedSub = catalog.findSubject(bestTop.subjectId) || matchedSub;
+        confidence = Math.max(confidence, Math.min(96, 68 + bestTopHits * 4));
       }
     }
 
-    // 4. Score Subject Master if Subject still not matched
-    if (!matchedSub) {
+    // 3. Score all 36 Subject Folders if Subject still not matched
+    if (!matchedSub || matchedSub.subjectId === 'sub_uncategorised') {
       let bestSub = null;
       let bestSubHits = 0;
       for (const s of catalog.subjects) {
+        if (s.subjectId === 'sub_uncategorised') continue;
         let hits = 0;
-        const terms = [s.titleEn.toLowerCase(), s.titleHi.toLowerCase(), ...(s.aliases || [])];
+        const terms = [s.titleEn, s.titleHi, ...(s.aliases || []), ...(s.keywords || [])];
         terms.forEach((kw) => {
           const cleanKw = String(kw || '').trim().toLowerCase();
           if (cleanKw && cleanKw.length >= 2 && combinedText.includes(cleanKw)) {
-            hits += 2;
+            hits += cleanKw.length >= 5 ? 3 : 2;
           }
         });
         if (hits > bestSubHits) {
@@ -3990,61 +4160,257 @@
       }
     }
 
-    // 5. If Subject is matched (either from file or keywords) but Topic wasn't matched yet, assign the Subject's primary Topic in Master so it doesn't fail categorisation
-    if (matchedSub && !matchedTop) {
-      const subTopics = catalog.getTopicsForSubject(matchedSub.subjectId);
-      if (subTopics && subTopics.length > 0) {
-        matchedTop = subTopics[0];
-        confidence = Math.max(confidence, 68);
+    // 4. Broad domain fallback for Chhattisgarh vs Hindi vs English vs Maths vs Reasoning vs Indian GS
+    if (!matchedSub && stemAndOptsText) {
+      if (/छत्तीसगढ़|रायपुर|बिलासपुर|बस्तर|सरगुजा|दुर्ग|महानदी|इंद्रावती|शिवनाथ|हसदेव|कलचुरी|रतनपुर|सिरपुर|भोरमदेव|राजिम|बैलाडीला|कोरबा|भिलाई|मेनपाट|घोटुल|पंडवानी|पंथी|सुआ|हरेली|छेरछेरा|भूमकाल|वीर नारायण सिंह|chhattisgarh|bastar|mahanadi|kalchuri/.test(stemAndOptsText)) {
+        matchedSub = catalog.findSubject('sub_cg_general_info');
+        confidence = 65;
+      } else if (/संधि|समास|उपसर्ग|प्रत्यय|पर्यायवाची|विलोम|तत्सम|तद्भव|मुहावरा|लोकोक्ति|अलंकार|छंद|रस|वर्तनी|वर्णमाला|संज्ञा|सर्वनाम|विशेषण/.test(stemAndOptsText)) {
+        matchedSub = catalog.findSubject('sub_hindi');
+        confidence = 70;
+      } else if (/\b(?:synonym|antonym|passive voice|active voice|indirect speech|direct speech|fill in the blank|preposition|idiom|correctly spelt|cloze test)\b/.test(stemAndOptsText)) {
+        matchedSub = catalog.findSubject('sub_english');
+        confidence = 70;
+      } else if (/प्रतिशत|लाभ और हानि|साधारण ब्याज|चक्रवृद्धि ब्याज|अनुपात|औसत|समय और कार्य|रेलगाड़ी|लघुत्तम|महत्तम|क्षेत्रफल|आयतन|त्रिभुज|वृत्त|द्विघात समीकरण|\b(?:percentage|profit and loss|simple interest|compound interest|mensuration|trigonometry)\b/.test(stemAndOptsText)) {
+        matchedSub = catalog.findSubject('sub_maths');
+        confidence = 70;
+      } else if (/कोडिंग|डिकोडिंग|रक्त संबंध|न्याय निगमन|वेन आरेख|पासा|दर्पण प्रतिबिंब|जल प्रतिबिंब|बैठने की व्यवस्था|\b(?:syllogism|blood relation|coding decoding|seating arrangement)\b/.test(stemAndOptsText)) {
+        matchedSub = catalog.findSubject('sub_reasoning');
+        confidence = 70;
       }
     }
 
-    const hasValidMasterCategory = Boolean(matchedSub && matchedTop && confidence >= 50);
+    // 5. If Subject is matched, pick its best matching Topic (or primary Topic)
+    if (matchedSub && matchedSub.subjectId !== 'sub_uncategorised' && !matchedTop) {
+      const subTopics = catalog.getTopicsForSubject(matchedSub.subjectId);
+      if (subTopics && subTopics.length > 0) {
+        matchedTop = subTopics[0];
+        confidence = Math.max(confidence, 65);
+      }
+    }
+
+    // 6. If still unidentifiable, DO NOT guess or force into History of Chhattisgarh — place in Uncategorised!
+    const hasValidMasterCategory = Boolean(
+      matchedSub &&
+      matchedTop &&
+      matchedSub.subjectId !== 'sub_uncategorised' &&
+      matchedTop.topicId !== 'top_uncategorised' &&
+      confidence >= 50
+    );
+
+    const finalSub = hasValidMasterCategory ? matchedSub : catalog.findSubject('sub_uncategorised');
+    const finalTop = hasValidMasterCategory ? matchedTop : catalog.findTopic('sub_uncategorised', 'top_uncategorised');
+    const finalMainCat = finalSub ? catalog.findMainCategory(finalSub.mainCategoryId) : catalog.findMainCategory('cat_uncategorised');
 
     return {
       examIds: finalExamIds,
       examCode: finalExamIds[0] || 'CGPSC',
-      subjectId: matchedSub ? matchedSub.subjectId : '',
-      subjectTag: matchedSub ? matchedSub.titleEn : '',
-      topicId: matchedTop ? matchedTop.topicId : '',
-      topic: matchedTop ? matchedTop.titleEn : '',
-      subtopicId: matchedSubtop ? matchedSubtop.subtopicId : '',
-      subtopic: matchedSubtop ? matchedSubtop.titleEn : '',
-      categorisationConfidence: hasValidMasterCategory ? confidence : Math.min(confidence, 35),
+      mainCategoryId: finalMainCat ? finalMainCat.mainCategoryId : 'cat_uncategorised',
+      mainCategory: finalMainCat ? finalMainCat.titleEn : 'Uncategorised',
+      subjectId: finalSub ? finalSub.subjectId : 'sub_uncategorised',
+      subjectTag: finalSub ? (finalSub.titleHi || finalSub.titleEn) : 'Uncategorised',
+      topicId: finalTop ? finalTop.topicId : 'top_uncategorised',
+      topic: finalTop ? (finalTop.titleHi || finalTop.titleEn) : 'Uncategorised',
+      subtopicId: '',
+      subtopic: '',
+      categorisationConfidence: hasValidMasterCategory ? confidence : 20,
       needsCategorisation: !hasValidMasterCategory,
       verificationStatus: hasValidMasterCategory ? 'verified' : 'needs_categorisation'
     };
   }
 
-  // Safe, Resumable, Backward-Compatible Migration for Existing Questions (Section 11)
+  // Helper to extract structured PYQ Reference objects without guessing missing fields
+  function normalizeQuestionPyqReferences(q, catalog) {
+    const existingRefs = Array.isArray(q.pyqReferences) ? q.pyqReferences : [];
+    const normalizedRefs = [];
+    const seenKeys = new Set();
+
+    function addPyqRef(refObj) {
+      if (!refObj || typeof refObj !== 'object') return;
+      const examCategory = String(refObj.examCategory || '').trim();
+      const examName = String(refObj.examName || '').trim();
+      const examYear = String(refObj.examYear || '').trim();
+      const paperName = String(refObj.paperName || '').trim();
+      const shift = String(refObj.shift || '').trim();
+      const questionNumber = refObj.questionNumber != null && refObj.questionNumber !== '' ? String(refObj.questionNumber).trim() : '';
+      const source = String(refObj.source || '').trim();
+      if (!examCategory && !examName) return;
+
+      const finalCategory = examCategory || (examName.toUpperCase().includes('VYAPAM') || examName.toUpperCase().includes('WARDEN') || examName.toUpperCase().includes('PATWARI') || examName.toUpperCase().includes('ADEO')
+        ? 'CG Vyapam'
+        : examName.toUpperCase().includes('CGPSC')
+          ? 'CGPSC'
+          : examName.toUpperCase().includes('UPSC')
+            ? 'UPSC'
+            : examName.toUpperCase().includes('SSC')
+              ? 'SSC'
+              : examName.toUpperCase().includes('RRB') || examName.toUpperCase().includes('RAILWAY')
+                ? 'Railway'
+                : examName.toUpperCase().includes('IBPS') || examName.toUpperCase().includes('SBI') || examName.toUpperCase().includes('BANK')
+                  ? 'Banking'
+                  : examName.toUpperCase().includes('TET') || examName.toUpperCase().includes('TEACHER')
+                    ? 'Teaching Exams'
+                    : 'Other Exams');
+
+      const dedupKey = `${normalizeFolderKey(finalCategory)}|${normalizeFolderKey(examName || finalCategory)}|${examYear}|${normalizeFolderKey(paperName)}|${normalizeFolderKey(shift)}`;
+      if (seenKeys.has(dedupKey)) return;
+      seenKeys.add(dedupKey);
+
+      normalizedRefs.push({
+        examCategory: finalCategory,
+        examName: examName || finalCategory,
+        examYear: examYear || '',
+        paperName: paperName || '',
+        shift: shift || '',
+        questionNumber: questionNumber || '',
+        subject: q.subjectTag || '',
+        topic: q.topic || '',
+        source: source || q.sourceDocument || '',
+        questionId: q.id || q.questionId || ''
+      });
+    }
+
+    existingRefs.forEach(addPyqRef);
+
+    // If legacy question had explicit pyqTag or sourceExam, convert without inventing missing year/shift
+    const rawPyqStr = String(q.pyqTag || q.sourceExam || '').trim();
+    if (rawPyqStr) {
+      const yearMatch = rawPyqStr.match(/\b(19\d{2}|20\d{2})\b/);
+      const extractedYear = String(q.sourceYear || (yearMatch ? yearMatch[1] : '')).trim();
+      const cleanExamName = rawPyqStr.replace(/\b(19\d{2}|20\d{2})\b/, '').replace(/[-–—/(),]+$/, '').trim() || rawPyqStr;
+      addPyqRef({
+        examCategory: '',
+        examName: cleanExamName,
+        examYear: extractedYear,
+        paperName: q.paperSetCode ? String(q.paperSetCode).trim() : '',
+        shift: '',
+        questionNumber: q.questionNumber || '',
+        source: q.sourceDocument || 'PYQ Archive'
+      });
+    }
+
+    return normalizedRefs;
+  }
+
+  // ============================================================================
+  // PART 4, PART 5, PART 6: SAFE MIGRATION, FOLDER DEDUP & QUESTION DEDUPLICATION
+  // ============================================================================
+  function createQuestionBankBackupSnapshot(state) {
+    if (!state) return null;
+    const snapshot = {
+      backupCreatedAtIso: new Date().toISOString(),
+      questionCount: Array.isArray(state.questionBank) ? state.questionBank.length : 0,
+      questionBank: JSON.parse(JSON.stringify(state.questionBank || [])),
+      subjectMaster: JSON.parse(JSON.stringify(state.subjectMaster || [])),
+      topicMaster: JSON.parse(JSON.stringify(state.topicMaster || [])),
+      customTaxonomy: JSON.parse(JSON.stringify(state.customTaxonomy || {}))
+    };
+    state.questionBankBackup = snapshot;
+    try {
+      localStorage.setItem('cgpedia_qb_pre_migration_backup_v3', JSON.stringify({
+        backupCreatedAtIso: snapshot.backupCreatedAtIso,
+        questionCount: snapshot.questionCount
+      }));
+    } catch (_) {}
+    return snapshot;
+  }
+
+  function restoreQuestionBankFromBackup(state, api) {
+    if (!state || !state.questionBankBackup || !Array.isArray(state.questionBankBackup.questionBank)) {
+      return false;
+    }
+    state.questionBank = JSON.parse(JSON.stringify(state.questionBankBackup.questionBank));
+    state.subjectMaster = JSON.parse(JSON.stringify(state.questionBankBackup.subjectMaster || []));
+    state.topicMaster = JSON.parse(JSON.stringify(state.questionBankBackup.topicMaster || []));
+    state.customTaxonomy = JSON.parse(JSON.stringify(state.questionBankBackup.customTaxonomy || {}));
+    if (api && typeof api.saveState === 'function') api.saveState();
+    return true;
+  }
+
   async function migrateExistingQuestionBankRecords(state, api, options) {
     const opts = options || {};
-    const catalog = getTaxonomyCatalog(state);
     state.questionBank = state.questionBank || [];
-    state.migrationState = state.migrationState || {
-      version: 0,
-      lastRunIso: '',
-      migratedCount: 0,
-      alreadyCategorisedCount: 0,
-      needsCategorisationCount: 0,
-      errors: []
-    };
+    state.subjectMaster = state.subjectMaster || [];
+    state.topicMaster = state.topicMaster || [];
 
+    // 1. Take automatic Pre-Migration Backup if not already taken in this session
+    if (!state.questionBankBackup && state.questionBank.length > 0) {
+      createQuestionBankBackupSnapshot(state);
+    }
+
+    // 2. Clean up & merge duplicate legacy folders in state.subjectMaster and state.topicMaster
+    let duplicateFoldersMergedCount = 0;
+    const catalog = getTaxonomyCatalog(state);
+
+    const cleanSubjectMaster = [];
+    const seenSubIds = new Set();
+    (state.subjectMaster || []).forEach((s) => {
+      if (!s) return;
+      const canonical = catalog.findSubject(s.subjectId || s.titleHi || s.titleEn);
+      if (canonical) {
+        if (!seenSubIds.has(canonical.subjectId)) {
+          seenSubIds.add(canonical.subjectId);
+          cleanSubjectMaster.push(canonical);
+        } else {
+          duplicateFoldersMergedCount += 1;
+        }
+      }
+    });
+    state.subjectMaster = cleanSubjectMaster;
+
+    const cleanTopicMaster = [];
+    const seenTopIds = new Set();
+    (state.topicMaster || []).forEach((t) => {
+      if (!t) return;
+      const canonical = catalog.findTopic(t.subjectId, t.topicId || t.titleHi || t.titleEn);
+      if (canonical) {
+        if (!seenTopIds.has(canonical.topicId)) {
+          seenTopIds.add(canonical.topicId);
+          cleanTopicMaster.push(canonical);
+        } else {
+          duplicateFoldersMergedCount += 1;
+        }
+      }
+    });
+    state.topicMaster = cleanTopicMaster;
+
+    const refreshedCatalog = getTaxonomyCatalog(state);
+
+    // 3. Migrate & categorize each question + detect exact duplicates & possible duplicates safely
     let migratedCount = 0;
     let alreadyCategorisedCount = 0;
-    let needsCategorisationCount = 0;
+    let uncategorisedCount = 0;
+    let duplicateMergedCount = 0;
+    let possibleDuplicateCount = 0;
     const migrationErrors = [];
     const docsToSync = [];
+    const duplicateIdsToDeleteFromCloud = [];
+    const legacyIdMap = {}; // oldDuplicateId -> canonicalQuestionId
     const nowIso = new Date().toISOString();
+
+    const canonicalByExactKey = new Map();
+    const canonicalByStemKey = new Map();
+    const deduplicatedBank = [];
+
+    // Collect all question IDs actively referenced in Published or Draft Tests so we never break Test references
+    const testReferencedQuestionIds = new Set();
+    (state.tests || []).forEach((testObj) => {
+      ((testObj && testObj.questions) || []).forEach((tq) => {
+        if (tq && tq.id) testReferencedQuestionIds.add(String(tq.id));
+        if (tq && tq.centralQuestionId) testReferencedQuestionIds.add(String(tq.centralQuestionId));
+        if (tq && tq.questionId) testReferencedQuestionIds.add(String(tq.questionId));
+      });
+    });
 
     state.questionBank.forEach((q, idx) => {
       try {
         if (!q || typeof q !== 'object') return;
+        if (q.isDeleted === true || q.deleted === true || String(q.status || '').toLowerCase() === 'deleted') return;
+
         const canonicalId = q.questionId || q.id || computeDeterministicQuestionId(q, `mig_${idx}`);
         q.id = q.id || canonicalId;
-        q.questionId = canonicalId;
+        q.questionId = q.id;
 
-        // Preserve & populate 4 options in both array and optA_Hi..optD_En formats
         const optsHi = Array.isArray(q.optionsHi) && q.optionsHi.length === 4
           ? q.optionsHi.map((o) => String(o || '').trim())
           : [q.optA_Hi, q.optB_Hi, q.optC_Hi, q.optD_Hi].map((o, i) => String(o || (q.optionsHi && q.optionsHi[i]) || '').trim());
@@ -4067,79 +4433,51 @@
         q.correctOptionIndex = Number.isInteger(corrIdx) && corrIdx >= 0 && corrIdx <= 3 ? corrIdx : 0;
         q.correctIndex = q.correctOptionIndex;
 
-        // Normalize difficultyLevel (Easy / Moderate / Hard) while preserving difficulty
         const rawDiff = String(q.difficultyLevel || q.difficulty || 'Moderate').trim();
         const lowDiff = rawDiff.toLowerCase();
         if (lowDiff === 'easy' || lowDiff === 'सरल') {
           q.difficultyLevel = 'Easy';
-          q.difficulty = q.difficulty || 'Easy';
+          q.difficulty = 'Easy';
         } else if (lowDiff === 'hard' || lowDiff === 'difficult' || lowDiff === 'कठिन') {
           q.difficultyLevel = 'Hard';
-          q.difficulty = q.difficulty || 'Hard';
+          q.difficulty = 'Hard';
         } else {
           q.difficultyLevel = 'Moderate';
-          q.difficulty = q.difficulty || 'Moderate';
+          q.difficulty = 'Moderate';
         }
 
-        // Map Exam without guessing unknown exams
         const examSet = new Set();
         if (Array.isArray(q.examIds)) {
           q.examIds.forEach((e) => {
-            const exObj = catalog.findExam(e);
+            const exObj = refreshedCatalog.findExam(e);
             if (exObj) examSet.add(exObj.code);
             else if (String(e || '').trim()) examSet.add(String(e).trim().toUpperCase());
           });
         }
         if (q.examCode) {
-          const exObj = catalog.findExam(q.examCode);
+          const exObj = refreshedCatalog.findExam(q.examCode);
           if (exObj) examSet.add(exObj.code);
           else if (String(q.examCode).trim().toUpperCase() !== 'ALL') {
             examSet.add(String(q.examCode).trim().toUpperCase());
           }
         }
+        if (examSet.size === 0) examSet.add('CGPSC');
         q.examIds = Array.from(examSet);
-        if (q.examIds.length > 0 && !q.examCode) {
-          q.examCode = q.examIds[0];
-        }
+        q.examCode = q.examIds[0] || 'CGPSC';
 
-        // Map existing subjectTag to Subject Master where possible (never guess unknown Topic/Subtopic)
-        const matchedSub = catalog.findSubject(q.subjectId || q.subjectTag);
-        if (matchedSub) {
-          q.subjectId = matchedSub.subjectId;
-          if (!q.subjectTag) q.subjectTag = matchedSub.titleEn;
-        } else {
-          q.subjectId = q.subjectId || '';
-        }
+        // Classify into the new 6 Main Category -> Subject -> Topic structure
+        const predicted = autoCategorizeQuestionFromMaster(q, refreshedCatalog, q.examIds);
+        q.mainCategoryId = predicted.mainCategoryId;
+        q.mainCategory = predicted.mainCategory;
+        q.subjectId = predicted.subjectId;
+        q.subjectTag = predicted.subjectTag;
+        q.topicId = predicted.topicId;
+        q.topic = predicted.topic;
+        q.secondaryTopicIds = Array.isArray(q.secondaryTopicIds) ? q.secondaryTopicIds : [];
+        q.languageAvailability = detectLanguageAvailability(q.questionHi, q.questionEn);
 
-        // Map existing topic & subtopic ONLY when deterministically matched in Topic/Subtopic Master (never guess unknown values)
-        const rawTopicStr = String(q.topic || '').trim();
-        const isGenericPlaceholder = !rawTopicStr || ['general knowledge', 'general', 'miscellaneous', 'unknown'].includes(rawTopicStr.toLowerCase());
-        const matchedTop = (!isGenericPlaceholder || q.topicId)
-          ? catalog.findTopic(q.subjectId || q.subjectTag, q.topicId || rawTopicStr)
-          : null;
-        if (matchedTop) {
-          q.topicId = matchedTop.topicId;
-          q.topic = q.topic || matchedTop.titleEn;
-          if (!q.subjectId) {
-            const parentSub = catalog.findSubject(matchedTop.subjectId);
-            if (parentSub) {
-              q.subjectId = parentSub.subjectId;
-              q.subjectTag = q.subjectTag || parentSub.titleEn;
-            }
-          }
-        } else {
-          q.topicId = '';
-        }
-
-        const matchedSubtop = (q.subtopicId || q.subtopic)
-          ? catalog.findSubtopic(q.topicId || q.topic, q.subtopicId || q.subtopic, q.subjectId)
-          : null;
-        if (matchedSubtop) {
-          q.subtopicId = matchedSubtop.subtopicId;
-          q.subtopic = q.subtopic || matchedSubtop.titleEn;
-        } else {
-          q.subtopicId = '';
-        }
+        // Normalize PYQ References without guessing
+        q.pyqReferences = normalizeQuestionPyqReferences(q, refreshedCatalog);
 
         q.questionType = q.questionType || 'MCQ';
         q.sourceExam = q.sourceExam || '';
@@ -4151,11 +4489,10 @@
         q.updatedAt = nowIso;
         q.updatedAtIso = nowIso;
 
-        const hasSufficientClassification = Boolean(q.subjectId && q.topicId && q.examIds && q.examIds.length > 0);
-        if (!hasSufficientClassification) {
+        if (predicted.needsCategorisation || q.mainCategoryId === 'cat_uncategorised') {
           q.needsCategorisation = true;
           q.verificationStatus = 'needs_categorisation';
-          needsCategorisationCount += 1;
+          uncategorisedCount += 1;
         } else {
           q.needsCategorisation = false;
           if (!q.verificationStatus || q.verificationStatus === 'needs_categorisation') {
@@ -4166,6 +4503,56 @@
           alreadyCategorisedCount += 1;
         }
 
+        // Exact & Near Duplicate Detection (Part 4)
+        const normStemHi = normalizeTextForComparison(q.questionHi || '');
+        const normStemEn = normalizeTextForComparison(q.questionEn || '');
+        const primaryStemKey = normStemHi || normStemEn;
+        const normOptsKey = (optsHi.some(Boolean) ? optsHi : optsEn)
+          .map((o) => normalizeTextForComparison(o))
+          .join('|');
+        const exactCompositeKey = `${primaryStemKey}::${normOptsKey}::${q.correctOptionIndex}`;
+
+        if (primaryStemKey && canonicalByExactKey.has(exactCompositeKey)) {
+          // Exact 100% match (same stem, same 4 options, same correct answer) -> merge references safely!
+          const existingCanonical = canonicalByExactKey.get(exactCompositeKey);
+          existingCanonical.examIds = Array.from(new Set([...(existingCanonical.examIds || []), ...(q.examIds || [])]));
+          existingCanonical.linkedTestIds = Array.from(new Set([...(existingCanonical.linkedTestIds || []), ...(q.linkedTestIds || [])]));
+          existingCanonical.tags = Array.from(new Set([...(existingCanonical.tags || []), ...(q.tags || [])]));
+
+          // Merge pyqReferences without duplicates
+          const combinedPyq = [...(existingCanonical.pyqReferences || []), ...(q.pyqReferences || [])];
+          existingCanonical.pyqReferences = normalizeQuestionPyqReferences(
+            Object.assign({}, existingCanonical, { pyqReferences: combinedPyq }),
+            refreshedCatalog
+          );
+
+          if (!existingCanonical.explanationHi && q.explanationHi) existingCanonical.explanationHi = q.explanationHi;
+          if (!existingCanonical.explanationEn && q.explanationEn) existingCanonical.explanationEn = q.explanationEn;
+
+          legacyIdMap[q.id] = existingCanonical.id;
+          existingCanonical.mergedDuplicateIds = Array.from(new Set([...(existingCanonical.mergedDuplicateIds || []), q.id]));
+          duplicateMergedCount += 1;
+          if (q.id !== existingCanonical.id && !testReferencedQuestionIds.has(q.id)) {
+            duplicateIdsToDeleteFromCloud.push(q.id);
+          }
+          return;
+        }
+
+        // Check if same stem exists with different options/answer -> flag as Possible Duplicate for Admin review (DO NOT auto-delete)
+        if (primaryStemKey && canonicalByStemKey.has(primaryStemKey)) {
+          const stemMatchQ = canonicalByStemKey.get(primaryStemKey);
+          q.possibleDuplicateOfId = stemMatchQ.id;
+          q.possibleDuplicateReason = 'समान प्रश्न टेक्स्ट लेकिन विकल्प या उत्तर भिन्न (Same question stem with different options/answer — Admin Review Recommended)';
+          possibleDuplicateCount += 1;
+        } else if (primaryStemKey) {
+          canonicalByStemKey.set(primaryStemKey, q);
+        }
+
+        if (primaryStemKey) {
+          canonicalByExactKey.set(exactCompositeKey, q);
+        }
+
+        deduplicatedBank.push(q);
         migratedCount += 1;
         docsToSync.push(q);
       } catch (err) {
@@ -4177,14 +4564,38 @@
       }
     });
 
+    // Update any Test references that pointed to a merged duplicate ID so Published Tests & Results remain 100% intact
+    if (Object.keys(legacyIdMap).length > 0) {
+      (state.tests || []).forEach((t) => {
+        ((t && t.questions) || []).forEach((tq) => {
+          const refId = tq.centralQuestionId || tq.questionId || tq.id;
+          if (refId && legacyIdMap[refId]) {
+            tq.centralQuestionId = legacyIdMap[refId];
+          }
+        });
+      });
+    }
+
+    state.questionBank = deduplicatedBank;
+
+    const finalCatalog = getTaxonomyCatalog(state);
     state.migrationState = {
-      version: 2,
+      version: 3,
       lastRunIso: nowIso,
       lastMigratedAt: nowIso,
-      totalInspected: state.questionBank.length,
+      totalInspected: migratedCount + duplicateMergedCount,
+      totalQuestions: state.questionBank.length,
       migratedCount,
       alreadyCategorisedCount,
-      needsCategorisationCount,
+      needsCategorisationCount: uncategorisedCount,
+      uncategorisedCount,
+      duplicateMergedCount,
+      possibleDuplicateCount,
+      duplicateFoldersMergedCount,
+      mainCategoryCount: finalCatalog.mainCategories.filter((c) => c.mainCategoryId !== 'cat_uncategorised').length,
+      subjectFolderCount: finalCatalog.subjects.filter((s) => s.subjectId !== 'sub_uncategorised').length,
+      topicFolderCount: finalCatalog.topicMaster.filter((t) => t.topicId !== 'top_uncategorised').length,
+      pyqCategoryCount: finalCatalog.pyqCategories.length,
       errors: migrationErrors
     };
     qbState.migrationReport = state.migrationState;
@@ -4193,9 +4604,14 @@
       api.saveState();
     }
 
-    if (!opts.skipCloudSync && window.CGpediaCloud && docsToSync.length > 0 && window.CGpediaCloud.batchSaveCloudDocs) {
+    if (!opts.skipCloudSync && window.CGpediaCloud) {
       try {
-        await window.CGpediaCloud.batchSaveCloudDocs('question_bank', docsToSync);
+        if (docsToSync.length > 0 && window.CGpediaCloud.batchSaveCloudDocs) {
+          await window.CGpediaCloud.batchSaveCloudDocs('question_bank', docsToSync);
+        }
+        if (duplicateIdsToDeleteFromCloud.length > 0 && window.CGpediaCloud.batchDeleteCloudDocs) {
+          await window.CGpediaCloud.batchDeleteCloudDocs('question_bank', duplicateIdsToDeleteFromCloud);
+        }
       } catch (_) {}
     }
 
@@ -4585,11 +5001,28 @@
     subject: 'subjectTag',
     subjectid: 'subjectId',
     subject_id: 'subjectId',
+    maincategory: 'mainCategory',
+    main_category: 'mainCategory',
+    maincategoryid: 'mainCategoryId',
+    main_category_id: 'mainCategoryId',
+    category: 'mainCategory',
+    library: 'mainCategory',
     examcode: 'examCode',
     exam_code: 'examCode',
     examcategory: 'examCode',
     exam_category: 'examCode',
     exam: 'examCode',
+    examname: 'sourceExam',
+    exam_name: 'sourceExam',
+    examyear: 'sourceYear',
+    exam_year: 'sourceYear',
+    year: 'sourceYear',
+    papername: 'paperName',
+    paper_name: 'paperName',
+    paper: 'paperName',
+    shift: 'shift',
+    examshift: 'shift',
+    exam_shift: 'shift',
     examids: 'examIds',
     exam_ids: 'examIds',
     exams: 'examIds',
@@ -4613,6 +5046,7 @@
     paper_set_code: 'paperSetCode',
     sourcedocument: 'sourceDocument',
     source_document: 'sourceDocument',
+    source: 'sourceDocument',
     sourcepagenumber: 'sourcePageNumber',
     source_page_number: 'sourcePageNumber',
     verificationstatus: 'verificationStatus',
@@ -4655,11 +5089,17 @@
     'व्याख्या': 'explanationHi',
     'उत्तर_व्याख्या': 'explanationHi',
     'हल': 'explanationHi',
+    'मुख्य_श्रेणी': 'mainCategory',
     'विषय': 'subjectTag',
     'टॉपिक': 'topic',
     'अध्याय': 'topic',
     'उपटॉपिक': 'subtopic',
     'परीक्षा': 'examCode',
+    'परीक्षा_नाम': 'sourceExam',
+    'परीक्षा_वर्ष': 'sourceYear',
+    'वर्ष': 'sourceYear',
+    'पेपर': 'paperName',
+    'शिफ्ट': 'shift',
     'कठिनाई': 'difficulty',
     'स्तर': 'difficulty'
   };
@@ -6828,6 +7268,8 @@
           explanationEn: item.explanationEn != null ? String(item.explanationEn).trim() : (item.explanation != null ? String(item.explanation).trim() : ''),
           examCode: item.examCode || item.examCategory || (parsedExamIds[0] || ''),
           examIds: parsedExamIds,
+          mainCategoryId: item.mainCategoryId || '',
+          mainCategory: item.mainCategory || '',
           subjectId: item.subjectId || '',
           subjectTag: item.subjectTag || item.subject || '',
           topicId: item.topicId || '',
@@ -6837,11 +7279,14 @@
           difficulty: item.difficultyLevel || item.difficulty || '',
           difficultyLevel: item.difficultyLevel || item.difficulty || '',
           questionType: item.questionType || 'MCQ',
-          sourceExam: item.sourceExam || '',
-          sourceYear: item.sourceYear || '',
+          sourceExam: item.sourceExam || item.examName || '',
+          sourceYear: item.sourceYear || item.examYear || '',
+          paperName: item.paperName || '',
+          shift: item.shift || '',
           paperSetCode: item.paperSetCode || '',
-          sourceDocument: item.sourceDocument || fileName || '',
+          sourceDocument: item.sourceDocument || item.source || fileName || '',
           sourcePageNumber: item.sourcePageNumber || '',
+          pyqReferences: Array.isArray(item.pyqReferences) ? item.pyqReferences : [],
           verificationStatus: item.verificationStatus || item.status || 'verified',
           languageAvailability: item.languageAvailability || item.language || '',
           pyqTag: item.pyqTag || '',
@@ -7023,6 +7468,8 @@
         explanationEn: mappedData.explanationEn != null ? String(mappedData.explanationEn).trim() : '',
         examCode: mappedData.examCode || parsedExamIds[0] || '',
         examIds: parsedExamIds,
+        mainCategoryId: mappedData.mainCategoryId || '',
+        mainCategory: mappedData.mainCategory || '',
         subjectId: mappedData.subjectId || '',
         subjectTag: mappedData.subjectTag || '',
         topicId: mappedData.topicId || '',
@@ -7034,6 +7481,8 @@
         questionType: mappedData.questionType || 'MCQ',
         sourceExam: mappedData.sourceExam || '',
         sourceYear: mappedData.sourceYear || '',
+        paperName: mappedData.paperName || '',
+        shift: mappedData.shift || '',
         paperSetCode: mappedData.paperSetCode || '',
         sourceDocument: mappedData.sourceDocument || fileName || '',
         sourcePageNumber: mappedData.sourcePageNumber || '',
@@ -7105,27 +7554,33 @@
         detectedAnswerKeyCols = parsed.detectedAnswerKeyColumns;
       }
       sourceRecords = parsed.rawItems.map((item) => {
-        const hasSpecificSubject = item.subjectTag && !/^(?:general|general\s*studies|gs|gk|सामान्य\s*अध्ययन|needs[\s_]*categorisation|unknown|-)$/i.test(String(item.subjectTag).trim());
-        const hasSpecificTopic = item.topic && !/^(?:general|general\s*knowledge|gk|gs|सामान्य\s*ज्ञान|needs[\s_]*categorisation|unknown|-)$/i.test(String(item.topic).trim());
+        const hasSpecificSubject = item.subjectTag && !/^(?:general|general\s*studies|gs|gk|सामान्य\s*अध्ययन|needs[\s_]*categorisation|uncategorised|unknown|-)$/i.test(String(item.subjectTag).trim());
+        const hasSpecificTopic = item.topic && !/^(?:general|general\s*knowledge|gk|gs|सामान्य\s*ज्ञान|needs[\s_]*categorisation|uncategorised|unknown|-)$/i.test(String(item.topic).trim());
         const shouldAutoCat = !(batchDefaults && batchDefaults.overrideAll) && (fileType === 'PDF' || !hasSpecificSubject || !hasSpecificTopic);
 
         if (shouldAutoCat) {
           const predicted = autoCategorizeQuestionFromMaster(item, catalog, defaultExamIds);
-          const isPdf = fileType === 'PDF';
+          const isUncat = Boolean(predicted.needsCategorisation);
           return Object.assign({}, item, {
             examCode: item.examCode || predicted.examCode,
             examIds: (Array.isArray(item.examIds) && item.examIds.length > 0) ? item.examIds : predicted.examIds,
-            subjectId: predicted.subjectId || item.subjectId || '',
-            subjectTag: predicted.subjectTag || item.subjectTag || (batchDefaults && batchDefaults.subjectTag) || 'Chhattisgarh General Knowledge',
-            topicId: predicted.topicId || item.topicId || '',
-            topic: predicted.topic || item.topic || (batchDefaults && batchDefaults.topic) || 'History of Chhattisgarh',
+            mainCategoryId: item.mainCategoryId || predicted.mainCategoryId || (isUncat ? 'cat_uncategorised' : 'cat_cg_gk'),
+            mainCategory: item.mainCategory || predicted.mainCategory || (isUncat ? 'Uncategorised' : 'Chhattisgarh GK'),
+            subjectId: hasSpecificSubject ? (item.subjectId || predicted.subjectId) : (predicted.subjectId || 'sub_uncategorised'),
+            subjectTag: hasSpecificSubject ? item.subjectTag : (predicted.subjectTag || 'Uncategorised'),
+            topicId: hasSpecificTopic ? (item.topicId || predicted.topicId) : (predicted.topicId || 'top_uncategorised'),
+            topic: hasSpecificTopic ? item.topic : (predicted.topic || 'Uncategorised'),
             subtopicId: predicted.subtopicId || item.subtopicId || '',
             subtopic: predicted.subtopic || item.subtopic || '',
             categorisationConfidence: predicted.categorisationConfidence,
-            needsCategorisation: isPdf ? predicted.needsCategorisation : false,
-            verificationStatus: isPdf ? (predicted.needsCategorisation ? 'needs_categorisation' : (item.answerKeyMatched ? 'verified' : 'unverified')) : (item.verificationStatus || 'verified'),
-            status: isPdf ? (predicted.needsCategorisation ? 'needs_categorisation' : (item.answerKeyMatched ? 'verified' : 'unverified')) : (item.status || 'verified'),
-            adminVerified: isPdf ? (!predicted.needsCategorisation && Boolean(item.answerKeyMatched)) : (item.adminVerified !== false),
+            needsCategorisation: isUncat && !hasSpecificSubject,
+            verificationStatus: (isUncat && !hasSpecificSubject)
+              ? 'needs_categorisation'
+              : (fileType === 'PDF' ? (item.answerKeyMatched ? 'verified' : 'unverified') : (item.verificationStatus || 'verified')),
+            status: (isUncat && !hasSpecificSubject)
+              ? 'needs_categorisation'
+              : (fileType === 'PDF' ? (item.answerKeyMatched ? 'verified' : 'unverified') : (item.status || 'verified')),
+            adminVerified: !(isUncat && !hasSpecificSubject) && (fileType === 'PDF' ? Boolean(item.answerKeyMatched) : (item.adminVerified !== false)),
             duplicateResolution: 'merge_exams'
           });
         }
@@ -7265,10 +7720,12 @@
         : [];
       const mergedTags = Array.from(new Set([...(item.tags || []), ...batchTags]));
 
-      // Resolve hierarchical IDs against Subject/Topic/Subtopic Master
+      // Resolve hierarchical IDs against Main Category / Subject / Topic / Subtopic Master
       const resolvedHierarchy = catalog.resolveHierarchy({
         examIds: effectiveExamIds,
         examCode: effectiveExamCode,
+        mainCategoryId: item.mainCategoryId || (batchDefaults && batchDefaults.mainCategoryId) || '',
+        mainCategory: item.mainCategory || (batchDefaults && batchDefaults.mainCategory) || '',
         subjectId: item.subjectId || '',
         subjectTag: effectiveSubject,
         topicId: item.topicId || '',
@@ -7284,6 +7741,7 @@
 
       // 1. Check empty record
       const isCompletelyEmpty = !qHi && !qEn && optsHi.every((o) => !o) && optsEn.every((o) => !o);
+      let missingFolderInfo = null;
       if (isCompletelyEmpty) {
         errors.push({
           rowNumber,
@@ -7369,45 +7827,72 @@
           });
         }
 
-        // If an explicit Subject or Topic was provided that is not in the Master, offer 1-click creation and auto-register on import
-        if (effectiveSubject) {
-          const knownExam = catalog.isKnownExamCode(effectiveExamCode);
-          const knownSub = Boolean(catalog.findSubject(effectiveSubject));
-          const knownTop = !effectiveTopic || catalog.isKnownTopic(effectiveSubject, effectiveTopic);
-          if (!knownExam || !knownSub || !knownTop) {
-            unknownTaxonomyItems.push({
-              examCode: effectiveExamCode,
+        // PART 5 Requirement: If CSV/Import specifies a Subject or Topic folder that does not exist,
+        // do NOT silently auto-create it — alert Admin, show suggested existing folders, and let Admin map or approve!
+        if (effectiveSubject && effectiveSubject !== 'Uncategorised' && effectiveSubject !== 'Needs Categorisation') {
+          const matchedSub = catalog.findSubject(effectiveSubject);
+          const knownSub = Boolean(matchedSub && matchedSub.subjectId !== 'sub_uncategorised');
+          const knownTop = !effectiveTopic || effectiveTopic === 'Uncategorised' || catalog.isKnownTopic(effectiveSubject, effectiveTopic);
+          const approvalKey = `${normalizeFolderKey(effectiveSubject)}::${normalizeFolderKey(effectiveTopic || 'General')}`;
+          const approvedMap = (qbState.previewSession && qbState.previewSession.approvedNewFolders) || {};
+          const isAlreadyApproved = Boolean(approvedMap[approvalKey]);
+
+          if ((!knownSub || !knownTop) && !isAlreadyApproved) {
+            const suggestions = catalog.suggestSimilarFolders
+              ? catalog.suggestSimilarFolders(effectiveTopic || effectiveSubject, knownSub ? 'topic' : 'subject', matchedSub ? matchedSub.subjectId : '')
+              : [];
+            missingFolderInfo = {
+              approvalKey,
               subjectName: effectiveSubject,
-              topicName: effectiveTopic || 'General Knowledge',
-              subtopicName: effectiveSubtopic || ''
+              topicName: effectiveTopic || 'सामान्य जानकारी (General Info)',
+              mainCategoryId: resolvedHierarchy.mainCategoryId || 'cat_cg_gk',
+              mainCategory: resolvedHierarchy.mainCategory || 'Chhattisgarh GK',
+              knownSubject: knownSub,
+              knownTopic: knownTop,
+              suggestions
+            };
+            unknownTaxonomyItems.push({
+              approvalKey,
+              examCode: effectiveExamCode,
+              mainCategoryId: resolvedHierarchy.mainCategoryId || 'cat_cg_gk',
+              mainCategory: resolvedHierarchy.mainCategory || 'Chhattisgarh GK',
+              subjectName: effectiveSubject,
+              topicName: effectiveTopic || 'सामान्य जानकारी (General Info)',
+              subtopicName: effectiveSubtopic || '',
+              suggestions
             });
             warnings.push({
               rowNumber,
               questionNumber,
-              warningType: 'New Category / Subject / Topic',
-              reason: `Category "${effectiveExamCode} → ${effectiveSubject}${effectiveTopic ? ' → ' + effectiveTopic : ''}" will be automatically added to the Category Master upon import.`
+              warningType: 'Unapproved New Folder (Admin Confirmation Required)',
+              reason: `Folder "${effectiveSubject}${effectiveTopic ? ' › ' + effectiveTopic : ''}" does not exist yet. Map to an existing folder or click "Approve New Folder" before importing.`
             });
           }
         }
       }
 
-      // Check if question Needs Categorisation (e.g. PDF question with no matching Master category or CSV missing topic)
+      // Check if question Needs Categorisation (e.g. uncategorised question or unapproved folder)
       const needsCategorisationFlag = Boolean(
         item.needsCategorisation === true ||
         !resolvedHierarchy.subjectId ||
-        !resolvedHierarchy.topicId
+        resolvedHierarchy.subjectId === 'sub_uncategorised' ||
+        !resolvedHierarchy.topicId ||
+        resolvedHierarchy.topicId === 'top_uncategorised' ||
+        missingFolderInfo
       );
 
       if (needsCategorisationFlag && errors.length === 0) {
         warnings.push({
           rowNumber,
           questionNumber,
-          warningType: 'Needs Categorisation',
-          reason: 'Subject or Topic could not be deterministically matched in the Category Master. Marked as "Needs Categorisation" (will not be auto-published to tests until categorised & verified by Admin).'
+          warningType: 'Needs Categorisation / Verification',
+          reason: missingFolderInfo
+            ? `Folder "${missingFolderInfo.subjectName} › ${missingFolderInfo.topicName}" requires Admin approval or mapping.`
+            : 'Subject or Topic could not be deterministically matched. Placed in "Uncategorised" until verified by Admin.'
         });
       }
 
-      // 7. Duplicate Question Detection (Exact, Minor Text Difference, Permuted Options)
+      // 7. Duplicate Question Detection (Exact vs Possible Duplicate)
       let duplicateInfo = null;
       const allComparisonTargets = [...seenInBatch, ...existingPool];
 
@@ -7426,37 +7911,42 @@
         const optCompEn = computeOptionsOrderAgnosticSimilarity(optsEn, target.optionsEn);
         const maxOptSim = Math.max(optCompHi.score, optCompEn.score);
         const isPermuted = optCompHi.isPermuted || optCompEn.isPermuted;
+        const sameCorrectAnswer = Number(idxCheck.index ?? 0) === Number(target.correctOptionIndex ?? 0);
 
-        if (isExactStem && isPermuted) {
-          duplicateInfo = {
-            matchType: 'Different Option Ordering',
-            similarityPct: 100,
-            matchedQuestion: target,
-            reason: `Identical question stem with different answer-option ordering (matches ${target.sourceLabel}).`
-          };
-          break;
-        } else if (isExactStem) {
+        if (isExactStem && !isPermuted && maxOptSim >= 0.98 && sameCorrectAnswer) {
           duplicateInfo = {
             matchType: 'Exact Duplicate',
+            isExactDuplicate: true,
             similarityPct: 100,
             matchedQuestion: target,
-            reason: `Exact text match (100% identical) with existing question in ${target.sourceLabel}.`
+            reason: `Exact match (same question stem, 4 options, and correct answer) in ${target.sourceLabel}. Will attach Exam/PYQ reference to existing question without duplicating.`
+          };
+          break;
+        } else if (isExactStem && (isPermuted || !sameCorrectAnswer)) {
+          duplicateInfo = {
+            matchType: 'Possible Duplicate (Option Order / Answer Diff)',
+            isExactDuplicate: false,
+            similarityPct: 98,
+            matchedQuestion: target,
+            reason: `Identical question stem with different option ordering or answer key (${target.sourceLabel}). Flagged as Possible Duplicate for Admin review.`
           };
           break;
         } else if (maxStemSim >= 0.72 && isPermuted && maxOptSim >= 0.85) {
           duplicateInfo = {
-            matchType: 'Different Option Ordering',
+            matchType: 'Possible Duplicate (Permuted Options)',
+            isExactDuplicate: false,
             similarityPct: Math.round(maxStemSim * 100),
             matchedQuestion: target,
-            reason: `Question has ${Math.round(maxStemSim * 100)}% text similarity and shuffled/reordered answer options (${target.sourceLabel}).`
+            reason: `Question has ${Math.round(maxStemSim * 100)}% text similarity and reordered answer options (${target.sourceLabel}).`
           };
           break;
         } else if (maxStemSim >= 0.82) {
           duplicateInfo = {
-            matchType: 'Minor Text Difference',
+            matchType: 'Possible Duplicate (Similar Wording)',
+            isExactDuplicate: false,
             similarityPct: Math.round(maxStemSim * 100),
             matchedQuestion: target,
-            reason: `High text similarity (${Math.round(maxStemSim * 100)}%) with minor wording/punctuation differences (${target.sourceLabel}).`
+            reason: `High text similarity (${Math.round(maxStemSim * 100)}%) with minor wording differences (${target.sourceLabel}).`
           };
           break;
         }
@@ -7482,6 +7972,28 @@
       const parsedIdx = idxCheck;
       const isVerifiedFlag = !needsCategorisationFlag && parsedIdx.valid && item.adminVerified !== false && item.status !== 'unverified' && item.verificationStatus !== 'needs_categorisation';
 
+      const finalMainCatId = resolvedHierarchy.mainCategoryId || (needsCategorisationFlag ? 'cat_uncategorised' : 'cat_cg_gk');
+      const finalMainCatName = resolvedHierarchy.mainCategory || (needsCategorisationFlag ? 'Uncategorised' : 'Chhattisgarh GK');
+      const finalSubjName = resolvedHierarchy.subjectTag || effectiveSubject || 'Uncategorised';
+      const finalTopName = resolvedHierarchy.topic || effectiveTopic || 'Uncategorised';
+      const folderPath = `${finalMainCatName} › ${finalSubjName} › ${finalTopName}`;
+
+      const itemPyqRefs = normalizeQuestionPyqReferences({
+        id: item.questionId || item.id || '',
+        questionNumber,
+        examCode: resolvedHierarchy.examCode,
+        sourceExam: item.sourceExam || (batchDefaults && batchDefaults.sourceExam) || '',
+        sourceYear: item.sourceYear || (batchDefaults && batchDefaults.sourceYear) || '',
+        paperName: item.paperName || (batchDefaults && batchDefaults.paperName) || '',
+        shift: item.shift || (batchDefaults && batchDefaults.shift) || '',
+        paperSetCode: item.paperSetCode || effectivePaperSetCode || '',
+        sourceDocument: item.sourceDocument || fileName || '',
+        subjectTag: finalSubjName,
+        topic: finalTopName,
+        pyqTag: item.pyqTag || '',
+        pyqReferences: item.pyqReferences || []
+      }, catalog);
+
       return {
         rowNumber,
         questionNumber,
@@ -7499,40 +8011,51 @@
         explanationEn: expEn,
         examCode: resolvedHierarchy.examCode,
         examIds: resolvedHierarchy.examIds,
-        subjectId: resolvedHierarchy.subjectId,
-        subjectTag: resolvedHierarchy.subjectTag || effectiveSubject || 'Needs Categorisation',
-        topicId: resolvedHierarchy.topicId,
-        topic: resolvedHierarchy.topic || effectiveTopic || 'Needs Categorisation',
+        mainCategoryId: finalMainCatId,
+        mainCategory: finalMainCatName,
+        subjectId: resolvedHierarchy.subjectId || 'sub_uncategorised',
+        subjectTag: finalSubjName,
+        topicId: resolvedHierarchy.topicId || 'top_uncategorised',
+        topic: finalTopName,
         subtopicId: resolvedHierarchy.subtopicId,
         subtopic: resolvedHierarchy.subtopic || effectiveSubtopic || '',
+        folderPath,
+        missingFolderInfo,
         difficulty: normalizedDiff || 'Moderate',
         difficultyLevel: normalizedDiff || 'Moderate',
         questionType: item.questionType || 'MCQ',
-        sourceExam: item.sourceExam || '',
-        sourceYear: item.sourceYear || '',
+        sourceExam: item.sourceExam || (batchDefaults && batchDefaults.sourceExam) || '',
+        sourceYear: item.sourceYear || (batchDefaults && batchDefaults.sourceYear) || '',
+        paperName: item.paperName || (batchDefaults && batchDefaults.paperName) || '',
+        shift: item.shift || (batchDefaults && batchDefaults.shift) || '',
         paperSetCode: item.paperSetCode || '',
         sourceDocument: item.sourceDocument || fileName || '',
         sourcePageNumber: item.sourcePageNumber || '',
+        pyqReferences: itemPyqRefs,
         categorisationConfidence: item.categorisationConfidence != null ? item.categorisationConfidence : (needsCategorisationFlag ? 25 : 95),
         needsCategorisation: needsCategorisationFlag,
-        verificationStatus: needsCategorisationFlag ? 'needs_categorisation' : (isVerifiedFlag ? 'verified' : 'unverified'),
+        verificationStatus: needsCategorisationFlag
+          ? 'needs_categorisation'
+          : (duplicateInfo && !duplicateInfo.isExactDuplicate ? 'possible_duplicate' : (isVerifiedFlag ? 'verified' : 'unverified')),
         languageAvailability: detectLanguageAvailability(rawQHi, rawQEn),
         pyqTag: item.pyqTag || '',
         tags: mergedTags,
-        status: needsCategorisationFlag ? 'needs_categorisation' : (isVerifiedFlag ? 'verified' : 'unverified'),
+        status: needsCategorisationFlag
+          ? 'needs_categorisation'
+          : (duplicateInfo && !duplicateInfo.isExactDuplicate ? 'possible_duplicate' : (isVerifiedFlag ? 'verified' : 'unverified')),
         adminVerified: isVerifiedFlag,
         importSource: item.importSource || (fileType === 'PDF' ? 'pdf_ocr_answer_key' : fileType.toLowerCase()),
         errors,
         warnings,
         duplicateInfo,
-        duplicateResolution: item.duplicateResolution || 'merge_exams'
+        duplicateResolution: item.duplicateResolution || (duplicateInfo && duplicateInfo.isExactDuplicate ? 'merge_exams' : 'import_anyway')
       };
     });
 
     const uniqueUnknownTaxonomy = [];
     const seenTaxKeys = new Set();
     unknownTaxonomyItems.forEach((ut) => {
-      const k = `${ut.examCode}::${ut.subjectName}::${ut.topicName}`.toLowerCase();
+      const k = `${ut.subjectName}::${ut.topicName}`.toLowerCase();
       if (!seenTaxKeys.has(k)) {
         seenTaxKeys.add(k);
         uniqueUnknownTaxonomy.push(ut);
@@ -7551,11 +8074,14 @@
       fileStructureErrors: structureErrors,
       records: validatedRecords,
       unknownTaxonomy: uniqueUnknownTaxonomy,
+      approvedNewFolders: (qbState.previewSession && qbState.previewSession.approvedNewFolders) || {},
       batchDefaults: batchDefaults || {
         examCode: 'CGPSC',
         examIds: ['CGPSC'],
-        subjectTag: 'Chhattisgarh General Knowledge',
-        topic: 'History of Chhattisgarh',
+        mainCategoryId: 'cat_cg_gk',
+        mainCategory: 'Chhattisgarh GK',
+        subjectTag: 'छत्तीसगढ़ का इतिहास (History of Chhattisgarh)',
+        topic: 'छत्तीसगढ़ का प्राचीन इतिहास (Ancient History of CG)',
         subtopic: '',
         difficulty: 'Moderate',
         tagsText: '',
@@ -7595,9 +8121,10 @@
       'questionHi', 'questionEn',
       'optA_Hi', 'optB_Hi', 'optC_Hi', 'optD_Hi',
       'optA_En', 'optB_En', 'optC_En', 'optD_En',
-      'correctIndex', 'explanationHi', 'explanationEn', 'subjectTag',
-      'questionId', 'examIds', 'subjectId', 'topicId', 'topic', 'subtopicId', 'subtopic',
-      'difficultyLevel', 'questionType', 'sourceExam', 'sourceYear', 'paperSetCode',
+      'correctIndex', 'explanationHi', 'explanationEn',
+      'mainCategory', 'subjectTag', 'topic', 'subtopic',
+      'questionId', 'examIds', 'mainCategoryId', 'subjectId', 'topicId', 'subtopicId',
+      'difficultyLevel', 'questionType', 'sourceExam', 'sourceYear', 'paperName', 'shift', 'paperSetCode',
       'sourceDocument', 'sourcePageNumber', 'verificationStatus'
     ];
     const lines = [headers.join(',')];
@@ -7605,6 +8132,7 @@
       const optsHi = Array.isArray(q.optionsHi) ? q.optionsHi : [q.optA_Hi || '', q.optB_Hi || '', q.optC_Hi || '', q.optD_Hi || ''];
       const optsEn = Array.isArray(q.optionsEn) ? q.optionsEn : [q.optA_En || '', q.optB_En || '', q.optC_En || '', q.optD_En || ''];
       const examIdsArr = Array.isArray(q.examIds) && q.examIds.length > 0 ? q.examIds : [q.examCode || 'CGPSC'];
+      const firstPyq = Array.isArray(q.pyqReferences) && q.pyqReferences[0] ? q.pyqReferences[0] : {};
       const row = [
         q.questionHi || '',
         q.questionEn || '',
@@ -7613,20 +8141,24 @@
         q.correctOptionIndex != null ? q.correctOptionIndex : (q.correctIndex || 0),
         q.explanationHi || '',
         q.explanationEn || '',
-        q.subjectTag || 'General Studies',
+        q.mainCategory || 'Chhattisgarh GK',
+        q.subjectTag || 'Uncategorised',
+        q.topic || 'Uncategorised',
+        q.subtopic || '',
         q.questionId || q.id || '',
         examIdsArr.join(';'),
+        q.mainCategoryId || '',
         q.subjectId || '',
         q.topicId || '',
-        q.topic || '',
         q.subtopicId || '',
-        q.subtopic || '',
         q.difficultyLevel || q.difficulty || 'Moderate',
         q.questionType || 'MCQ',
-        q.sourceExam || '',
-        q.sourceYear || '',
+        q.sourceExam || firstPyq.examName || '',
+        q.sourceYear || firstPyq.examYear || '',
+        q.paperName || firstPyq.paperName || '',
+        q.shift || firstPyq.shift || '',
         q.paperSetCode || '',
-        q.sourceDocument || '',
+        q.sourceDocument || firstPyq.source || '',
         q.sourcePageNumber || '',
         q.verificationStatus || q.status || 'verified'
       ];
@@ -7649,10 +8181,13 @@
           questionId: q.questionId || q.id,
           examCode: q.examCode || examIdsArr[0] || 'CGPSC',
           examIds: examIdsArr,
+          mainCategoryId: q.mainCategoryId || '',
+          mainCategory: q.mainCategory || '',
           subjectId: q.subjectId || '',
-          subjectTag: q.subjectTag || 'General Studies',
+          subjectTag: q.subjectTag || 'Uncategorised',
           topicId: q.topicId || '',
-          topic: q.topic || '',
+          topic: q.topic || 'Uncategorised',
+          secondaryTopicIds: Array.isArray(q.secondaryTopicIds) ? q.secondaryTopicIds : [],
           subtopicId: q.subtopicId || '',
           subtopic: q.subtopic || '',
           difficulty: q.difficulty || q.difficultyLevel || 'Moderate',
@@ -7660,9 +8195,12 @@
           questionType: q.questionType || 'MCQ',
           sourceExam: q.sourceExam || '',
           sourceYear: q.sourceYear || '',
+          paperName: q.paperName || '',
+          shift: q.shift || '',
           paperSetCode: q.paperSetCode || '',
           sourceDocument: q.sourceDocument || '',
           sourcePageNumber: q.sourcePageNumber || '',
+          pyqReferences: Array.isArray(q.pyqReferences) ? q.pyqReferences : [],
           verificationStatus: q.verificationStatus || q.status || 'verified',
           languageAvailability: q.languageAvailability || detectLanguageAvailability(q.questionHi, q.questionEn),
           questionHi: q.questionHi || '',
@@ -8266,30 +8804,37 @@ Return ONLY a JSON array of strings like: ["1-A", "2-C", "3-B", "4-D"]`;
           allExamCodes
         );
 
+        const isUncategorisedResult = Boolean(autoCat.needsCategorisation && !forcedSubjectTag && !rawItem.subjectTag);
         const finalSubjName = forcedSubjectTag ||
-          (rawItem.subjectTag && rawItem.subjectTag !== 'Needs Categorisation' ? String(rawItem.subjectTag).trim() : '') ||
-          (autoCat.subjectTag && autoCat.subjectTag !== 'Needs Categorisation' ? autoCat.subjectTag : 'Chhattisgarh General Knowledge');
+          (rawItem.subjectTag && rawItem.subjectTag !== 'Needs Categorisation' && rawItem.subjectTag !== 'Uncategorised' ? String(rawItem.subjectTag).trim() : '') ||
+          (!isUncategorisedResult && autoCat.subjectTag && autoCat.subjectTag !== 'Uncategorised' ? autoCat.subjectTag : 'Uncategorised');
 
         const matchedSubObj = catalog.findSubject(finalSubjName);
         const defaultTopicForSub = matchedSubObj && catalog.getTopicsForSubject(matchedSubObj.subjectId)[0]
           ? catalog.getTopicsForSubject(matchedSubObj.subjectId)[0].titleEn
-          : 'General Topic';
+          : 'Uncategorised';
 
         const finalTopicName = forcedTopic ||
-          (rawItem.topic && rawItem.topic !== 'Needs Categorisation' ? String(rawItem.topic).trim() : '') ||
-          (autoCat.topic && autoCat.topic !== 'Needs Categorisation' ? autoCat.topic : defaultTopicForSub);
+          (rawItem.topic && rawItem.topic !== 'Needs Categorisation' && rawItem.topic !== 'Uncategorised' ? String(rawItem.topic).trim() : '') ||
+          (!isUncategorisedResult && autoCat.topic && autoCat.topic !== 'Uncategorised' ? autoCat.topic : defaultTopicForSub);
 
-        addCustomTaxonomyEntry(state, null, {
-          examCode: 'CGPSC',
-          subjectName: finalSubjName,
-          topicName: finalTopicName,
-          subtopicName: ''
-        });
+        if (finalSubjName !== 'Uncategorised' && finalTopicName !== 'Uncategorised') {
+          addCustomTaxonomyEntry(state, null, {
+            examCode: 'CGPSC',
+            mainCategoryId: autoCat.mainCategoryId || (matchedSubObj && matchedSubObj.mainCategoryId) || 'cat_cg_gk',
+            mainCategory: autoCat.mainCategory || (matchedSubObj && matchedSubObj.mainCategory) || 'Chhattisgarh GK',
+            subjectName: finalSubjName,
+            topicName: finalTopicName,
+            subtopicName: ''
+          });
+        }
         const updatedCat = getTaxonomyCatalog(state);
         const resolved = resolveCanonicalQuestionHierarchy(
           {
             examCode: 'ALL',
             examIds: allExamCodes,
+            mainCategoryId: autoCat.mainCategoryId || (matchedSubObj && matchedSubObj.mainCategoryId) || '',
+            mainCategory: autoCat.mainCategory || (matchedSubObj && matchedSubObj.mainCategory) || '',
             subjectTag: finalSubjName,
             topic: finalTopicName,
             subtopic: ''
@@ -8303,16 +8848,20 @@ Return ONLY a JSON array of strings like: ["1-A", "2-C", "3-B", "4-D"]`;
         const expEn = convertKrutiDevInText(String(rawItem.explanationEn || rawItem.explanationHi || '').trim()) ||
           `Correct answer is Option (${corrLetter}) ${optsEn[corrIdx] || ''}.`;
         const diffVal = normalizeDifficultyValue(rawItem.difficulty || rawItem.difficultyLevel) || 'Moderate';
+        const isNeedsCat = finalSubjName === 'Uncategorised' || finalTopicName === 'Uncategorised';
 
         const qDoc = {
           id: '',
           questionId: '',
           examCode: 'ALL',
           examIds: allExamCodes,
-          subjectId: resolved.subjectId || makeSlugId('sub', finalSubjName),
-          subjectTag: resolved.subjectTag || finalSubjName,
-          topicId: resolved.topicId || makeSlugId('top', finalTopicName),
-          topic: resolved.topic || finalTopicName,
+          mainCategoryId: isNeedsCat ? 'cat_uncategorised' : (resolved.mainCategoryId || autoCat.mainCategoryId || 'cat_cg_gk'),
+          mainCategory: isNeedsCat ? 'Uncategorised' : (resolved.mainCategory || autoCat.mainCategory || 'Chhattisgarh GK'),
+          subjectId: isNeedsCat ? 'sub_uncategorised' : (resolved.subjectId || makeSlugId('sub', finalSubjName)),
+          subjectTag: isNeedsCat ? 'Uncategorised' : (resolved.subjectTag || finalSubjName),
+          topicId: isNeedsCat ? 'top_uncategorised' : (resolved.topicId || makeSlugId('top', finalTopicName)),
+          topic: isNeedsCat ? 'Uncategorised' : (resolved.topic || finalTopicName),
+          secondaryTopicIds: [],
           subtopicId: '',
           subtopic: '',
           difficulty: diffVal,
@@ -8320,12 +8869,13 @@ Return ONLY a JSON array of strings like: ["1-A", "2-C", "3-B", "4-D"]`;
           questionType: 'MCQ',
           sourceDocument: (questionFile && questionFile.name) || 'AI_Scan',
           paperSetCode: paperSetCode || 'A',
-          categorisationConfidence: 98,
-          needsCategorisation: false,
-          verificationStatus: 'verified',
-          status: 'verified',
-          verified: true,
-          adminVerified: true,
+          pyqReferences: [],
+          categorisationConfidence: isNeedsCat ? 25 : 98,
+          needsCategorisation: isNeedsCat,
+          verificationStatus: isNeedsCat ? 'needs_categorisation' : 'verified',
+          status: isNeedsCat ? 'needs_categorisation' : 'verified',
+          verified: !isNeedsCat,
+          adminVerified: !isNeedsCat,
           isDeleted: false,
           languageAvailability: detectLanguageAvailability(rawHi, rawEn),
           questionHi: qHi,
@@ -8624,18 +9174,446 @@ Return ONLY a JSON array of objects:
     return finalDocs;
   }
 
-  function openQuestionFormModal({ title, question, stateRef, onSave }) {
+  function checkQuestionSafetyBeforeDelete(qObj, state) {
+    if (!qObj) return { linkedPublishedTests: [], linkedDraftTests: [], pyqRefs: [] };
+    const qid = qObj.id || qObj.questionId;
+    const linkedPublishedTests = [];
+    const linkedDraftTests = [];
+    ((state && state.tests) || []).forEach((t) => {
+      if (!t || !Array.isArray(t.questions)) return;
+      const hasQ = t.questions.some((tq) => (tq.centralQuestionId || tq.questionId || tq.id) === qid);
+      if (hasQ) {
+        if (t.status === 'published') linkedPublishedTests.push(t.titleHi || t.titleEn || t.id);
+        else linkedDraftTests.push(t.titleHi || t.titleEn || t.id);
+      }
+    });
+    const pyqRefs = Array.isArray(qObj.pyqReferences) ? qObj.pyqReferences : [];
+    return { linkedPublishedTests, linkedDraftTests, pyqRefs };
+  }
+
+  function openQuestionDetailViewModal({ question, state, api, onEdit, onAddPyq }) {
     const modalRoot = document.getElementById('genericModalContainer');
     if (!modalRoot || !question) return;
-    const catalog = getTaxonomyCatalog(stateRef);
+    const catalog = getTaxonomyCatalog(state);
+    const resolved = catalog.resolveHierarchy(question);
     const optsHi = Array.isArray(question.optionsHi) ? question.optionsHi : [question.optA_Hi || '', question.optB_Hi || '', question.optC_Hi || '', question.optD_Hi || ''];
     const optsEn = Array.isArray(question.optionsEn) ? question.optionsEn : [question.optA_En || '', question.optB_En || '', question.optC_En || '', question.optD_En || ''];
-    const currentDiff = normalizeDifficultyValue(question.difficultyLevel || question.difficulty) || 'Moderate';
-    const allExamCodes = ['ALL', ...catalog.examCategories.map((e) => e.code)];
+    const corrIdx = Number(question.correctOptionIndex ?? question.correctIndex ?? 0);
+    const letters = ['A', 'B', 'C', 'D'];
+    const pyqRefs = Array.isArray(question.pyqReferences) ? question.pyqReferences : [];
+    const safety = checkQuestionSafetyBeforeDelete(question, state);
 
     modalRoot.innerHTML = `
       <div class="modal-backdrop">
         <div class="modal-card" style="max-width:740px;max-height:92vh;overflow-y:auto;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+            <div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px;">
+                <span class="badge badge-exam">ID: ${esc(question.id || question.questionId)}</span>
+                <span class="badge ${question.verificationStatus === 'verified' ? 'badge-free' : 'badge-paid'}">
+                  ${question.verificationStatus === 'verified' ? '✅ Verified' : '⚠️ ' + esc(question.verificationStatus || 'Unverified')}
+                </span>
+                <span class="badge badge-review">Difficulty: ${esc(question.difficultyLevel || question.difficulty || 'Moderate')}</span>
+                <span class="badge badge-draft">Language: ${esc(question.languageAvailability || 'Both')}</span>
+              </div>
+              <h2 style="font-size:1.05rem;font-weight:800;">👁️ प्रश्न विवरण और रेफ़रेंस (Central Question Record)</h2>
+            </div>
+            <button class="btn btn-outline btn-sm" id="closeViewQModalBtn">✕ बंद करें</button>
+          </div>
+
+          <div style="padding:10px 12px;border-radius:10px;background:var(--surface-alt);border:1px solid var(--border);margin-bottom:12px;font-size:0.8rem;">
+            <div><strong>📂 Subject-wise Folder Path:</strong> ${esc(resolved.mainCategory || question.mainCategory || 'Chhattisgarh GK')} › ${esc(resolved.subjectTag || question.subjectTag || 'Uncategorised')} › <strong>${esc(resolved.topic || question.topic || 'Uncategorised')}</strong></div>
+            ${pyqRefs.length > 0 ? `
+              <div style="margin-top:6px;">
+                <strong>🏛️ PYQ Exam References (${pyqRefs.length}):</strong>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">
+                  ${pyqRefs.map((ref) => `
+                    <span class="badge badge-exam">
+                      🏛️ ${esc(ref.examCategory)} › ${esc(ref.examName)} ${ref.examYear ? '(' + esc(ref.examYear) + ')' : ''} ${ref.paperName ? '• ' + esc(ref.paperName) : ''} ${ref.shift ? '• ' + esc(ref.shift) : ''} ${ref.questionNumber ? '• Q.' + esc(ref.questionNumber) : ''}
+                    </span>
+                  `).join('')}
+                </div>
+              </div>
+            ` : `<div style="margin-top:4px;color:var(--text-secondary);">🏛️ PYQ Library Reference: अभी किसी परीक्षा पेपर से लिंक नहीं है।</div>`}
+            ${(safety.linkedPublishedTests.length > 0 || safety.linkedDraftTests.length > 0) ? `
+              <div style="margin-top:6px;color:var(--primary);font-weight:700;">
+                🧪 Linked Tests: ${esc([...safety.linkedPublishedTests, ...safety.linkedDraftTests].join(', '))}
+              </div>
+            ` : ''}
+          </div>
+
+          <div class="card" style="margin-bottom:12px;">
+            <div style="font-weight:800;font-size:0.95rem;margin-bottom:4px;">🇮🇳 ${esc(question.questionHi || question.questionEn)}</div>
+            ${question.questionEn && question.questionEn !== question.questionHi ? `
+              <div style="font-size:0.86rem;color:var(--text-secondary);margin-bottom:10px;">🇬🇧 ${esc(question.questionEn)}</div>
+            ` : ''}
+            <div style="display:grid;gap:6px;margin-top:8px;">
+              ${[0, 1, 2, 3].map((oi) => `
+                <div class="qb-option-pill ${corrIdx === oi ? 'is-correct' : ''}">
+                  <div>
+                    <strong>(${letters[oi]})</strong> ${esc(optsHi[oi] || optsEn[oi])}
+                    ${optsEn[oi] && optsEn[oi] !== optsHi[oi] ? `<div style="font-size:0.75rem;color:var(--text-secondary);">${esc(optsEn[oi])}</div>` : ''}
+                  </div>
+                  ${corrIdx === oi ? '<span class="badge badge-free">✓ सही उत्तर</span>' : ''}
+                </div>
+              `).join('')}
+            </div>
+            <div class="qb-explanation-box" style="margin-top:10px;">
+              <div><strong>💡 व्याख्या:</strong> ${esc(question.explanationHi || question.explanationEn || 'N/A')}</div>
+              ${question.explanationEn && question.explanationEn !== question.explanationHi ? `
+                <div style="margin-top:3px;color:var(--text-secondary);"><strong>Explanation:</strong> ${esc(question.explanationEn)}</div>
+              ` : ''}
+            </div>
+          </div>
+
+          <div style="display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-outline" id="viewQAddPyqBtn">🏛️ + Add Exam / PYQ Reference</button>
+            <button class="btn btn-primary" id="viewQEditBtn">✏️ प्रश्न संपादित करें (Edit)</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('closeViewQModalBtn').onclick = () => { modalRoot.innerHTML = ''; };
+    document.getElementById('viewQEditBtn').onclick = () => {
+      modalRoot.innerHTML = '';
+      if (onEdit) onEdit();
+    };
+    document.getElementById('viewQAddPyqBtn').onclick = () => {
+      modalRoot.innerHTML = '';
+      if (onAddPyq) onAddPyq();
+    };
+  }
+
+  function openPyqReferenceModal({ question, state, api, onSaved }) {
+    const modalRoot = document.getElementById('genericModalContainer');
+    if (!modalRoot || !question) return;
+    const catalog = getTaxonomyCatalog(state);
+    const pyqCats = catalog.pyqCategories || [];
+    const existingRefs = Array.isArray(question.pyqReferences) ? question.pyqReferences : [];
+
+    modalRoot.innerHTML = `
+      <div class="modal-backdrop">
+        <div class="modal-card" style="max-width:640px;max-height:92vh;overflow-y:auto;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <div>
+              <span class="badge badge-exam">🏛️ EXAM-WISE PYQ LIBRARY REFERENCE</span>
+              <h2 style="font-size:1.05rem;font-weight:800;margin-top:4px;">प्रश्न में PYQ परीक्षा रेफ़रेंस जोड़ें / प्रबंधित करें</h2>
+            </div>
+            <button class="btn btn-outline btn-sm" id="closePyqRefModalBtn">✕</button>
+          </div>
+
+          <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:10px;">
+            यह प्रश्न <strong>Central Question Database</strong> में एक ही बार सुरक्षित रहेगा और नीचे जोड़े गए सभी परीक्षाओं (PYQ Folders) में उसका Reference दिखाई देगा। (किसी अज्ञात जानकारी का अनुमान न लगाएं।)
+          </p>
+
+          ${existingRefs.length > 0 ? `
+            <div style="margin-bottom:12px;padding:10px;border-radius:8px;background:var(--surface-alt);border:1px solid var(--border);">
+              <div style="font-size:0.78rem;font-weight:800;margin-bottom:6px;">जुड़े हुए PYQ References (${existingRefs.length}):</div>
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                ${existingRefs.map((r, idx) => `
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;border-radius:6px;background:var(--surface);border:1px solid var(--border);font-size:0.78rem;">
+                    <span>
+                      <strong>${esc(r.examCategory)}</strong> › ${esc(r.examName)}
+                      ${r.examYear ? ` › <strong>${esc(r.examYear)}</strong>` : ''}
+                      ${r.paperName ? ` › ${esc(r.paperName)}` : ''}
+                      ${r.shift ? ` (${esc(r.shift)})` : ''}
+                      ${r.questionNumber ? ` • Q#${esc(r.questionNumber)}` : ''}
+                    </span>
+                    <button type="button" class="btn btn-danger btn-sm" data-remove-pyq-ref-idx="${idx}" style="padding:2px 8px;font-size:0.7rem;">✕ हटाएं</button>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          ` : ''}
+
+          <div class="grid-2" style="gap:10px;margin-bottom:10px;">
+            <div>
+              <label class="form-label">1. Exam Category (परीक्षा श्रेणी) *</label>
+              <select class="form-select" id="pyqRefCatSelect">
+                ${pyqCats.map((c) => `<option value="${esc(c.code)}">${esc(c.icon || '🏛️')} ${esc(c.nameEn)} (${esc(c.nameHi || c.nameEn)})</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label class="form-label">2. Exam Name (परीक्षा का नाम) *</label>
+              <input class="form-input" id="pyqRefExamNameInput" list="pyqRefExamNameList" placeholder="उदा: CGPSC Prelims / Patwari / Hostel Warden..." />
+              <datalist id="pyqRefExamNameList"></datalist>
+            </div>
+            <div>
+              <label class="form-label">3. Exam Year (वर्ष — यदि ज्ञात हो)</label>
+              <input class="form-input" id="pyqRefYearInput" placeholder="उदा: 2024, 2023 (अज्ञात हो तो खाली छोड़ें)" />
+            </div>
+            <div>
+              <label class="form-label">4. Paper Name (पेपर — वैकल्पिक)</label>
+              <input class="form-input" id="pyqRefPaperInput" list="pyqRefPaperList" placeholder="उदा: Paper 1 - General Studies / Set A" />
+              <datalist id="pyqRefPaperList">
+                <option value="Paper 1 - General Studies"></option>
+                <option value="Paper 2 - CSAT / Aptitude"></option>
+                <option value="Single Paper"></option>
+              </datalist>
+            </div>
+            <div>
+              <label class="form-label">5. Shift (शिफ्ट — वैकल्पिक)</label>
+              <input class="form-input" id="pyqRefShiftInput" list="pyqRefShiftList" placeholder="उदा: Shift 1 (Morning) / Shift 2" />
+              <datalist id="pyqRefShiftList">
+                <option value="Shift 1"></option>
+                <option value="Shift 2"></option>
+                <option value="Shift 3"></option>
+              </datalist>
+            </div>
+            <div>
+              <label class="form-label">6. Question Number &amp; Source (वैकल्पिक)</label>
+              <div style="display:grid;grid-template-columns:1fr 1.4fr;gap:6px;">
+                <input class="form-input" id="pyqRefQNumInput" type="number" min="1" placeholder="Q.No." />
+                <input class="form-input" id="pyqRefSourceInput" value="${esc(question.sourceDocument || '')}" placeholder="Source (e.g. Official Paper)" />
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
+            <button class="btn btn-outline" id="cancelPyqRefModalBtn">बंद करें</button>
+            <button class="btn btn-primary" id="savePyqRefModalBtn">🏛️ PYQ Reference जोड़ें और सेव करें</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const catSel = document.getElementById('pyqRefCatSelect');
+    const examList = document.getElementById('pyqRefExamNameList');
+    const populateExamsForCat = () => {
+      const selectedCat = pyqCats.find((c) => c.code === catSel.value) || pyqCats[0];
+      if (!selectedCat || !examList) return;
+      examList.innerHTML = (selectedCat.exams || []).map((ex) => `<option value="${esc(ex.examNameEn)}">${esc(ex.examNameHi || ex.examNameEn)}</option>`).join('');
+    };
+    if (catSel) {
+      catSel.onchange = populateExamsForCat;
+      populateExamsForCat();
+    }
+
+    document.getElementById('closePyqRefModalBtn').onclick = () => { modalRoot.innerHTML = ''; };
+    document.getElementById('cancelPyqRefModalBtn').onclick = () => { modalRoot.innerHTML = ''; };
+
+    modalRoot.querySelectorAll('[data-remove-pyq-ref-idx]').forEach((btn) => {
+      btn.onclick = () => {
+        const idx = Number(btn.getAttribute('data-remove-pyq-ref-idx'));
+        if (!Number.isNaN(idx) && Array.isArray(question.pyqReferences)) {
+          question.pyqReferences.splice(idx, 1);
+          api.saveState();
+          if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('question_bank', question.id, question);
+          openPyqReferenceModal({ question, state, api, onSaved });
+          if (onSaved) onSaved();
+        }
+      };
+    });
+
+    document.getElementById('savePyqRefModalBtn').onclick = () => {
+      const catCode = document.getElementById('pyqRefCatSelect').value.trim();
+      const examName = document.getElementById('pyqRefExamNameInput').value.trim();
+      const examYear = document.getElementById('pyqRefYearInput').value.trim();
+      const paperName = document.getElementById('pyqRefPaperInput').value.trim();
+      const shift = document.getElementById('pyqRefShiftInput').value.trim();
+      const qNum = document.getElementById('pyqRefQNumInput').value.trim();
+      const src = document.getElementById('pyqRefSourceInput').value.trim();
+
+      if (!catCode || !examName) {
+        api.toast('⚠️ कृपया Exam Category और Exam Name दर्ज करें।');
+        return;
+      }
+
+      upsertCategoryMasterItem(state, api, 'pyq_exam', {
+        examCategoryCode: catCode,
+        examNameEn: examName,
+        examNameHi: examName,
+        year: examYear,
+        paperShift: [paperName, shift].filter(Boolean).join(' - ')
+      });
+
+      question.pyqReferences = Array.isArray(question.pyqReferences) ? question.pyqReferences : [];
+      question.pyqReferences.push({
+        refId: makeSlugId('pyqref', `${catCode}_${examName}_${examYear}_${paperName}_${shift}_${question.id}`),
+        questionId: question.id || question.questionId,
+        examCategory: catCode,
+        examName,
+        examYear,
+        paperName,
+        shift,
+        questionNumber: qNum || '',
+        subject: question.subjectTag || '',
+        topic: question.topic || '',
+        source: src || ''
+      });
+      question.sourceExam = question.sourceExam || examName;
+      question.sourceYear = question.sourceYear || examYear;
+      question.paperName = question.paperName || paperName;
+      question.shift = question.shift || shift;
+      question.examIds = Array.from(new Set([...(Array.isArray(question.examIds) ? question.examIds : []), catCode, 'ALL']));
+      question.updatedAt = new Date().toISOString();
+      question.updatedAtIso = question.updatedAt;
+
+      api.saveState();
+      if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('question_bank', question.id, question);
+      modalRoot.innerHTML = '';
+      api.toast(`🏛️ प्रश्न को "${catCode} › ${examName}${examYear ? ' (' + examYear + ')' : ''}" PYQ Library से जोड़ दिया गया!`);
+      if (onSaved) onSaved();
+    };
+  }
+
+  function openPyqFolderCreateModal({ defaultCategoryCode, defaultExamName, defaultYear, state, api, onCreated }) {
+    const modalRoot = document.getElementById('genericModalContainer');
+    if (!modalRoot) return;
+    const catalog = getTaxonomyCatalog(state);
+    const pyqCats = catalog.pyqCategories || [];
+
+    modalRoot.innerHTML = `
+      <div class="modal-backdrop">
+        <div class="modal-card" style="max-width:520px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <h2 style="font-size:1.05rem;font-weight:800;">🏛️ नया PYQ Exam / Year / Paper फ़ोल्डर बनाएं</h2>
+            <button class="btn btn-outline btn-sm" id="closePyqFolderModalBtn">✕</button>
+          </div>
+          <div class="form-group">
+            <label class="form-label">1. Exam Category (परीक्षा श्रेणी) *</label>
+            <select class="form-select" id="pfCatSelect">
+              ${pyqCats.map((c) => `<option value="${esc(c.code)}" ${defaultCategoryCode === c.code ? 'selected' : ''}>${esc(c.icon || '🏛️')} ${esc(c.nameEn)} (${esc(c.nameHi || c.nameEn)})</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">2. Exam Name (परीक्षा का नाम — English/Hindi) *</label>
+            <input class="form-input" id="pfExamNameInput" value="${esc(defaultExamName || '')}" placeholder="उदा: CGPSC Prelims / Hostel Warden / Sub Inspector (SI)" />
+          </div>
+          <div class="grid-2" style="gap:10px;">
+            <div class="form-group">
+              <label class="form-label">3. Year (वर्ष — वैकल्पिक)</label>
+              <input class="form-input" id="pfYearInput" value="${esc(defaultYear || '2024')}" placeholder="उदा: 2024, 2023" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">4. Paper / Shift (वैकल्पिक)</label>
+              <input class="form-input" id="pfPaperShiftInput" placeholder="उदा: Paper 1 - GS / Shift 1" />
+            </div>
+          </div>
+          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
+            <button class="btn btn-outline" id="cancelPyqFolderModalBtn">रद्द करें</button>
+            <button class="btn btn-primary" id="savePyqFolderModalBtn">💾 PYQ फ़ोल्डर बनाएं</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('closePyqFolderModalBtn').onclick = () => { modalRoot.innerHTML = ''; };
+    document.getElementById('cancelPyqFolderModalBtn').onclick = () => { modalRoot.innerHTML = ''; };
+    document.getElementById('savePyqFolderModalBtn').onclick = () => {
+      const catCode = document.getElementById('pfCatSelect').value.trim();
+      const examName = document.getElementById('pfExamNameInput').value.trim();
+      const year = document.getElementById('pfYearInput').value.trim();
+      const paperShift = document.getElementById('pfPaperShiftInput').value.trim();
+      if (!catCode || !examName) {
+        api.toast('⚠️ कृपया Exam Category और Exam Name भरें।');
+        return;
+      }
+      const created = upsertCategoryMasterItem(state, api, 'pyq_exam', {
+        examCategoryCode: catCode,
+        examNameEn: examName,
+        examNameHi: examName,
+        year,
+        paperShift
+      });
+      modalRoot.innerHTML = '';
+      api.toast(`🏛️ PYQ फ़ोल्डर "${catCode} › ${examName}${year ? ' › ' + year : ''}" तैयार हो गया!`);
+      if (onCreated) onCreated(created);
+    };
+  }
+
+  function openFolderRenameModal({ itemType, itemId, currentNameEn, currentNameHi, parentSubjectId, state, api, onRenamed }) {
+    const modalRoot = document.getElementById('genericModalContainer');
+    if (!modalRoot) return;
+    const catalog = getTaxonomyCatalog(state);
+
+    modalRoot.innerHTML = `
+      <div class="modal-backdrop">
+        <div class="modal-card" style="max-width:480px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <h2 style="font-size:1.04rem;font-weight:800;">✏️ फ़ोल्डर का नाम बदलें / मूव करें (Rename / Move Folder)</h2>
+            <button class="btn btn-outline btn-sm" id="closeRenameFolderModalBtn">✕</button>
+          </div>
+          <div class="form-group">
+            <label class="form-label">नया नाम (Hindi / Bilingual) *</label>
+            <input class="form-input" id="rfNameHiInput" value="${esc(currentNameHi || currentNameEn || '')}" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">New Name (English / Full Label) *</label>
+            <input class="form-input" id="rfNameEnInput" value="${esc(currentNameEn || currentNameHi || '')}" />
+          </div>
+          ${itemType === 'topic' ? `
+            <div class="form-group">
+              <label class="form-label">Parent Subject Folder (यदि दूसरे विषय में मूव करना हो)</label>
+              <select class="form-select" id="rfParentSubSelect">
+                ${catalog.subjects.filter((s) => s.subjectId !== 'sub_uncategorised').map((s) => `
+                  <option value="${esc(s.subjectId)}" ${s.subjectId === parentSubjectId ? 'selected' : ''}>
+                    [${esc(s.mainCategory || 'Category')}] ${esc(s.titleHi || s.titleEn)}
+                  </option>
+                `).join('')}
+              </select>
+            </div>
+          ` : ''}
+          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
+            <button class="btn btn-outline" id="cancelRenameFolderModalBtn">रद्द करें</button>
+            <button class="btn btn-primary" id="saveRenameFolderModalBtn">💾 सेव करें</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('closeRenameFolderModalBtn').onclick = () => { modalRoot.innerHTML = ''; };
+    document.getElementById('cancelRenameFolderModalBtn').onclick = () => { modalRoot.innerHTML = ''; };
+    document.getElementById('saveRenameFolderModalBtn').onclick = () => {
+      const newHi = document.getElementById('rfNameHiInput').value.trim();
+      const newEn = document.getElementById('rfNameEnInput').value.trim() || newHi;
+      if (!newEn) {
+        api.toast('⚠️ कृपया फ़ोल्डर का नाम लिखें।');
+        return;
+      }
+      renameCategoryMasterItem(state, api, itemType, itemId, newEn, newHi || newEn);
+      if (itemType === 'topic') {
+        const newSubId = document.getElementById('rfParentSubSelect').value;
+        if (newSubId && newSubId !== parentSubjectId) {
+          const topEntry = (state.categoryMaster.topicMaster || []).find((t) => t.topicId === itemId);
+          const targetSub = catalog.findSubject(newSubId);
+          if (topEntry && targetSub) {
+            topEntry.subjectId = targetSub.subjectId;
+            topEntry.mainCategoryId = targetSub.mainCategoryId || topEntry.mainCategoryId;
+            topEntry.mainCategory = targetSub.mainCategory || topEntry.mainCategory;
+            (state.questionBank || []).forEach((q) => {
+              if (q.topicId === itemId) {
+                q.subjectId = targetSub.subjectId;
+                q.subjectTag = targetSub.titleEn;
+                q.mainCategoryId = targetSub.mainCategoryId || q.mainCategoryId;
+                q.mainCategory = targetSub.mainCategory || q.mainCategory;
+              }
+            });
+            api.saveState();
+          }
+        }
+      }
+      modalRoot.innerHTML = '';
+      api.toast('✅ फ़ोल्डर सफलतापूर्वक अपडेट हो गया!');
+      if (onRenamed) onRenamed();
+    };
+  }
+
+  function openQuestionFormModal({ title, question, stateRef, onSave }) {
+    const modalRoot = document.getElementById('genericModalContainer');
+    if (!modalRoot || !question) return;
+    const catalog = getTaxonomyCatalog(stateRef);
+    const resolvedInit = catalog.resolveHierarchy(question);
+    const optsHi = Array.isArray(question.optionsHi) ? question.optionsHi : [question.optA_Hi || '', question.optB_Hi || '', question.optC_Hi || '', question.optD_Hi || ''];
+    const optsEn = Array.isArray(question.optionsEn) ? question.optionsEn : [question.optA_En || '', question.optB_En || '', question.optC_En || '', question.optD_En || ''];
+    const currentDiff = normalizeDifficultyValue(question.difficultyLevel || question.difficulty) || 'Moderate';
+    const allExamCodes = ['ALL', ...catalog.examCategories.map((e) => e.code)];
+    const firstPyq = Array.isArray(question.pyqReferences) && question.pyqReferences[0] ? question.pyqReferences[0] : null;
+
+    modalRoot.innerHTML = `
+      <div class="modal-backdrop">
+        <div class="modal-card" style="max-width:780px;max-height:92vh;overflow-y:auto;">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
             <h2 style="font-size:1.06rem;font-weight:800;">${esc(title || '➕ प्रश्न जोड़ें / संपादित करें (Add / Edit Question)')}</h2>
             <button class="btn btn-outline btn-sm" id="closeEditQModalBtn">✕ बंद करें</button>
@@ -8645,30 +9623,67 @@ Return ONLY a JSON array of objects:
 
           <div style="padding:12px;border-radius:10px;background:var(--surface-alt);border:1px solid var(--border);margin-bottom:12px;">
             <div style="font-size:0.78rem;font-weight:800;color:var(--primary);margin-bottom:8px;">
-              📁 विषय और टॉपिक फ़ोल्डर चुनें (Subject → Topic Folder)
+              📚 1. Subject-wise Question Library Path (Main Category → Subject → Topic)
             </div>
             <div class="grid-3" style="gap:10px;">
               <div>
-                <label class="form-label">1. विषय फ़ोल्डर (Subject) *</label>
-                <input class="form-input" id="eqSubjectTag" list="eqSubjectList" value="${esc(question.subjectTag || 'Chhattisgarh General Knowledge')}" placeholder="विषय चुनें या लिखें..." />
+                <label class="form-label">1. मुख्य श्रेणी (Main Category) *</label>
+                <select class="form-select" id="eqMainCategorySelect">
+                  ${catalog.mainCategories.filter((mc) => mc.mainCategoryId !== 'cat_uncategorised').map((mc) => `
+                    <option value="${esc(mc.mainCategoryId)}" ${(resolvedInit.mainCategoryId || 'cat_cg_gk') === mc.mainCategoryId ? 'selected' : ''}>
+                      ${esc(mc.icon || '📚')} ${esc(mc.titleEn)} (${esc(mc.titleHi)})
+                    </option>
+                  `).join('')}
+                </select>
+              </div>
+              <div>
+                <label class="form-label">2. विषय फ़ोल्डर (Subject) *</label>
+                <input class="form-input" id="eqSubjectTag" list="eqSubjectList" value="${esc(question.subjectTag && question.subjectTag !== 'Uncategorised' ? question.subjectTag : 'छत्तीसगढ़ का इतिहास (History of Chhattisgarh)')}" placeholder="विषय चुनें या लिखें..." />
                 <datalist id="eqSubjectList">
-                  ${catalog.subjects.map((s) => `<option value="${esc(s.titleEn)}">${esc(s.titleHi)}</option>`).join('')}
+                  ${catalog.subjects.filter((s) => s.subjectId !== 'sub_uncategorised').map((s) => `<option value="${esc(s.titleEn)}">${esc(s.mainCategory)} — ${esc(s.titleHi)}</option>`).join('')}
                 </datalist>
               </div>
               <div>
-                <label class="form-label">2. टॉपिक फ़ोल्डर (Topic) *</label>
-                <input class="form-input" id="eqTopic" list="eqTopicList" value="${esc(question.topic || 'History of Chhattisgarh')}" placeholder="टॉपिक चुनें या लिखें..." />
+                <label class="form-label">3. टॉपिक फ़ोल्डर (Topic) *</label>
+                <input class="form-input" id="eqTopic" list="eqTopicList" value="${esc(question.topic && question.topic !== 'Uncategorised' ? question.topic : 'छत्तीसगढ़ का प्राचीन इतिहास (Ancient History of CG)')}" placeholder="टॉपिक चुनें या लिखें..." />
                 <datalist id="eqTopicList">
                   ${catalog.allTopics.map((t) => `<option value="${esc(t)}"></option>`).join('')}
                 </datalist>
               </div>
-              <div>
-                <label class="form-label">3. कठिनाई स्तर (Difficulty)</label>
-                <select class="form-select" id="eqDifficulty">
-                  <option value="Easy" ${currentDiff === 'Easy' ? 'selected' : ''}>Easy (सरल)</option>
-                  <option value="Moderate" ${currentDiff === 'Moderate' ? 'selected' : ''}>Moderate (मध्यम)</option>
-                  <option value="Hard" ${currentDiff === 'Hard' ? 'selected' : ''}>Hard (कठिन)</option>
-                </select>
+            </div>
+
+            <div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);">
+              <div style="font-size:0.76rem;font-weight:800;color:var(--secondary);margin-bottom:6px;">
+                🏛️ 2. Exam-wise PYQ Reference (वैकल्पिक — यदि यह प्रश्न किसी परीक्षा में पूछा गया है)
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:8px;">
+                <div>
+                  <label class="form-label" style="font-size:0.72rem;">Exam Category</label>
+                  <select class="form-select" id="eqPyqCatSelect" style="padding:5px 8px;font-size:0.78rem;">
+                    <option value="">-- PYQ नहीं है --</option>
+                    ${(catalog.pyqCategories || []).map((c) => `<option value="${esc(c.code)}" ${(firstPyq && firstPyq.examCategory === c.code) ? 'selected' : ''}>${esc(c.nameEn)}</option>`).join('')}
+                  </select>
+                </div>
+                <div>
+                  <label class="form-label" style="font-size:0.72rem;">Exam Name</label>
+                  <input class="form-input" id="eqPyqExamName" value="${esc((firstPyq && firstPyq.examName) || question.sourceExam || '')}" placeholder="e.g. CGPSC Prelims" style="padding:5px 8px;font-size:0.78rem;" />
+                </div>
+                <div>
+                  <label class="form-label" style="font-size:0.72rem;">Year</label>
+                  <input class="form-input" id="eqPyqYear" value="${esc((firstPyq && firstPyq.examYear) || question.sourceYear || '')}" placeholder="e.g. 2024" style="padding:5px 8px;font-size:0.78rem;" />
+                </div>
+                <div>
+                  <label class="form-label" style="font-size:0.72rem;">Paper / Shift</label>
+                  <input class="form-input" id="eqPyqPaperShift" value="${esc((firstPyq && [firstPyq.paperName, firstPyq.shift].filter(Boolean).join(' - ')) || question.paperName || '')}" placeholder="e.g. Paper 1 / Shift 1" style="padding:5px 8px;font-size:0.78rem;" />
+                </div>
+                <div>
+                  <label class="form-label" style="font-size:0.72rem;">Difficulty Level</label>
+                  <select class="form-select" id="eqDifficulty" style="padding:5px 8px;font-size:0.78rem;">
+                    <option value="Easy" ${currentDiff === 'Easy' ? 'selected' : ''}>Easy (सरल)</option>
+                    <option value="Moderate" ${currentDiff === 'Moderate' ? 'selected' : ''}>Moderate (मध्यम)</option>
+                    <option value="Hard" ${currentDiff === 'Hard' ? 'selected' : ''}>Hard (कठिन)</option>
+                  </select>
+                </div>
               </div>
             </div>
           </div>
@@ -8717,11 +9732,57 @@ Return ONLY a JSON array of objects:
 
           <div style="display:flex;justify-content:flex-end;gap:8px;">
             <button class="btn btn-outline" id="cancelEditQModalBtn">रद्द करें (Cancel)</button>
-            <button class="btn btn-primary" id="saveEditQModalBtn">💾 फ़ोल्डर में सेव करें (Save Question)</button>
+            <button class="btn btn-primary" id="saveEditQModalBtn">💾 Central Database में सेव करें</button>
           </div>
         </div>
       </div>
     `;
+
+    // Dynamically filter Subject & Topic datalists when Main Category changes
+    const mainCatSel = document.getElementById('eqMainCategorySelect');
+    const subInput = document.getElementById('eqSubjectTag');
+    const subList = document.getElementById('eqSubjectList');
+    const topInput = document.getElementById('eqTopic');
+    const topList = document.getElementById('eqTopicList');
+
+    if (mainCatSel) {
+      mainCatSel.onchange = () => {
+        const mcId = mainCatSel.value;
+        const mcObj = catalog.findMainCategory(mcId);
+        const subsForMc = catalog.getSubjectsForMainCategory(mcId);
+        if (subList) {
+          subList.innerHTML = subsForMc.map((s) => `<option value="${esc(s.titleEn)}">${esc(s.titleHi)}</option>`).join('');
+        }
+        if (mcObj && mcObj.hasDirectTopics && subsForMc[0]) {
+          subInput.value = subsForMc[0].titleEn;
+          const topsForDirect = catalog.getTopicsForSubject(subsForMc[0].subjectId);
+          if (topList) {
+            topList.innerHTML = topsForDirect.map((t) => `<option value="${esc(t.titleEn)}">${esc(t.titleHi)}</option>`).join('');
+          }
+          if (topsForDirect[0]) topInput.value = topsForDirect[0].titleEn;
+        } else if (subsForMc[0]) {
+          subInput.value = subsForMc[0].titleEn;
+          const topsForSub = catalog.getTopicsForSubject(subsForMc[0].subjectId);
+          if (topList) {
+            topList.innerHTML = topsForSub.map((t) => `<option value="${esc(t.titleEn)}">${esc(t.titleHi)}</option>`).join('');
+          }
+          if (topsForSub[0]) topInput.value = topsForSub[0].titleEn;
+        }
+      };
+    }
+
+    if (subInput) {
+      subInput.oninput = () => {
+        const matchedSub = catalog.findSubject(subInput.value);
+        if (matchedSub && topList) {
+          const tops = catalog.getTopicsForSubject(matchedSub.subjectId);
+          topList.innerHTML = tops.map((t) => `<option value="${esc(t.titleEn)}">${esc(t.titleHi)}</option>`).join('');
+          if (matchedSub.mainCategoryId && mainCatSel) {
+            mainCatSel.value = matchedSub.mainCategoryId;
+          }
+        }
+      };
+    }
 
     document.getElementById('closeEditQModalBtn').onclick = () => { modalRoot.innerHTML = ''; };
     document.getElementById('cancelEditQModalBtn').onclick = () => { modalRoot.innerHTML = ''; };
@@ -8753,6 +9814,9 @@ Return ONLY a JSON array of objects:
       const expHi = rawExpHi || rawExpEn || `सही उत्तर विकल्प (${corrLetter}) है।`;
       const expEn = rawExpEn || rawExpHi || `Correct answer is Option (${corrLetter}).`;
 
+      const mainCategoryId = document.getElementById('eqMainCategorySelect').value || 'cat_cg_gk';
+      const mcObj = catalog.findMainCategory(mainCategoryId);
+      const mainCategory = mcObj ? mcObj.titleEn : 'Chhattisgarh GK';
       const subjectTag = document.getElementById('eqSubjectTag').value.trim();
       const topic = document.getElementById('eqTopic').value.trim();
       const errBanner = document.getElementById('editQValidationErrorBanner');
@@ -8769,23 +9833,57 @@ Return ONLY a JSON array of objects:
       }
 
       const resolved = resolveCanonicalQuestionHierarchy(
-        { examCode: 'ALL', examIds: allExamCodes, subjectTag, topic, subtopic: '' },
+        { examCode: 'ALL', examIds: allExamCodes, mainCategoryId, mainCategory, subjectTag, topic, subtopic: '' },
         catalog
       );
       const diffVal = normalizeDifficultyValue(document.getElementById('eqDifficulty').value) || 'Moderate';
       const nowIso = new Date().toISOString();
 
+      const pyqCat = document.getElementById('eqPyqCatSelect').value.trim();
+      const pyqExamName = document.getElementById('eqPyqExamName').value.trim();
+      const pyqYear = document.getElementById('eqPyqYear').value.trim();
+      const pyqPaperShift = document.getElementById('eqPyqPaperShift').value.trim();
+
+      const existingPyqRefs = Array.isArray(question.pyqReferences) ? [...question.pyqReferences] : [];
+      if (pyqCat || pyqExamName) {
+        const refEntry = {
+          refId: makeSlugId('pyqref', `${pyqCat || 'OTHER'}_${pyqExamName || 'Exam'}_${pyqYear}_${pyqPaperShift}`),
+          questionId: question.id || question.questionId || '',
+          examCategory: pyqCat || 'OTHER',
+          examName: pyqExamName || pyqCat || 'Competitive Exam',
+          examYear: pyqYear,
+          paperName: pyqPaperShift,
+          shift: '',
+          questionNumber: '',
+          subject: resolved.subjectTag || subjectTag,
+          topic: resolved.topic || topic,
+          source: question.sourceDocument || ''
+        };
+        if (existingPyqRefs.length > 0) {
+          existingPyqRefs[0] = refEntry;
+        } else {
+          existingPyqRefs.push(refEntry);
+        }
+      }
+
       const updated = {
-        examCode: 'ALL',
-        examIds: allExamCodes,
+        examCode: pyqCat || 'ALL',
+        examIds: Array.from(new Set([...allExamCodes, ...(pyqCat ? [pyqCat] : [])])),
+        mainCategoryId: resolved.mainCategoryId || mainCategoryId,
+        mainCategory: resolved.mainCategory || mainCategory,
         subjectId: resolved.subjectId || makeSlugId('sub', subjectTag),
         subjectTag: resolved.subjectTag || subjectTag,
         topicId: resolved.topicId || makeSlugId('top', topic),
         topic: resolved.topic || topic,
+        secondaryTopicIds: Array.isArray(question.secondaryTopicIds) ? question.secondaryTopicIds : [],
         subtopicId: '',
         subtopic: '',
         difficulty: diffVal,
         difficultyLevel: diffVal,
+        sourceExam: pyqExamName || question.sourceExam || '',
+        sourceYear: pyqYear || question.sourceYear || '',
+        paperName: pyqPaperShift || question.paperName || '',
+        pyqReferences: existingPyqRefs,
         status: 'verified',
         verificationStatus: 'verified',
         needsCategorisation: false,
@@ -8990,25 +10088,34 @@ Return ONLY a JSON array of objects:
 
     modalRoot.innerHTML = `
       <div class="modal-backdrop">
-        <div class="modal-card" style="max-width:520px;max-height:90vh;overflow-y:auto;">
+        <div class="modal-card" style="max-width:540px;max-height:90vh;overflow-y:auto;">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-            <h2 style="font-size:1.04rem;font-weight:800;">📂 ${selectedCount} प्रश्नों का Subject / Topic फ़ोल्डर बदलें</h2>
+            <h2 style="font-size:1.04rem;font-weight:800;">📂 ${selectedCount} प्रश्नों का Main Category / Subject / Topic फ़ोल्डर बदलें</h2>
             <button class="btn btn-outline btn-sm" id="closeBulkEditModalBtn">✕</button>
           </div>
           <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:12px;">
-            चयनित प्रश्नों को जिस <strong>विषय (Subject)</strong> और <strong>टॉपिक (Topic)</strong> फ़ोल्डर में भेजना चाहते हैं, उसे नीचे चुनें:
+            चयनित प्रश्नों को जिस <strong>Main Category › Subject › Topic</strong> फ़ोल्डर में भेजना चाहते हैं, उसे नीचे चुनें:
           </p>
 
           <div class="form-group">
-            <label class="form-label">1. विषय फ़ोल्डर (Subject Folder)</label>
+            <label class="form-label">1. मुख्य श्रेणी (Main Category)</label>
+            <select class="form-select" id="bulkEditMainCategory">
+              ${catalog.mainCategories.filter((mc) => mc.mainCategoryId !== 'cat_uncategorised').map((mc) => `
+                <option value="${esc(mc.mainCategoryId)}">${esc(mc.icon || '📚')} ${esc(mc.titleEn)} (${esc(mc.titleHi)})</option>
+              `).join('')}
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">2. विषय फ़ोल्डर (Subject Folder)</label>
             <input class="form-input" id="bulkEditSubject" list="bulkSubjectDatalist" placeholder="विषय चुनें या नया नाम लिखें..." />
             <datalist id="bulkSubjectDatalist">
-              ${catalog.subjects.map((s) => `<option value="${esc(s.titleEn)}">${esc(s.titleHi)}</option>`).join('')}
+              ${catalog.subjects.filter((s) => s.subjectId !== 'sub_uncategorised').map((s) => `<option value="${esc(s.titleEn)}">${esc(s.mainCategory)} — ${esc(s.titleHi)}</option>`).join('')}
             </datalist>
           </div>
 
           <div class="form-group">
-            <label class="form-label">2. टॉपिक फ़ोल्डर (Topic Folder)</label>
+            <label class="form-label">3. टॉपिक फ़ोल्डर (Topic Folder)</label>
             <input class="form-input" id="bulkEditTopic" list="bulkTopicDatalist" placeholder="टॉपिक चुनें या नया नाम लिखें..." />
             <datalist id="bulkTopicDatalist">
               ${catalog.allTopics.map((t) => `<option value="${esc(t)}"></option>`).join('')}
@@ -9016,7 +10123,7 @@ Return ONLY a JSON array of objects:
           </div>
 
           <div class="form-group">
-            <label class="form-label">3. कठिनाई स्तर (Difficulty — वैकल्पिक)</label>
+            <label class="form-label">4. कठिनाई स्तर (Difficulty — वैकल्पिक)</label>
             <select class="form-select" id="bulkEditDifficulty">
               <option value="">-- पहले जैसा रखें (Keep Existing) --</option>
               <option value="Easy">Easy (सरल)</option>
@@ -9033,14 +10140,37 @@ Return ONLY a JSON array of objects:
       </div>
     `;
 
+    const mainCatSel = document.getElementById('bulkEditMainCategory');
+    const subInp = document.getElementById('bulkEditSubject');
+    const subList = document.getElementById('bulkSubjectDatalist');
+    const topList = document.getElementById('bulkTopicDatalist');
+    if (mainCatSel) {
+      mainCatSel.onchange = () => {
+        const subs = catalog.getSubjectsForMainCategory(mainCatSel.value);
+        if (subList) {
+          subList.innerHTML = subs.map((s) => `<option value="${esc(s.titleEn)}">${esc(s.titleHi)}</option>`).join('');
+        }
+        const mcObj = catalog.findMainCategory(mainCatSel.value);
+        if (mcObj && mcObj.hasDirectTopics && subs[0]) {
+          subInp.value = subs[0].titleEn;
+          const tops = catalog.getTopicsForSubject(subs[0].subjectId);
+          if (topList) topList.innerHTML = tops.map((t) => `<option value="${esc(t.titleEn)}">${esc(t.titleHi)}</option>`).join('');
+        }
+      };
+    }
+
     document.getElementById('closeBulkEditModalBtn').onclick = () => { modalRoot.innerHTML = ''; };
     document.getElementById('cancelBulkEditModalBtn').onclick = () => { modalRoot.innerHTML = ''; };
     document.getElementById('applyBulkEditModalBtn').onclick = () => {
       const allExamCodes = ['ALL', ...catalog.examCategories.map((e) => e.code)];
+      const mcId = document.getElementById('bulkEditMainCategory').value;
+      const mcObj = catalog.findMainCategory(mcId);
       const changes = {
         examCode: 'ALL',
         examIds: allExamCodes,
         replaceExamIds: true,
+        mainCategoryId: mcId,
+        mainCategory: mcObj ? mcObj.titleEn : '',
         difficulty: document.getElementById('bulkEditDifficulty').value.trim(),
         subjectTag: document.getElementById('bulkEditSubject').value.trim(),
         topic: document.getElementById('bulkEditTopic').value.trim(),
@@ -9121,7 +10251,7 @@ Return ONLY a JSON array of objects:
     }
   }
 
-  function openQuickFolderCreateModal({ mode, defaultSubjectId, state, api, onCreated }) {
+  function openQuickFolderCreateModal({ mode, defaultMainCategoryId, defaultSubjectId, state, api, onCreated }) {
     const modalRoot = document.getElementById('genericModalContainer');
     if (!modalRoot) return;
     const catalog = getTaxonomyCatalog(state);
@@ -9129,7 +10259,7 @@ Return ONLY a JSON array of objects:
 
     modalRoot.innerHTML = `
       <div class="modal-backdrop">
-        <div class="modal-card" style="max-width:480px;">
+        <div class="modal-card" style="max-width:500px;">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
             <h2 style="font-size:1.05rem;font-weight:800;">
               ${isTopic ? '📂 नया टॉपिक फ़ोल्डर बनाएं (New Topic Folder)' : '📁 नया विषय फ़ोल्डर बनाएं (New Subject Folder)'}
@@ -9137,13 +10267,24 @@ Return ONLY a JSON array of objects:
             <button class="btn btn-outline btn-sm" id="closeQuickFolderModalBtn">✕</button>
           </div>
 
+          <div class="form-group">
+            <label class="form-label">मुख्य श्रेणी चुनें (Parent Main Category) *</label>
+            <select class="form-select" id="qfMainCategorySelect">
+              ${catalog.mainCategories.filter((mc) => mc.mainCategoryId !== 'cat_uncategorised').map((mc) => `
+                <option value="${esc(mc.mainCategoryId)}" ${(defaultMainCategoryId && mc.mainCategoryId === defaultMainCategoryId) ? 'selected' : ''}>
+                  ${esc(mc.icon || '📚')} ${esc(mc.titleEn)} (${esc(mc.titleHi)})
+                </option>
+              `).join('')}
+            </select>
+          </div>
+
           ${isTopic ? `
             <div class="form-group">
               <label class="form-label">विषय चुनें (Parent Subject Folder) *</label>
               <select class="form-select" id="qfParentSubjectSelect">
-                ${catalog.subjects.map((s) => `
+                ${catalog.subjects.filter((s) => s.subjectId !== 'sub_uncategorised').map((s) => `
                   <option value="${esc(s.subjectId)}" ${(defaultSubjectId && (s.subjectId === defaultSubjectId || s.titleEn === defaultSubjectId)) ? 'selected' : ''}>
-                    ${esc(s.titleHi || s.titleEn)} (${esc(s.titleEn)})
+                    [${esc(s.mainCategory || 'Category')}] ${esc(s.titleHi || s.titleEn)}
                   </option>
                 `).join('')}
               </select>
@@ -9156,9 +10297,11 @@ Return ONLY a JSON array of objects:
           </div>
 
           <div class="form-group">
-            <label class="form-label">${isTopic ? 'Topic Name (in English)' : 'Subject Name (in English)'} *</label>
-            <input class="form-input" id="qfTitleEnInput" placeholder="${isTopic ? 'e.g., National Parks of Chhattisgarh' : 'e.g., Environment & Ecology'}" />
+            <label class="form-label">${isTopic ? 'Topic Name (in English / Bilingual)' : 'Subject Name (in English / Bilingual)'} *</label>
+            <input class="form-input" id="qfTitleEnInput" placeholder="${isTopic ? 'e.g., छत्तीसगढ़ के राष्ट्रीय उद्यान (National Parks of CG)' : 'e.g., पर्यावरण एवं पारिस्थितिकी (Environment & Ecology)'}" />
           </div>
+
+          <div id="qfDuplicateWarningBox" style="display:none;padding:8px 10px;border-radius:8px;background:var(--warning-soft);color:#92400e;font-size:0.78rem;font-weight:700;margin-bottom:10px;"></div>
 
           <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
             <button class="btn btn-outline" id="cancelQuickFolderModalBtn">रद्द करें</button>
@@ -9167,6 +10310,15 @@ Return ONLY a JSON array of objects:
         </div>
       </div>
     `;
+
+    const mcSel = document.getElementById('qfMainCategorySelect');
+    const parentSubSel = document.getElementById('qfParentSubjectSelect');
+    if (mcSel && parentSubSel) {
+      mcSel.onchange = () => {
+        const subs = catalog.getSubjectsForMainCategory(mcSel.value);
+        parentSubSel.innerHTML = subs.map((s) => `<option value="${esc(s.subjectId)}">[${esc(s.mainCategory)}] ${esc(s.titleHi || s.titleEn)}</option>`).join('');
+      };
+    }
 
     document.getElementById('closeQuickFolderModalBtn').onclick = () => { modalRoot.innerHTML = ''; };
     document.getElementById('cancelQuickFolderModalBtn').onclick = () => { modalRoot.innerHTML = ''; };
@@ -9179,9 +10331,22 @@ Return ONLY a JSON array of objects:
         api.toast('⚠️ कृपया फ़ोल्डर का नाम लिखें।');
         return;
       }
+      const mcId = document.getElementById('qfMainCategorySelect').value || 'cat_cg_gk';
+      const mcObj = catalog.findMainCategory(mcId);
+      const mcName = mcObj ? mcObj.titleEn : 'Chhattisgarh GK';
+
       if (isTopic) {
         const subId = document.getElementById('qfParentSubjectSelect').value;
+        const existingTop = catalog.findTopic(subId, titleEn) || catalog.findTopic(subId, titleHi);
+        if (existingTop) {
+          api.toast(`ℹ️ यह टॉपिक फ़ोल्डर ("${existingTop.titleHi || existingTop.titleEn}") पहले से मौजूद है (Duplicate रोका गया)।`);
+          modalRoot.innerHTML = '';
+          if (onCreated) onCreated(existingTop);
+          return;
+        }
         const created = upsertCategoryMasterItem(state, api, 'topic', {
+          mainCategoryId: mcId,
+          mainCategory: mcName,
           subjectId: subId,
           titleEn,
           titleHi
@@ -9190,7 +10355,16 @@ Return ONLY a JSON array of objects:
         api.toast(`📂 नया टॉपिक फ़ोल्डर "${titleHi}" बन गया!`);
         if (onCreated) onCreated(created);
       } else {
+        const existingSub = catalog.findSubject(titleEn) || catalog.findSubject(titleHi);
+        if (existingSub) {
+          api.toast(`ℹ️ यह विषय फ़ोल्डर ("${existingSub.titleHi || existingSub.titleEn}") पहले से मौजूद है (Duplicate रोका गया)।`);
+          modalRoot.innerHTML = '';
+          if (onCreated) onCreated(existingSub);
+          return;
+        }
         const created = upsertCategoryMasterItem(state, api, 'subject', {
+          mainCategoryId: mcId,
+          mainCategory: mcName,
           titleEn,
           titleHi,
           examIds: catalog.examCategories.map((e) => e.examId || e.code)
@@ -9778,199 +10952,1141 @@ Return ONLY a valid JSON array of objects:
     };
   }
 
-  function renderQuestionBankManagementV2(bodyEl, rootEl, state, api) {
+  async function commitImportPreviewSession(ps, state, api) {
+    if (!ps || !Array.isArray(ps.records)) return null;
     state.questionBank = state.questionBank || [];
     const catalog = getTaxonomyCatalog(state);
-    const allExamCodes = ['ALL', ...catalog.examCategories.map((e) => e.code)];
+    const nowIso = new Date().toISOString();
+    let newSaved = 0;
+    let exactDupRefAdded = 0;
+    let uncategorisedCount = 0;
+    let pyqRefCount = 0;
+    let skippedInvalid = 0;
+    const docsToSync = [];
 
-    // Ensure every question in state.questionBank is cleanly categorised by Subject & Topic and eligible for Test Builder
-    let autoCleanedCount = 0;
-    state.questionBank.forEach((q) => {
-      if (!q || q.isDeleted || q.deleted) return;
-      if (!q.id && !q.questionId) {
-        q.id = computeDeterministicQuestionId(q);
-        q.questionId = q.id;
-      } else if (!q.questionId) {
-        q.questionId = q.id;
+    ps.records.forEach((rec) => {
+      if (rec.excluded || !rec.isValid) {
+        skippedInvalid += 1;
+        return;
       }
-      const needsSubj = !q.subjectTag || q.subjectTag === 'Needs Categorisation' || q.subjectTag === 'General Studies';
-      const needsTop = !q.topic || q.topic === 'Needs Categorisation' || q.topic === 'General Knowledge';
-      if (needsSubj || needsTop || q.needsCategorisation || q.status !== 'verified') {
-        const guessed = autoCategorizeQuestionFromMaster(q, catalog, allExamCodes);
-        if (needsSubj) {
-          q.subjectTag = (guessed.subjectTag && guessed.subjectTag !== 'Needs Categorisation')
-            ? guessed.subjectTag
-            : 'Chhattisgarh General Knowledge';
-          q.subjectId = guessed.subjectId || 'sub_cg_gk';
+      if (rec.duplicateType === 'exact' && rec.duplicateTargetId) {
+        const existingQ = state.questionBank.find((q) => (q.questionId || q.id) === rec.duplicateTargetId);
+        if (existingQ) {
+          const incomingRefs = normalizeQuestionPyqReferences(rec.normalized);
+          const beforeLen = Array.isArray(existingQ.pyqReferences) ? existingQ.pyqReferences.length : 0;
+          existingQ.pyqReferences = mergePyqReferenceArrays(existingQ.pyqReferences, incomingRefs);
+          if (existingQ.pyqReferences.length > beforeLen) {
+            pyqRefCount += (existingQ.pyqReferences.length - beforeLen);
+          }
+          existingQ.updatedAt = nowIso;
+          existingQ.updatedAtIso = nowIso;
+          exactDupRefAdded += 1;
+          docsToSync.push(existingQ);
+          return;
         }
-        if (needsTop) {
-          q.topic = (guessed.topic && guessed.topic !== 'Needs Categorisation')
-            ? guessed.topic
-            : 'History of Chhattisgarh';
-          q.topicId = guessed.topicId || 'top_cg_history';
-        }
-        q.needsCategorisation = false;
-        q.status = 'verified';
-        q.verificationStatus = 'verified';
-        q.verified = true;
-        q.adminVerified = true;
-        autoCleanedCount += 1;
       }
-      if (!Array.isArray(q.examIds) || !q.examIds.includes('ALL')) {
-        q.examIds = Array.from(new Set(['ALL', ...(Array.isArray(q.examIds) ? q.examIds : []), ...allExamCodes]));
-        q.examCode = q.examCode || 'ALL';
+
+      const norm = Object.assign({}, rec.normalized);
+      const resolved = resolveCanonicalQuestionHierarchy(norm, catalog);
+      const isUncat = !resolved.subjectId || resolved.subjectId === 'sub_uncategorised' || norm.needsCategorisation;
+
+      const qDoc = Object.assign({}, norm, {
+        id: norm.questionId || norm.id || computeDeterministicQuestionId(norm),
+        questionId: norm.questionId || norm.id || computeDeterministicQuestionId(norm),
+        mainCategoryId: isUncat ? 'cat_uncategorised' : (resolved.mainCategoryId || norm.mainCategoryId || 'cat_cg_gk'),
+        mainCategory: isUncat ? 'Uncategorised' : (resolved.mainCategory || norm.mainCategory || 'Chhattisgarh GK'),
+        subjectId: isUncat ? 'sub_uncategorised' : (resolved.subjectId || norm.subjectId),
+        subjectTag: isUncat ? 'Uncategorised' : (resolved.subjectTag || norm.subjectTag),
+        topicId: isUncat ? 'top_uncategorised' : (resolved.topicId || norm.topicId),
+        topic: isUncat ? 'Uncategorised' : (resolved.topic || norm.topic),
+        needsCategorisation: Boolean(isUncat),
+        verificationStatus: isUncat ? 'needs_categorisation' : (norm.verificationStatus || 'verified'),
+        status: isUncat ? 'needs_categorisation' : 'verified',
+        verified: !isUncat,
+        adminVerified: !isUncat,
+        pyqReferences: normalizeQuestionPyqReferences(norm),
+        isDeleted: false,
+        createdAt: norm.createdAt || nowIso,
+        updatedAt: nowIso,
+        createdAtIso: norm.createdAtIso || nowIso,
+        updatedAtIso: nowIso
+      });
+      if (isUncat) uncategorisedCount += 1;
+      if (qDoc.pyqReferences.length > 0) pyqRefCount += qDoc.pyqReferences.length;
+
+      const existingIdx = state.questionBank.findIndex((q) => (q.questionId || q.id) === qDoc.questionId);
+      if (existingIdx >= 0) {
+        qDoc.pyqReferences = mergePyqReferenceArrays(state.questionBank[existingIdx].pyqReferences, qDoc.pyqReferences);
+        state.questionBank[existingIdx] = Object.assign({}, state.questionBank[existingIdx], qDoc);
+        docsToSync.push(state.questionBank[existingIdx]);
+      } else {
+        state.questionBank.unshift(qDoc);
+        docsToSync.push(qDoc);
       }
+      newSaved += 1;
     });
-    if (autoCleanedCount > 0) {
-      api.saveState();
+
+    api.saveState();
+    if (window.CGpediaCloud && window.CGpediaCloud.batchSaveCloudDocs && docsToSync.length > 0) {
+      await window.CGpediaCloud.batchSaveCloudDocs('question_bank', docsToSync).catch(() => {});
     }
 
-    // Initialize folder navigation state
-    if (!qbState.folderNav) {
+    const summary = {
+      fileName: ps.fileName || 'Import',
+      timestampIso: nowIso,
+      totalRows: ps.records.length,
+      newQuestionsSaved: newSaved,
+      exactDuplicateRefsAdded: exactDupRefAdded,
+      possibleDuplicatesCount: ps.records.filter((r) => r.duplicateType === 'possible').length,
+      uncategorisedCount,
+      pyqReferencesAdded: pyqRefCount,
+      missingFoldersDetected: ps.records.filter((r) => r.missingFolderInfo && r.missingFolderInfo.hasMissingFolder).length,
+      skippedOrErrorRows: skippedInvalid
+    };
+    qbState.lastImportReport = summary;
+    qbState.previewSession = null;
+    return summary;
+  }
+
+  function renderQuestionCardItemHtml(q, qNum, validSelectedIds, showFullFolderPath) {
+    const letters = ['A', 'B', 'C', 'D'];
+    const qid = q.questionId || q.id;
+    const isChecked = validSelectedIds.has(qid) || validSelectedIds.has(q.id);
+    const corrIdx = Number(q.correctOptionIndex ?? q.correctIndex ?? 0);
+    const optsHi = Array.isArray(q.optionsHi) ? q.optionsHi : [q.optA_Hi || '', q.optB_Hi || '', q.optC_Hi || '', q.optD_Hi || ''];
+    const optsEn = Array.isArray(q.optionsEn) ? q.optionsEn : [q.optA_En || '', q.optB_En || '', q.optC_En || '', q.optD_En || ''];
+    const diff = normalizeDifficultyValue(q.difficultyLevel || q.difficulty) || 'Moderate';
+    const diffClass = diff === 'Easy' ? 'badge-diff-easy' : (diff === 'Hard' ? 'badge-diff-difficult' : 'badge-diff-moderate');
+    const pyqRefs = normalizeQuestionPyqReferences(q);
+    const isUncat = q.subjectId === 'sub_uncategorised' || q.subjectTag === 'Uncategorised' || q.verificationStatus === 'needs_categorisation';
+    const isVerified = q.verificationStatus === 'verified' && !isUncat;
+    const langAvail = q.languageAvailability || ((q.questionHi && q.questionEn && q.questionHi !== q.questionEn) ? 'Bilingual' : (q.questionHi ? 'Hindi' : 'English'));
+    const mainCatLabel = q.mainCategory || (isUncat ? 'Uncategorised' : 'Chhattisgarh GK');
+    const subLabel = q.subjectTag || 'Uncategorised';
+    const topLabel = q.topic || 'Uncategorised';
+
+    return `
+      <div class="qb-preview-card ${isUncat ? 'status-warning' : 'status-valid'}" style="border-left:4px solid ${isUncat ? '#d97706' : 'var(--primary)'};margin-bottom:0;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <input type="checkbox" data-qb-row-select="${esc(q.id)}" ${isChecked ? 'checked' : ''} style="width:16px;height:16px;cursor:pointer;" />
+            <span class="badge badge-exam" style="font-size:0.75rem;">#${qNum}</span>
+            <span class="badge badge-draft" style="font-family:monospace;font-size:0.7rem;" title="Central Question ID">${esc(qid)}</span>
+            ${showFullFolderPath ? `
+              <span class="badge badge-review" style="font-size:0.74rem;">🗂️ ${esc(mainCatLabel)} › 📁 ${esc(subLabel)} › 📂 ${esc(topLabel)}</span>
+            ` : `
+              <span class="badge badge-review" style="font-size:0.74rem;">📁 ${esc(subLabel)}</span>
+              <span class="badge badge-draft" style="font-size:0.74rem;">📂 ${esc(topLabel)}</span>
+            `}
+            <span class="badge ${diffClass}" style="font-size:0.72rem;">${esc(diff)}</span>
+            <span class="badge badge-draft" style="font-size:0.7rem;">🌐 ${esc(langAvail)}</span>
+            ${isVerified
+              ? '<span class="badge badge-free" style="font-size:0.72rem;">✓ Verified</span>'
+              : `<span class="badge badge-paid" style="font-size:0.72rem;">⚠️ ${esc(q.verificationStatus || 'Needs Categorisation')}</span>`}
+          </div>
+          <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+            <div style="display:inline-flex;align-items:center;gap:2px;padding:2px 5px;border-radius:6px;background:var(--surface-alt);border:1px solid var(--border);font-size:0.7rem;">
+              <span style="font-weight:700;color:var(--text-secondary);">उत्तर:</span>
+              ${[0, 1, 2, 3].map((oi) => `
+                <button type="button" class="btn ${corrIdx === oi ? 'btn-success' : 'btn-outline'} btn-sm" style="padding:1px 5px;min-height:20px;font-size:0.68rem;" data-quick-ans-qbank="${esc(q.id)}:${oi}">${letters[oi]}</button>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+
+        ${pyqRefs.length > 0 ? `
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;padding:5px 8px;border-radius:6px;background:rgba(79,70,229,0.06);border:1px dashed rgba(79,70,229,0.3);">
+            <span style="font-size:0.72rem;font-weight:800;color:var(--primary);">🏛️ PYQ References (${pyqRefs.length}):</span>
+            ${pyqRefs.map((ref) => `
+              <span class="badge badge-exam" style="font-size:0.7rem;">
+                ${esc(ref.examCategory || 'Exam')} › ${esc(ref.examName)}${ref.examYear ? ` (${esc(ref.examYear)})` : ''}${ref.paperName ? ` - ${esc(ref.paperName)}` : ''}${ref.shift ? ` [${esc(ref.shift)}]` : ''}${ref.questionNumber ? ` Q#${esc(ref.questionNumber)}` : ''}
+              </span>
+            `).join('')}
+          </div>
+        ` : ''}
+
+        <div style="font-weight:800;font-size:0.92rem;color:var(--text);line-height:1.45;">
+          🇮🇳 ${esc(q.questionHi || q.questionEn)}
+        </div>
+        ${q.questionEn && q.questionEn !== q.questionHi ? `
+          <div style="font-weight:600;font-size:0.83rem;color:var(--text-secondary);margin-top:3px;line-height:1.4;">
+            🇬🇧 ${esc(q.questionEn)}
+          </div>
+        ` : ''}
+
+        <div class="qb-options-grid" style="margin-top:8px;">
+          ${[0, 1, 2, 3].map((oi) => {
+            const isCorr = corrIdx === oi;
+            const hiTxt = optsHi[oi] || '';
+            const enTxt = optsEn[oi] || '';
+            return `
+              <div class="qb-option-pill ${isCorr ? 'is-correct' : ''}" style="cursor:pointer;" data-quick-ans-qbank="${esc(q.id)}:${oi}">
+                <div>
+                  <div style="font-weight:${isCorr ? '800' : '600'};">
+                    <strong>(${letters[oi]})</strong> ${esc(hiTxt || enTxt)}
+                  </div>
+                  ${enTxt && enTxt !== hiTxt ? `<div style="font-size:0.74rem;color:var(--text-secondary);">${esc(enTxt)}</div>` : ''}
+                </div>
+                ${isCorr ? '<span class="badge badge-free">✓ सही</span>' : ''}
+              </div>
+            `;
+          }).join('')}
+        </div>
+
+        <div class="qb-explanation-box" style="margin-top:8px;">
+          <div><strong>💡 व्याख्या:</strong> ${esc(q.explanationHi || q.explanationEn || 'सही उत्तर विकल्प ' + letters[corrIdx] + ' है।')}</div>
+          ${q.explanationEn && q.explanationEn !== q.explanationHi ? `
+            <div style="margin-top:2px;color:var(--text-secondary);"><strong>Explanation:</strong> ${esc(q.explanationEn)}</div>
+          ` : ''}
+        </div>
+
+        <!-- 9 Question Management Actions Bar -->
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;margin-top:10px;padding-top:8px;border-top:1px dashed var(--border);">
+          <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+            <button type="button" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:0.73rem;" data-view-qbank="${esc(q.id)}">👁️ View</button>
+            <button type="button" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:0.73rem;" data-edit-qbank="${esc(q.id)}">✏️ Edit</button>
+            <button type="button" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:0.73rem;" data-dup-qbank="${esc(q.id)}">📄 Duplicate</button>
+            <button type="button" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:0.73rem;" data-move-qbank="${esc(q.id)}">📂 Move</button>
+            <button type="button" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:0.73rem;" data-change-sub-qbank="${esc(q.id)}">📁 Change Subject</button>
+            <button type="button" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:0.73rem;" data-change-top-qbank="${esc(q.id)}">📂 Change Topic</button>
+            <button type="button" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:0.73rem;border-color:var(--primary);color:var(--primary);" data-pyq-qbank="${esc(q.id)}">🏛️ + Exam / PYQ Ref</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:5px;">
+            ${!isVerified ? `
+              <button type="button" class="btn btn-success btn-sm" style="padding:3px 9px;font-size:0.73rem;" data-verify-qbank="${esc(q.id)}">✅ Verify</button>
+            ` : ''}
+            <button type="button" class="btn btn-danger btn-sm" style="padding:3px 8px;font-size:0.73rem;" data-del-qbank="${esc(q.id)}">🗑️ Delete</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderQuestionBankSubTabContent(ctx) {
+    const {
+      nav, catalog, activeQuestions, mainCatFolders, activeMainCatFolder,
+      activeSubjectFolder, activeTopicFolder, pyqTree, filteredQuestions,
+      pageItems, startIdx, totalFiltered, totalPages, validSelectedIds, selectedCount, state
+    } = ctx;
+
+    const renderQuestionListWithPagination = (showFullFolderPath) => `
+      ${totalFiltered > 0 ? `
+        <div class="qb-bulk-toolbar" style="margin-bottom:12px;">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <label style="display:inline-flex;align-items:center;gap:6px;font-size:0.8rem;font-weight:800;cursor:pointer;">
+              <input type="checkbox" id="qbSelectAllPageChk" ${pageItems.length > 0 && pageItems.every((q) => validSelectedIds.has(q.id)) ? 'checked' : ''} />
+              <span>इस पेज के सभी चुनें (${pageItems.length})</span>
+            </label>
+            <button class="btn btn-outline btn-sm" id="qbSelectAllFilteredBtn">☑️ सभी चुनें (${totalFiltered})</button>
+            ${selectedCount > 0 ? `<button class="btn btn-outline btn-sm" id="qbClearSelectionBtn">✕ चयन हटाएं (${selectedCount})</button>` : ''}
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <button class="btn btn-outline btn-sm" id="qbBulkMoveFolderBtn" ${selectedCount === 0 ? 'disabled' : ''}>📂 Bulk Move / Change Folder (${selectedCount})</button>
+            <button class="btn btn-navy btn-sm" id="qbSendFolderToTestBuilderBtn" ${totalFiltered === 0 ? 'disabled' : ''}>🧪 टेस्ट में जोड़ें (${selectedCount > 0 ? selectedCount : totalFiltered})</button>
+            <button class="btn btn-outline btn-sm" id="qbExportCurrentFolderCsvBtn" ${totalFiltered === 0 ? 'disabled' : ''}>⬇️ CSV</button>
+            <button class="btn btn-danger btn-sm" id="qbBulkDeleteBtn" ${selectedCount === 0 ? 'disabled' : ''}>🗑️ हटाएं (${selectedCount})</button>
+          </div>
+        </div>
+      ` : ''}
+
+      ${totalFiltered === 0 ? `
+        <div style="padding:32px 16px;text-align:center;background:var(--surface-alt);border-radius:12px;border:1px dashed var(--border);">
+          <div style="font-size:2rem;margin-bottom:6px;">📂</div>
+          <div style="font-weight:800;font-size:0.95rem;color:var(--text);">यहाँ अभी कोई प्रश्न नहीं है</div>
+          <p style="font-size:0.8rem;color:var(--text-secondary);margin-top:4px;margin-bottom:12px;">
+            नया प्रश्न जोड़ें या Import / AI Scanner का उपयोग करें।
+          </p>
+          <button class="btn btn-primary btn-sm" id="qbEmptyFolderAddQBtn">➕ नया प्रश्न जोड़ें</button>
+        </div>
+      ` : `
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          ${pageItems.map((q, idx) => renderQuestionCardItemHtml(q, startIdx + idx + 1, validSelectedIds, showFullFolderPath)).join('')}
+        </div>
+        <div class="qb-pagination-bar" style="margin-top:14px;">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span>Showing <strong>${startIdx + 1}–${Math.min(totalFiltered, startIdx + pageItems.length)}</strong> of <strong>${totalFiltered}</strong> प्रश्न</span>
+            <select class="form-select" id="qbPageSizeSelect" style="width:auto;padding:4px 8px;font-size:0.76rem;">
+              <option value="15" ${qbState.pageSize === 15 ? 'selected' : ''}>15 / पेज</option>
+              <option value="25" ${qbState.pageSize === 25 ? 'selected' : ''}>25 / पेज</option>
+              <option value="50" ${qbState.pageSize === 50 ? 'selected' : ''}>50 / पेज</option>
+              <option value="100" ${qbState.pageSize === 100 ? 'selected' : ''}>100 / पेज</option>
+            </select>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <button class="btn btn-outline btn-sm" id="qbPrevPageBtn" ${qbState.page <= 1 ? 'disabled' : ''}>◀ पिछला</button>
+            <span style="font-weight:700;padding:0 6px;">पेज ${qbState.page} / ${totalPages}</span>
+            <button class="btn btn-outline btn-sm" id="qbNextPageBtn" ${qbState.page >= totalPages ? 'disabled' : ''}>अगला ▶</button>
+          </div>
+        </div>
+      `}
+    `;
+
+    // SUB-TAB 1: SUBJECT-WISE QUESTION LIBRARY (Main Category -> Subject -> Topic -> Questions)
+    if (nav.subTab === 'subject_library') {
+      return `
+        <div class="card">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding-bottom:12px;margin-bottom:14px;border-bottom:1px solid var(--border);">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <button class="btn ${nav.level === 'mainCategories' ? 'btn-primary' : 'btn-outline'} btn-sm" id="qbBreadcrumbHomeBtn">
+                🗂️ मुख्य कैटेगरी (${mainCatFolders.length})
+              </button>
+              ${activeMainCatFolder ? `
+                <span style="font-weight:800;color:var(--text-muted);">›</span>
+                <button class="btn ${nav.level === 'subjects' ? 'btn-primary' : 'btn-outline'} btn-sm" id="qbBreadcrumbMainCatBtn">
+                  ${esc(activeMainCatFolder.icon)} ${esc(activeMainCatFolder.titleHi)} (${activeMainCatFolder.questions.length})
+                </button>
+              ` : ''}
+              ${activeSubjectFolder && !activeMainCatFolder?.directTopics ? `
+                <span style="font-weight:800;color:var(--text-muted);">›</span>
+                <button class="btn ${nav.level === 'topics' ? 'btn-primary' : 'btn-outline'} btn-sm" id="qbBreadcrumbSubjectBtn">
+                  📁 ${esc(activeSubjectFolder.titleHi)} (${activeSubjectFolder.questions.length})
+                </button>
+              ` : ''}
+              ${activeTopicFolder ? `
+                <span style="font-weight:800;color:var(--text-muted);">›</span>
+                <span class="badge badge-exam" style="padding:6px 10px;font-size:0.8rem;">
+                  📂 ${esc(activeTopicFolder.titleHi)} (${activeTopicFolder.questions.length} प्रश्न)
+                </span>
+              ` : ''}
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button class="btn btn-outline btn-sm" id="qbPopupNewSubjectBtn">📁 + नया विषय फ़ोल्डर</button>
+              <button class="btn btn-outline btn-sm" id="qbPopupNewTopicBtn">📂 + नया टॉपिक फ़ोल्डर</button>
+              <button class="btn btn-primary btn-sm" id="qbAddQuestionInCurrentFolderBtn">➕ प्रश्न जोड़ें</button>
+            </div>
+          </div>
+
+          ${nav.level === 'mainCategories' ? `
+            <div style="margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+              <div>
+                <h4 style="font-size:0.98rem;font-weight:800;">📚 Part 1: Subject-wise Question Library (7 मुख्य कैटेगरी + Uncategorised)</h4>
+                <p style="font-size:0.78rem;color:var(--text-secondary);">Main Category › Subject Folder › Topic Folder › Questions</p>
+              </div>
+              <button class="btn btn-outline btn-sm" id="qbViewAllQuestionsFlatBtn">📋 सभी प्रश्न देखें (${activeQuestions.length})</button>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;">
+              ${mainCatFolders.map((mc) => `
+                <div class="card" data-open-main-cat="${esc(mc.mainCategoryId)}" style="margin-bottom:0;cursor:pointer;border:1.5px solid ${mc.mainCategoryId === 'cat_uncategorised' ? '#d97706' : (mc.questions.length > 0 ? 'var(--primary)' : 'var(--border)')};background:${mc.questions.length > 0 ? 'var(--surface)' : 'var(--surface-alt)'};">
+                  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+                    <div style="font-size:1.75rem;line-height:1;">${mc.icon}</div>
+                    <span class="badge ${mc.questions.length > 0 ? 'badge-free' : 'badge-draft'}">📝 ${mc.questions.length} प्रश्न</span>
+                  </div>
+                  <div style="font-weight:800;font-size:0.96rem;margin-top:10px;color:var(--text);">${esc(mc.titleHi)}</div>
+                  <div style="font-size:0.78rem;color:var(--text-secondary);font-weight:600;margin-top:2px;">${esc(mc.titleEn)}</div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding-top:8px;border-top:1px dashed var(--border);font-size:0.75rem;color:var(--primary);font-weight:800;">
+                    <span>${mc.directTopics ? `📂 ${mc.totalTopics} Direct Topic फ़ोल्डर` : `📁 ${mc.subjectsMap.size} विषय • 📂 ${mc.totalTopics} टॉपिक`}</span>
+                    <span>खोलें ▶</span>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
+
+          ${nav.level === 'subjects' && activeMainCatFolder ? `
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+              <div style="display:flex;align-items:center;gap:10px;">
+                <button class="btn btn-outline btn-sm" id="qbBackToMainCatsBtn">⬅️ मुख्य कैटेगरी पर वापस</button>
+                <div>
+                  <h4 style="font-size:1rem;font-weight:800;">${esc(activeMainCatFolder.icon)} ${esc(activeMainCatFolder.titleHi)} (${esc(activeMainCatFolder.titleEn)}) — विषय फ़ोल्डर</h4>
+                </div>
+              </div>
+              <button class="btn btn-navy btn-sm" id="qbViewAllMainCatQuestionsBtn">📋 इस कैटेगरी के सभी प्रश्न (${activeMainCatFolder.questions.length})</button>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;">
+              ${Array.from(activeMainCatFolder.subjectsMap.values()).map((sf) => `
+                <div class="card" data-open-subject-folder="${esc(sf.subjectId)}" style="margin-bottom:0;cursor:pointer;border:1.5px solid ${sf.questions.length > 0 ? 'var(--primary)' : 'var(--border)'};">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                    <span style="font-size:1.5rem;">${sf.icon || '📁'}</span>
+                    <span class="badge ${sf.questions.length > 0 ? 'badge-free' : 'badge-draft'}">📝 ${sf.questions.length} प्रश्न</span>
+                  </div>
+                  <div style="font-weight:800;font-size:0.93rem;margin-top:8px;">${esc(sf.titleHi)}</div>
+                  <div style="font-size:0.76rem;color:var(--text-secondary);margin-top:2px;">${esc(sf.titleEn)}</div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;padding-top:8px;border-top:1px dashed var(--border);font-size:0.74rem;color:var(--primary);font-weight:800;">
+                    <span>📂 ${sf.topicsMap.size} टॉपिक फ़ोल्डर</span>
+                    <span>खोलें ▶</span>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
+
+          ${nav.level === 'topics' && activeSubjectFolder ? `
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+              <div style="display:flex;align-items:center;gap:10px;">
+                <button class="btn btn-outline btn-sm" id="qbBackToSubjectsBtn">⬅️ वापस</button>
+                <div>
+                  <h4 style="font-size:1rem;font-weight:800;">📂 ${esc(activeSubjectFolder.titleHi)} (${esc(activeSubjectFolder.titleEn)}) — टॉपिक फ़ोल्डर</h4>
+                </div>
+              </div>
+              <button class="btn btn-navy btn-sm" id="qbViewAllSubjectQuestionsBtn">📋 सभी प्रश्न (${activeSubjectFolder.questions.length})</button>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;">
+              ${Array.from(activeSubjectFolder.topicsMap.values()).map((tf) => `
+                <div class="card" data-open-topic-folder="${esc(tf.topicId)}" style="margin-bottom:0;cursor:pointer;border:1.5px solid ${tf.questions.length > 0 ? 'var(--secondary)' : 'var(--border)'};">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                    <span style="font-size:1.4rem;">📂</span>
+                    <span class="badge ${tf.questions.length > 0 ? 'badge-exam' : 'badge-draft'}">📝 ${tf.questions.length} प्रश्न</span>
+                  </div>
+                  <div style="font-weight:800;font-size:0.9rem;margin-top:8px;">${esc(tf.titleHi)}</div>
+                  <div style="font-size:0.75rem;color:var(--text-secondary);margin-top:2px;">${esc(tf.titleEn)}</div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;padding-top:8px;border-top:1px dashed var(--border);font-size:0.74rem;color:var(--secondary);font-weight:800;">
+                    <span>प्रश्न देखें</span>
+                    <span>खोलें ▶</span>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
+
+          ${nav.level === 'questions' ? `
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <button class="btn btn-outline btn-sm" id="qbBackFromQuestionsBtn">⬅️ फ़ोल्डर्स पर वापस</button>
+                <h4 style="font-size:0.96rem;font-weight:800;">
+                  ${activeTopicFolder
+                    ? `📂 ${esc(activeTopicFolder.titleHi)} (${totalFiltered} प्रश्न)`
+                    : (activeSubjectFolder
+                      ? `📁 ${esc(activeSubjectFolder.titleHi)} (${totalFiltered} प्रश्न)`
+                      : `📋 सभी प्रश्न (${totalFiltered})`)}
+                </h4>
+              </div>
+            </div>
+            ${renderQuestionListWithPagination(false)}
+          ` : ''}
+        </div>
+      `;
+    }
+
+    // SUB-TAB 2: EXAM-WISE PYQ LIBRARY (Exam Category -> Exam Name -> Year -> Paper / Shift -> Referenced Questions)
+    if (nav.subTab === 'pyq_library') {
+      const selCat = nav.pyqCategory ? pyqTree.get(nav.pyqCategory) : null;
+      const selExam = (selCat && nav.pyqExamName) ? selCat.exams.get(nav.pyqExamName) : null;
+      const selYear = (selExam && nav.pyqYear) ? selExam.years.get(nav.pyqYear) : null;
+      return `
+        <div class="card">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding-bottom:12px;margin-bottom:14px;border-bottom:1px solid var(--border);">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <button class="btn ${!nav.pyqCategory ? 'btn-primary' : 'btn-outline'} btn-sm" id="qbPyqRootBtn">🏛️ सभी PYQ Exam Categories</button>
+              ${selCat ? `
+                <span>›</span>
+                <button class="btn ${nav.pyqCategory && !nav.pyqExamName ? 'btn-primary' : 'btn-outline'} btn-sm" id="qbPyqCatBreadBtn">${esc(selCat.icon)} ${esc(selCat.titleHi)} (${selCat.questions.length})</button>
+              ` : ''}
+              ${selExam ? `
+                <span>›</span>
+                <button class="btn ${nav.pyqExamName && !nav.pyqYear ? 'btn-primary' : 'btn-outline'} btn-sm" id="qbPyqExamBreadBtn">📋 ${esc(selExam.examName)} (${selExam.questions.length})</button>
+              ` : ''}
+              ${selYear ? `
+                <span>›</span>
+                <span class="badge badge-exam">📅 वर्ष ${esc(selYear.year)} (${selYear.questions.length} प्रश्न)</span>
+              ` : ''}
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button class="btn btn-primary btn-sm" id="qbCreatePyqFolderBtn">🏛️ + नया PYQ Exam / Paper फ़ोल्डर बनाएं</button>
+            </div>
+          </div>
+
+          ${!nav.pyqCategory ? `
+            <div style="margin-bottom:12px;">
+              <h4 style="font-size:0.98rem;font-weight:800;">🏛️ Part 2: Exam-wise PYQ Library (Central Question Reference System)</h4>
+              <p style="font-size:0.78rem;color:var(--text-secondary);">
+                Exam Category › Exam Name › Year › Paper / Shift › Referenced Questions (बिना डुप्लीकेट बनाए एक ही मूल प्रश्न का Reference)
+              </p>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(265px,1fr));gap:12px;">
+              ${Array.from(pyqTree.values()).map((pc) => `
+                <div class="card" data-open-pyq-cat="${esc(pc.code)}" style="margin-bottom:0;cursor:pointer;border:1.5px solid ${pc.questions.length > 0 ? 'var(--primary)' : 'var(--border)'};">
+                  <div style="display:flex;align-items:center;justify-content:space-between;">
+                    <span style="font-size:1.7rem;">${pc.icon}</span>
+                    <span class="badge ${pc.questions.length > 0 ? 'badge-free' : 'badge-draft'}">📝 ${pc.questions.length} PYQ Refs</span>
+                  </div>
+                  <div style="font-weight:800;font-size:0.95rem;margin-top:8px;">${esc(pc.titleHi)}</div>
+                  <div style="font-size:0.76rem;color:var(--text-secondary);">${esc(pc.titleEn)}</div>
+                  <div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--border);font-size:0.74rem;color:var(--primary);font-weight:800;display:flex;justify-content:space-between;">
+                    <span>📋 ${pc.exams.size} परीक्षाएं (Exams)</span>
+                    <span>खोलें ▶</span>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
+
+          ${selCat && !nav.pyqExamName ? `
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(245px,1fr));gap:12px;margin-bottom:14px;">
+              ${Array.from(selCat.exams.values()).map((ex) => `
+                <div class="card" data-open-pyq-exam="${esc(ex.examName)}" style="margin-bottom:0;cursor:pointer;border:1.5px solid ${ex.questions.length > 0 ? 'var(--secondary)' : 'var(--border)'};">
+                  <div style="display:flex;align-items:center;justify-content:space-between;">
+                    <span style="font-size:1.4rem;">📋</span>
+                    <span class="badge ${ex.questions.length > 0 ? 'badge-exam' : 'badge-draft'}">📝 ${ex.questions.length} प्रश्न</span>
+                  </div>
+                  <div style="font-weight:800;font-size:0.92rem;margin-top:8px;">${esc(ex.examName)}</div>
+                  <div style="margin-top:8px;padding-top:6px;border-top:1px dashed var(--border);font-size:0.74rem;color:var(--secondary);font-weight:800;display:flex;justify-content:space-between;">
+                    <span>📅 ${ex.years.size || 0} वर्ष (Years)</span>
+                    <span>खोलें ▶</span>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
+
+          ${selExam && !nav.pyqYear ? `
+            <div style="margin-bottom:14px;">
+              <h4 style="font-size:0.94rem;font-weight:800;margin-bottom:8px;">📅 ${esc(selExam.examName)} — वर्ष और पेपर चुनें (Select Year / Paper)</h4>
+              ${selExam.years.size === 0 ? `
+                <div style="padding:18px;border-radius:10px;background:var(--surface-alt);border:1px dashed var(--border);font-size:0.82rem;color:var(--text-secondary);">
+                  इस परीक्षा में अभी कोई वर्ष/पेपर टैग नहीं है। किसी भी प्रश्न कार्ड पर <strong>"🏛️ + Exam / PYQ Ref"</strong> दबाकर इस परीक्षा से जोड़ें।
+                </div>
+              ` : `
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin-bottom:14px;">
+                  ${Array.from(selExam.years.values()).map((yr) => `
+                    <div class="card" data-open-pyq-year="${esc(yr.year)}" style="margin-bottom:0;cursor:pointer;border:1.5px solid var(--primary);">
+                      <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <span style="font-weight:800;font-size:0.95rem;">📅 ${esc(yr.year)}</span>
+                        <span class="badge badge-free">${yr.questions.length} प्रश्न</span>
+                      </div>
+                      <div style="font-size:0.74rem;color:var(--text-secondary);margin-top:6px;">
+                        Papers/Shifts: ${Array.from(yr.papers.keys()).join(', ') || 'General Paper'}
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
+              `}
+              ${renderQuestionListWithPagination(true)}
+            </div>
+          ` : ''}
+
+          ${selYear ? `
+            <div style="margin-bottom:12px;">
+              <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
+                <button class="btn ${!nav.pyqPaper ? 'btn-primary' : 'btn-outline'} btn-sm" data-open-pyq-paper="">सभी Papers/Shifts (${selYear.questions.length})</button>
+                ${Array.from(selYear.papers.values()).map((pp) => `
+                  <button class="btn ${nav.pyqPaper === pp.label ? 'btn-primary' : 'btn-outline'} btn-sm" data-open-pyq-paper="${esc(pp.label)}">
+                    📄 ${esc(pp.label)} (${pp.questions.length})
+                  </button>
+                `).join('')}
+              </div>
+              ${renderQuestionListWithPagination(true)}
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    // SUB-TAB 3: SEARCH & FILTERS (All 8 required filters + Full Folder Path)
+    if (nav.subTab === 'search_filters') {
+      const sf = nav.advFilters;
+      return `
+        <div class="card">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+            <div>
+              <h4 style="font-size:0.98rem;font-weight:800;">🔍 Central Question Database — Advanced Search & Filters</h4>
+              <p style="font-size:0.78rem;color:var(--text-secondary);">प्रत्येक परिणाम के साथ उसका पूरा Folder Path (Main Category › Subject › Topic) और PYQ Reference दिखता है।</p>
+            </div>
+            <button class="btn btn-outline btn-sm" id="qbResetAdvFiltersBtn">🔄 सभी फ़िल्टर रीसेट करें</button>
+          </div>
+
+          <div class="grid-4" style="gap:8px;margin-bottom:12px;">
+            <div>
+              <label class="form-label" style="font-size:0.75rem;">1. खोजें (Search Text / ID)</label>
+              <input class="form-input" id="qbAdvSearchInput" value="${esc(nav.search || '')}" placeholder="प्रश्न, विकल्प, व्याख्या या ID..." style="padding:6px 10px;font-size:0.8rem;" />
+            </div>
+            <div>
+              <label class="form-label" style="font-size:0.75rem;">2. Main Category</label>
+              <select class="form-select" id="qbAdvMainCatSelect" style="padding:6px 8px;font-size:0.8rem;">
+                <option value="ALL">सभी Main Categories</option>
+                ${catalog.mainCategories.map((mc) => `<option value="${esc(mc.mainCategoryId)}" ${sf.mainCategoryId === mc.mainCategoryId ? 'selected' : ''}>${esc(mc.titleHi)} (${esc(mc.titleEn)})</option>`).join('')}
+                <option value="cat_uncategorised" ${sf.mainCategoryId === 'cat_uncategorised' ? 'selected' : ''}>⚠️ Uncategorised</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label" style="font-size:0.75rem;">3. Subject (विषय)</label>
+              <select class="form-select" id="qbAdvSubjectSelect" style="padding:6px 8px;font-size:0.8rem;">
+                <option value="ALL">सभी Subjects</option>
+                ${catalog.subjects.map((s) => `<option value="${esc(s.subjectId)}" ${sf.subjectId === s.subjectId ? 'selected' : ''}>${esc(s.titleHi)} (${esc(s.titleEn)})</option>`).join('')}
+                <option value="sub_uncategorised" ${sf.subjectId === 'sub_uncategorised' ? 'selected' : ''}>⚠️ Uncategorised</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label" style="font-size:0.75rem;">4. Topic (टॉपिक)</label>
+              <select class="form-select" id="qbAdvTopicSelect" style="padding:6px 8px;font-size:0.8rem;">
+                <option value="ALL">सभी Topics</option>
+                ${(sf.subjectId && sf.subjectId !== 'ALL' ? catalog.getTopicsForSubject(sf.subjectId) : catalog.topics).map((t) => `<option value="${esc(t.topicId)}" ${sf.topicId === t.topicId ? 'selected' : ''}>${esc(t.titleHi)} (${esc(t.titleEn)})</option>`).join('')}
+                <option value="top_uncategorised" ${sf.topicId === 'top_uncategorised' ? 'selected' : ''}>⚠️ Uncategorised</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label" style="font-size:0.75rem;">5. Exam / PYQ</label>
+              <select class="form-select" id="qbAdvExamSelect" style="padding:6px 8px;font-size:0.8rem;">
+                <option value="ALL">सभी Exams</option>
+                <option value="ANY_PYQ" ${sf.examFilter === 'ANY_PYQ' ? 'selected' : ''}>🏛️ केवल PYQ Referenced प्रश्न</option>
+                ${catalog.pyqCategories.map((pc) => `<option value="CAT:${esc(pc.code)}" ${sf.examFilter === 'CAT:' + pc.code ? 'selected' : ''}>${esc(pc.titleHi)}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label class="form-label" style="font-size:0.75rem;">6. Exam Year (वर्ष)</label>
+              <input class="form-input" id="qbAdvYearInput" value="${esc(sf.examYear || '')}" placeholder="उदा. 2023, 2024..." style="padding:6px 10px;font-size:0.8rem;" />
+            </div>
+            <div>
+              <label class="form-label" style="font-size:0.75rem;">7. Language & Difficulty</label>
+              <div style="display:flex;gap:4px;">
+                <select class="form-select" id="qbAdvLangSelect" style="padding:6px 6px;font-size:0.78rem;">
+                  <option value="ALL" ${sf.language === 'ALL' ? 'selected' : ''}>भाषा: सभी</option>
+                  <option value="Bilingual" ${sf.language === 'Bilingual' ? 'selected' : ''}>Bilingual</option>
+                  <option value="Hindi" ${sf.language === 'Hindi' ? 'selected' : ''}>Hindi</option>
+                  <option value="English" ${sf.language === 'English' ? 'selected' : ''}>English</option>
+                </select>
+                <select class="form-select" id="qbQuestionsDiffFilter" style="padding:6px 6px;font-size:0.78rem;">
+                  <option value="ALL" ${nav.difficulty === 'ALL' ? 'selected' : ''}>कठिनाई: सभी</option>
+                  <option value="Easy" ${nav.difficulty === 'Easy' ? 'selected' : ''}>Easy</option>
+                  <option value="Moderate" ${nav.difficulty === 'Moderate' ? 'selected' : ''}>Moderate</option>
+                  <option value="Hard" ${nav.difficulty === 'Hard' ? 'selected' : ''}>Hard</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label class="form-label" style="font-size:0.75rem;">8. Verification Status</label>
+              <select class="form-select" id="qbAdvVerifySelect" style="padding:6px 8px;font-size:0.8rem;">
+                <option value="ALL" ${sf.verificationStatus === 'ALL' ? 'selected' : ''}>सभी Status</option>
+                <option value="verified" ${sf.verificationStatus === 'verified' ? 'selected' : ''}>✓ Verified</option>
+                <option value="needs_categorisation" ${sf.verificationStatus === 'needs_categorisation' ? 'selected' : ''}>⚠️ Uncategorised / Needs Review</option>
+                <option value="possible_duplicate" ${sf.verificationStatus === 'possible_duplicate' ? 'selected' : ''}>🔍 Possible Duplicate</option>
+              </select>
+            </div>
+          </div>
+
+          ${renderQuestionListWithPagination(true)}
+        </div>
+      `;
+    }
+
+    // SUB-TAB 4: IMPORT & PREVIEW (CSV / JSON / PDF / Word / Text + Duplicate & Missing Folder Handling + 8-Metric Report)
+    if (nav.subTab === 'import_preview') {
+      const ps = qbState.previewSession;
+      const rep = qbState.lastImportReport;
+      return `
+        <!-- AI & File Import Card -->
+        <div class="card" style="border:1.5px solid var(--secondary);margin-bottom:14px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+            <div>
+              <h4 style="font-size:1rem;font-weight:800;color:var(--primary);">📥 Question Import & Preview System (CSV, Excel CSV, JSON, PDF, Word/Text)</h4>
+              <p style="font-size:0.78rem;color:var(--text-secondary);">
+                प्रश्नों को सीधे सेव करने से पहले <strong>Import Preview</strong> में जांचें: Duplicate Detection, Missing Folder Approval और Uncategorised Safety के साथ।
+              </p>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button class="btn btn-outline btn-sm" id="qbDownloadSampleCsvBtn">⬇️ Sample CSV</button>
+              <button class="btn btn-outline btn-sm" id="qbDownloadSampleJsonBtn">⬇️ Sample JSON</button>
+            </div>
+          </div>
+
+          <div class="grid-3" style="gap:10px;margin-bottom:10px;">
+            <div style="padding:10px 12px;border-radius:10px;background:var(--surface);border:1.5px dashed var(--primary);">
+              <label class="form-label" style="color:var(--primary);font-weight:800;font-size:0.8rem;">1️⃣ फ़ाइल चुनें (CSV / JSON / PDF / Image / TXT) *</label>
+              <input type="file" accept=".pdf,.csv,.json,.txt,.png,.jpg,.jpeg,.webp" class="form-input" id="qbAiQuestionFileInput" style="padding:6px;font-size:0.78rem;" />
+              <div id="qbSelectedQPFileLabel" style="font-size:0.74rem;margin-top:4px;font-weight:700;color:${nav.selectedQuestionFile ? 'var(--success)' : 'var(--text-muted)'};">
+                ${nav.selectedQuestionFile ? `✅ चुना गया: ${esc(nav.selectedQuestionFile.name)}` : 'कोई फ़ाइल चुनें'}
+              </div>
+            </div>
+
+            <div style="padding:10px 12px;border-radius:10px;background:var(--surface);border:1.5px dashed var(--secondary);">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                <label class="form-label" style="color:var(--secondary);font-weight:800;font-size:0.8rem;margin-bottom:0;">2️⃣ उत्तर कुंजी (Answer Key — वैकल्पिक)</label>
+                <select class="form-select" id="qbAiPaperSetSelect" style="width:auto;padding:2px 6px;font-size:0.72rem;height:24px;">
+                  <option value="A" ${nav.paperSetCode === 'A' ? 'selected' : ''}>Set A</option>
+                  <option value="B" ${nav.paperSetCode === 'B' ? 'selected' : ''}>Set B</option>
+                  <option value="C" ${nav.paperSetCode === 'C' ? 'selected' : ''}>Set C</option>
+                  <option value="D" ${nav.paperSetCode === 'D' ? 'selected' : ''}>Set D</option>
+                </select>
+              </div>
+              <input type="file" accept=".pdf,.txt,.csv,.png,.jpg,.jpeg,.webp" class="form-input" id="qbAiAnswerKeyFileInput" style="padding:5px;font-size:0.76rem;margin-bottom:4px;" />
+              <input class="form-input" id="qbAiAnswerKeyTextInput" value="${esc(qbState.pendingAnswerKeyText || '')}" placeholder="या उत्तर लिखें: 1-A, 2-C, 3-B" style="padding:5px 8px;font-size:0.75rem;" />
+            </div>
+
+            <div style="padding:10px 12px;border-radius:10px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;justify-content:space-between;gap:6px;">
+              <div>
+                <label class="form-label" style="font-weight:800;font-size:0.78rem;margin-bottom:4px;">3️⃣ डिफ़ॉल्ट विषय (वैकल्पिक)</label>
+                <select class="form-select" id="qbAiOverrideSubjectSelect" style="padding:5px 8px;font-size:0.78rem;">
+                  <option value="">🤖 Auto-Detect (अनिश्चित होने पर Uncategorised)</option>
+                  ${catalog.subjects.map((s) => `<option value="${esc(s.titleEn)}" ${nav.overrideSubject === s.titleEn ? 'selected' : ''}>📁 ${esc(s.titleHi)} (${esc(s.titleEn)})</option>`).join('')}
+                </select>
+              </div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                <button class="btn btn-primary btn-sm" id="qbLoadImportPreviewBtn" style="flex:1;font-weight:800;">🔍 Step 1: Preview & Validate</button>
+                <button class="btn btn-success btn-sm" id="qbStartAiScanAndSaveBtn" style="flex:1;font-weight:800;" ${nav.isScanning ? 'disabled' : ''}>
+                  ${nav.isScanning ? '⏳ स्कैन हो रहा है...' : '🚀 AI Scan & Save'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          ${nav.isScanning || nav.scanStatusText ? `
+            <div id="qbAiScanStatusBox" style="padding:10px 14px;border-radius:8px;background:var(--primary-soft);border:1px solid var(--primary);color:var(--primary);font-size:0.82rem;font-weight:800;">
+              ${esc(nav.scanStatusText || '⏳ प्रोसेस हो रहा है...')}
+            </div>
+          ` : ''}
+        </div>
+
+        ${rep ? `
+          <div class="card" style="border-left:5px solid var(--success);margin-bottom:14px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+              <h4 style="font-size:0.95rem;font-weight:800;color:var(--success);">✅ Import Summary Report (${esc(rep.fileName)})</h4>
+              <button class="btn btn-outline btn-sm" id="qbDismissImportRepBtn">✕ बंद करें</button>
+            </div>
+            <div class="grid-4" style="gap:8px;">
+              <div style="padding:8px;border-radius:8px;background:var(--surface-alt);"><strong>1. कुल प्रश्न:</strong> ${rep.totalRows}</div>
+              <div style="padding:8px;border-radius:8px;background:var(--surface-alt);"><strong>2. नए सेव हुए प्रश्न:</strong> ${rep.newQuestionsSaved}</div>
+              <div style="padding:8px;border-radius:8px;background:var(--surface-alt);"><strong>3. Exact Duplicate (Ref Added):</strong> ${rep.exactDuplicateRefsAdded}</div>
+              <div style="padding:8px;border-radius:8px;background:var(--surface-alt);"><strong>4. Possible Duplicates:</strong> ${rep.possibleDuplicatesCount}</div>
+              <div style="padding:8px;border-radius:8px;background:var(--surface-alt);"><strong>5. Uncategorised प्रश्न:</strong> ${rep.uncategorisedCount}</div>
+              <div style="padding:8px;border-radius:8px;background:var(--surface-alt);"><strong>6. PYQ References जोड़े गए:</strong> ${rep.pyqReferencesAdded}</div>
+              <div style="padding:8px;border-radius:8px;background:var(--surface-alt);"><strong>7. Missing Folders मिले:</strong> ${rep.missingFoldersDetected}</div>
+              <div style="padding:8px;border-radius:8px;background:var(--surface-alt);"><strong>8. Skipped / Error Rows:</strong> ${rep.skippedOrErrorRows}</div>
+            </div>
+          </div>
+        ` : ''}
+
+        ${ps ? `
+          <div class="card" style="border:2px solid var(--primary);">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+              <div>
+                <h4 style="font-size:0.98rem;font-weight:800;">🧐 Import Preview: ${esc(ps.fileName)} (${ps.records.length} प्रश्न)</h4>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">
+                  <span class="badge badge-free">✅ Valid: ${ps.records.filter((r) => r.isValid && !r.excluded).length}</span>
+                  <span class="badge badge-exam">🏛️ Exact Dup (PYQ Ref Only): ${ps.records.filter((r) => r.duplicateType === 'exact').length}</span>
+                  <span class="badge badge-paid">🔍 Possible Dup: ${ps.records.filter((r) => r.duplicateType === 'possible').length}</span>
+                  <span class="badge badge-review">📁 Missing Folders: ${ps.records.filter((r) => r.missingFolderInfo && r.missingFolderInfo.hasMissingFolder).length}</span>
+                </div>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button class="btn btn-outline btn-sm" id="qbCancelPreviewBtn">✕ Cancel Preview</button>
+                <button class="btn btn-success btn-sm" id="qbCommitPreviewBtn" style="font-weight:800;">💾 Confirm & Save to Central Question Bank</button>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:10px;max-height:520px;overflow-y:auto;padding-right:4px;">
+              ${ps.records.slice(0, 100).map((rec, rIdx) => {
+                const mf = rec.missingFolderInfo;
+                return `
+                  <div style="padding:10px 12px;border-radius:10px;border:1.5px solid ${rec.duplicateType === 'exact' ? '#4f46e5' : (mf && mf.hasMissingFolder ? '#d97706' : 'var(--border)')};background:var(--surface);">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+                      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                        <span class="badge badge-exam">Row #${rIdx + 1}</span>
+                        <span class="badge badge-review">🗂️ ${esc(rec.normalized.mainCategory || 'Uncategorised')} › 📁 ${esc(rec.normalized.subjectTag || 'Uncategorised')} › 📂 ${esc(rec.normalized.topic || 'Uncategorised')}</span>
+                        ${rec.duplicateType === 'exact' ? `<span class="badge badge-exam">🔗 Exact Duplicate (Existing ID: ${esc(rec.duplicateTargetId)} में केवल Exam/PYQ Ref जुड़ेगा)</span>` : ''}
+                        ${rec.duplicateType === 'possible' ? `<span class="badge badge-paid">⚠️ Possible Duplicate (${esc(rec.duplicateReason)})</span>` : ''}
+                      </div>
+                      <label style="font-size:0.76rem;font-weight:700;cursor:pointer;">
+                        <input type="checkbox" data-toggle-preview-exclude="${rIdx}" ${rec.excluded ? '' : 'checked'} /> इस प्रश्न को शामिल करें
+                      </label>
+                    </div>
+                    <div style="font-weight:700;font-size:0.86rem;">${esc(rec.normalized.questionHi || rec.normalized.questionEn)}</div>
+                    ${mf && mf.hasMissingFolder ? `
+                      <div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:#fffbeb;border:1px solid #f59e0b;font-size:0.78rem;color:#92400e;">
+                        <div style="font-weight:800;">⚠️ नया / अज्ञात फ़ोल्डर मिला: "${esc(mf.rawSubject || '')} › ${esc(mf.rawTopic || '')}" (बिना अनुमति नया फ़ोल्डर नहीं बनाया गया)</div>
+                        ${Array.isArray(mf.suggestions) && mf.suggestions.length > 0 ? `
+                          <div style="margin-top:4px;">मिलते-जुलते उपलब्ध फ़ोल्डर: ${mf.suggestions.map((sg) => `<span class="badge badge-draft">${esc(sg.titleHi || sg.titleEn)}</span>`).join(' ')}</div>
+                        ` : ''}
+                        <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">
+                          <button type="button" class="btn btn-primary btn-sm" data-approve-missing-folder="${rIdx}" style="padding:2px 8px;font-size:0.72rem;">✅ नया फ़ोल्डर बनाने की अनुमति दें (Approve Folder)</button>
+                        </div>
+                      </div>
+                    ` : ''}
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        ` : ''}
+      `;
+    }
+
+    // SUB-TAB 5: FOLDER MANAGEMENT & MIGRATION REPORT
+    const migRep = qbState.migrationReport || state.migrationState;
+    const hasBackup = typeof localStorage !== 'undefined' && Boolean(localStorage.getItem('cgpedia_qb_pre_migration_backup_v2'));
+    return `
+      <div class="card" style="border-left:5px solid var(--primary);margin-bottom:14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+          <div>
+            <h4 style="font-size:1rem;font-weight:800;">🔄 Safe Question Bank Migration & Backup Report</h4>
+            <p style="font-size:0.78rem;color:var(--text-secondary);">
+              मौजूदा सभी प्रश्नों को बिना किसी डेटा नुकसान (Zero Data Loss) के नए 2-Part Central Question Bank में व्यवस्थित किया गया है।
+            </p>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-primary btn-sm" id="qbRunSafeMigrationBtn">🔄 Run / Refresh Safe Migration</button>
+            ${hasBackup ? `<button class="btn btn-outline btn-sm" id="qbRestorePreMigBackupBtn">⏪ Restore Pre-Migration Backup</button>` : ''}
+          </div>
+        </div>
+
+        ${migRep ? `
+          <div class="grid-4" style="gap:8px;">
+            <div style="padding:8px 10px;border-radius:8px;background:var(--surface-alt);"><strong>1. कुल पुराने प्रश्न:</strong> ${migRep.totalLegacyQuestions ?? activeQuestions.length}</div>
+            <div style="padding:8px 10px;border-radius:8px;background:var(--surface-alt);"><strong>2. सफलतापूर्वक वर्गीकृत:</strong> ${migRep.successfullyCategorisedCount ?? migRep.migratedCount ?? 0}</div>
+            <div style="padding:8px 10px;border-radius:8px;background:var(--surface-alt);"><strong>3. PYQ में जोड़े गए:</strong> ${migRep.pyqLinkedCount ?? 0}</div>
+            <div style="padding:8px 10px;border-radius:8px;background:var(--surface-alt);"><strong>4. Duplicate मर्ज किए गए:</strong> ${migRep.duplicatesMergedCount ?? 0}</div>
+            <div style="padding:8px 10px;border-radius:8px;background:var(--surface-alt);"><strong>5. Uncategorised में रखे गए:</strong> ${migRep.uncategorisedCount ?? 0}</div>
+            <div style="padding:8px 10px;border-radius:8px;background:var(--surface-alt);"><strong>6. Manual Review आवश्यक:</strong> ${migRep.manualReviewNeededCount ?? 0}</div>
+            <div style="padding:8px 10px;border-radius:8px;background:var(--surface-alt);"><strong>7. नए बनाए गए Folders:</strong> ${migRep.newFoldersCreatedCount ?? 0}</div>
+            <div style="padding:8px 10px;border-radius:8px;background:var(--surface-alt);"><strong>8. खाली Folders:</strong> ${migRep.emptyFoldersCount ?? 0}</div>
+          </div>
+        ` : ''}
+      </div>
+
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+          <div>
+            <h4 style="font-size:0.98rem;font-weight:800;">🗂️ Folder Management (Create, Rename, Move & Delete Empty Folders)</h4>
+            <p style="font-size:0.78rem;color:var(--text-secondary);">नियम: केवल खाली (0 प्रश्न वाले) कस्टम फ़ोल्डर ही डिलीट किए जा सकते हैं।</p>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <button class="btn btn-primary btn-sm" id="qbPopupNewSubjectBtn">📁 + Create Subject Folder</button>
+            <button class="btn btn-primary btn-sm" id="qbPopupNewTopicBtn">📂 + Create Topic Folder</button>
+            <button class="btn btn-outline btn-sm" id="qbCreatePyqFolderBtn">🏛️ + Create PYQ Exam Folder</button>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          ${mainCatFolders.map((mc) => `
+            <div style="padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--surface-alt);">
+              <div style="font-weight:800;font-size:0.92rem;margin-bottom:8px;color:var(--primary);">
+                ${esc(mc.icon)} ${esc(mc.titleHi)} (${esc(mc.titleEn)}) — ${mc.questions.length} प्रश्न
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px;">
+                ${Array.from(mc.subjectsMap.values()).map((sf) => `
+                  <div style="padding:8px 10px;border-radius:8px;background:var(--surface);border:1px solid var(--border);">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+                      <div style="font-weight:800;font-size:0.84rem;">
+                        📁 ${esc(sf.titleHi)} (${esc(sf.titleEn)}) <span class="badge badge-draft">${sf.questions.length} प्रश्न</span>
+                      </div>
+                      <div style="display:flex;gap:4px;">
+                        <button class="btn btn-outline btn-sm" style="padding:2px 6px;font-size:0.7rem;" data-rename-folder="subject:::${esc(sf.subjectId)}">✏️ Rename</button>
+                        ${sf.questions.length === 0 ? `<button class="btn btn-danger btn-sm" style="padding:2px 6px;font-size:0.7rem;" data-delete-empty-folder="subject:::${esc(sf.subjectId)}">🗑️ Delete Empty</button>` : ''}
+                      </div>
+                    </div>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
+                      ${Array.from(sf.topicsMap.values()).map((tf) => `
+                        <span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:6px;background:var(--surface-alt);border:1px solid var(--border);font-size:0.74rem;">
+                          <span>📂 ${esc(tf.titleHi)} (<strong>${tf.questions.length}</strong>)</span>
+                          <button type="button" style="border:none;background:transparent;cursor:pointer;font-size:0.7rem;" title="Rename Topic" data-rename-folder="topic:::${esc(tf.topicId)}">✏️</button>
+                          ${tf.questions.length === 0 ? `<button type="button" style="border:none;background:transparent;cursor:pointer;font-size:0.7rem;color:var(--danger);" title="Delete Empty Topic" data-delete-empty-folder="topic:::${esc(tf.topicId)}">🗑️</button>` : ''}
+                        </span>
+                      `).join('')}
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+
+  function renderQuestionBankManagementV2(bodyEl, rootEl, state, api) {
+    state.questionBank = state.questionBank || [];
+
+    // Run non-destructive v2 migration if not yet run on current session
+    const needsMigration = state.questionBank.some((q) => q && !q.isDeleted && (!q.questionId || !q.mainCategoryId || !Array.isArray(q.pyqReferences)));
+    if (needsMigration || (!qbState.migrationReport && state.questionBank.length > 0)) {
+      qbState.migrationReport = migrateExistingQuestionBankRecords(state, api, { skipCloudSync: true });
+    }
+
+    const catalog = getTaxonomyCatalog(state);
+
+    if (!qbState.folderNav || !qbState.folderNav.subTab) {
       qbState.folderNav = {
-        level: 'subjects', // 'subjects' | 'topics' | 'questions'
+        subTab: 'subject_library', // 'subject_library' | 'pyq_library' | 'search_filters' | 'import_preview' | 'folder_management'
+        level: 'mainCategories',   // 'mainCategories' | 'subjects' | 'topics' | 'questions'
+        mainCategoryId: '',
         subjectId: '',
-        subjectNameEn: '',
-        subjectNameHi: '',
         topicId: '',
-        topicNameEn: '',
-        topicNameHi: '',
+        pyqCategory: '',
+        pyqExamName: '',
+        pyqYear: '',
+        pyqPaper: '',
         search: '',
         difficulty: 'ALL',
+        advFilters: {
+          mainCategoryId: 'ALL',
+          subjectId: 'ALL',
+          topicId: 'ALL',
+          examFilter: 'ALL',
+          examYear: '',
+          language: 'ALL',
+          verificationStatus: 'ALL'
+        },
         isScanning: false,
         scanStatusText: '',
         lastScanSummary: null,
         selectedQuestionFile: null,
         selectedAnswerKeyFile: null,
         paperSetCode: 'A',
-        overrideSubject: '',
-        overrideTopic: ''
+        overrideSubject: ''
       };
     }
     const nav = qbState.folderNav;
+    if (!nav.advFilters) {
+      nav.advFilters = {
+        mainCategoryId: 'ALL', subjectId: 'ALL', topicId: 'ALL',
+        examFilter: 'ALL', examYear: '', language: 'ALL', verificationStatus: 'ALL'
+      };
+    }
 
     const activeQuestions = (state.questionBank || []).filter(
-      (q) => !q.isDeleted && !q.deleted && String(q.status || '').toLowerCase() !== 'deleted'
+      (q) => q && !q.isDeleted && !q.deleted && String(q.status || '').toLowerCase() !== 'deleted'
     );
 
-    // Subject Icons helper
-    const subjectIcons = {
-      sub_cg_gk: '🏛️',
-      sub_history: '📜',
-      sub_geography: '🌍',
-      sub_polity: '⚖️',
-      sub_economy: '📈',
-      sub_science: '🔬',
-      sub_aptitude: '🧮',
-      sub_hindi: '🇮🇳',
-      sub_english: '🔤',
-      sub_computer: '💻',
-      sub_current_affairs: '📰',
-      sub_pedagogy: '🎓'
-    };
+    // 1. Build Main Category -> Subject -> Topic Hierarchy
+    const mainCatMap = new Map();
+    catalog.mainCategories.forEach((mc) => {
+      mainCatMap.set(mc.mainCategoryId, {
+        mainCategoryId: mc.mainCategoryId,
+        titleEn: mc.titleEn,
+        titleHi: mc.titleHi || mc.titleEn,
+        icon: mc.icon || '🗂️',
+        directTopics: Boolean(mc.directTopics),
+        subjectsMap: new Map(),
+        questions: [],
+        totalTopics: 0
+      });
+    });
+    mainCatMap.set('cat_uncategorised', {
+      mainCategoryId: 'cat_uncategorised',
+      titleEn: 'Uncategorised (अवर्गीकृत)',
+      titleHi: 'अवर्गीकृत प्रश्न (Uncategorised)',
+      icon: '⚠️',
+      directTopics: false,
+      subjectsMap: new Map(),
+      questions: [],
+      totalTopics: 0
+    });
 
-    // Build Subject Folders map (from Subject Master + any custom subjects on questions)
-    const subjectFoldersMap = new Map();
     catalog.subjects.forEach((s) => {
-      subjectFoldersMap.set(s.subjectId, {
+      const mcId = s.mainCategoryId && mainCatMap.has(s.mainCategoryId) ? s.mainCategoryId : 'cat_cg_gk';
+      const mcFolder = mainCatMap.get(mcId);
+      mcFolder.subjectsMap.set(s.subjectId, {
         subjectId: s.subjectId,
+        mainCategoryId: mcId,
         titleEn: s.titleEn,
         titleHi: s.titleHi || s.titleEn,
-        icon: subjectIcons[s.subjectId] || '📁',
+        icon: s.icon || '📁',
         topicsMap: new Map(),
         questions: []
       });
     });
-
-    // Pre-populate topics from Topic Master into their parent Subject Folder
-    catalog.topics.forEach((t) => {
-      const parentSub = subjectFoldersMap.get(t.subjectId);
-      if (parentSub) {
-        parentSub.topicsMap.set(t.topicId, {
-          topicId: t.topicId,
-          subjectId: t.subjectId,
-          titleEn: t.titleEn,
-          titleHi: t.titleHi || t.titleEn,
+    mainCatMap.get('cat_uncategorised').subjectsMap.set('sub_uncategorised', {
+      subjectId: 'sub_uncategorised',
+      mainCategoryId: 'cat_uncategorised',
+      titleEn: 'Uncategorised',
+      titleHi: 'अवर्गीकृत (Uncategorised)',
+      icon: '⚠️',
+      topicsMap: new Map([
+        ['top_uncategorised', {
+          topicId: 'top_uncategorised',
+          subjectId: 'sub_uncategorised',
+          titleEn: 'Uncategorised',
+          titleHi: 'अवर्गीकृत (Needs Manual Categorisation)',
           questions: []
-        });
+        }]
+      ]),
+      questions: []
+    });
+
+    catalog.topics.forEach((t) => {
+      for (const mcFolder of mainCatMap.values()) {
+        if (mcFolder.subjectsMap.has(t.subjectId)) {
+          const sf = mcFolder.subjectsMap.get(t.subjectId);
+          sf.topicsMap.set(t.topicId, {
+            topicId: t.topicId,
+            subjectId: t.subjectId,
+            titleEn: t.titleEn,
+            titleHi: t.titleHi || t.titleEn,
+            questions: []
+          });
+          break;
+        }
       }
     });
 
-    // Distribute activeQuestions into Subject -> Topic folders
     activeQuestions.forEach((q) => {
-      const matchedSub = catalog.findSubject(q.subjectId || q.subjectTag || 'Chhattisgarh General Knowledge');
-      const subId = matchedSub ? matchedSub.subjectId : makeSlugId('sub', q.subjectTag || 'General Studies');
-      const subEn = matchedSub ? matchedSub.titleEn : (q.subjectTag || 'General Studies');
-      const subHi = matchedSub ? (matchedSub.titleHi || matchedSub.titleEn) : (q.subjectTag || 'सामान्य अध्ययन');
+      const isUncat = q.subjectId === 'sub_uncategorised' || q.subjectTag === 'Uncategorised' || q.verificationStatus === 'needs_categorisation' || q.needsCategorisation;
+      if (isUncat) {
+        const uncatMc = mainCatMap.get('cat_uncategorised');
+        const uncatSub = uncatMc.subjectsMap.get('sub_uncategorised');
+        const uncatTop = uncatSub.topicsMap.get('top_uncategorised');
+        uncatMc.questions.push(q);
+        uncatSub.questions.push(q);
+        uncatTop.questions.push(q);
+        return;
+      }
 
-      if (!subjectFoldersMap.has(subId)) {
-        subjectFoldersMap.set(subId, {
+      const matchedSub = catalog.findSubject(q.subjectId || q.subjectTag || '');
+      const mcId = (matchedSub && matchedSub.mainCategoryId && mainCatMap.has(matchedSub.mainCategoryId))
+        ? matchedSub.mainCategoryId
+        : (q.mainCategoryId && mainCatMap.has(q.mainCategoryId) ? q.mainCategoryId : 'cat_uncategorised');
+      const mcFolder = mainCatMap.get(mcId) || mainCatMap.get('cat_uncategorised');
+
+      const subId = matchedSub ? matchedSub.subjectId : (mcId === 'cat_uncategorised' ? 'sub_uncategorised' : makeSlugId('sub', q.subjectTag || 'Uncategorised'));
+      if (!mcFolder.subjectsMap.has(subId)) {
+        mcFolder.subjectsMap.set(subId, {
           subjectId: subId,
-          titleEn: subEn,
-          titleHi: subHi,
-          icon: subjectIcons[subId] || '📁',
+          mainCategoryId: mcId,
+          titleEn: q.subjectTag || 'Uncategorised',
+          titleHi: q.subjectTag || 'Uncategorised',
+          icon: '📁',
           topicsMap: new Map(),
           questions: []
         });
       }
-      const subFolder = subjectFoldersMap.get(subId);
-      subFolder.questions.push(q);
-
-      const matchedTop = catalog.findTopic(subId, q.topicId || q.topic || 'General Topic');
-      const topId = matchedTop ? matchedTop.topicId : makeSlugId('top', `${subId}_${q.topic || 'General Topic'}`);
-      const topEn = matchedTop ? matchedTop.titleEn : (q.topic || 'General Topic');
-      const topHi = matchedTop ? (matchedTop.titleHi || matchedTop.titleEn) : (q.topic || 'सामान्य टॉपिक');
-
+      const subFolder = mcFolder.subjectsMap.get(subId);
+      const matchedTop = catalog.findTopic(subId, q.topicId || q.topic || '');
+      const topId = matchedTop ? matchedTop.topicId : (subId === 'sub_uncategorised' ? 'top_uncategorised' : makeSlugId('top', `${subId}_${q.topic || 'Uncategorised'}`));
       if (!subFolder.topicsMap.has(topId)) {
         subFolder.topicsMap.set(topId, {
           topicId: topId,
           subjectId: subId,
-          titleEn: topEn,
-          titleHi: topHi,
+          titleEn: q.topic || 'Uncategorised',
+          titleHi: q.topic || 'Uncategorised',
           questions: []
         });
       }
+      mcFolder.questions.push(q);
+      subFolder.questions.push(q);
       subFolder.topicsMap.get(topId).questions.push(q);
     });
 
-    const subjectFolders = Array.from(subjectFoldersMap.values());
-    const totalTopicFoldersCount = subjectFolders.reduce((acc, s) => acc + s.topicsMap.size, 0);
+    mainCatMap.forEach((mc) => {
+      let tCount = 0;
+      mc.subjectsMap.forEach((sf) => { tCount += sf.topicsMap.size; });
+      mc.totalTopics = tCount;
+    });
+    const mainCatFolders = Array.from(mainCatMap.values());
 
-    const activeSubjectFolder = nav.subjectId ? subjectFoldersMap.get(nav.subjectId) : null;
+    // 2. Build Exam-wise PYQ Library Tree (Exam Category -> Exam Name -> Year -> Paper / Shift -> Referenced Questions)
+    const pyqTree = new Map();
+    catalog.pyqCategories.forEach((pc) => {
+      const examsMap = new Map();
+      (pc.exams || []).forEach((exName) => {
+        examsMap.set(exName, { examName: exName, years: new Map(), questions: [] });
+      });
+      pyqTree.set(pc.code, {
+        code: pc.code,
+        titleEn: pc.titleEn,
+        titleHi: pc.titleHi || pc.titleEn,
+        icon: pc.icon || '🏛️',
+        exams: examsMap,
+        questions: []
+      });
+    });
+
+    let totalPyqRefLinks = 0;
+    activeQuestions.forEach((q) => {
+      const refs = normalizeQuestionPyqReferences(q);
+      refs.forEach((ref) => {
+        totalPyqRefLinks += 1;
+        const catCode = pyqTree.has(ref.examCategory) ? ref.examCategory : 'OTHER_EXAMS';
+        const catNode = pyqTree.get(catCode) || pyqTree.values().next().value;
+        if (!catNode.questions.includes(q)) catNode.questions.push(q);
+
+        const exName = ref.examName || 'General Competitive Exam';
+        if (!catNode.exams.has(exName)) {
+          catNode.exams.set(exName, { examName: exName, years: new Map(), questions: [] });
+        }
+        const exNode = catNode.exams.get(exName);
+        if (!exNode.questions.includes(q)) exNode.questions.push(q);
+
+        const yrKey = String(ref.examYear || '').trim() || 'Year Not Specified';
+        if (!exNode.years.has(yrKey)) {
+          exNode.years.set(yrKey, { year: yrKey, papers: new Map(), questions: [] });
+        }
+        const yrNode = exNode.years.get(yrKey);
+        if (!yrNode.questions.includes(q)) yrNode.questions.push(q);
+
+        const paperLabel = [ref.paperName, ref.shift].filter(Boolean).join(' • ') || 'Paper 1';
+        if (!yrNode.papers.has(paperLabel)) {
+          yrNode.papers.set(paperLabel, { label: paperLabel, questions: [] });
+        }
+        const ppNode = yrNode.papers.get(paperLabel);
+        if (!ppNode.questions.includes(q)) ppNode.questions.push(q);
+      });
+    });
+
+    const activeMainCatFolder = nav.mainCategoryId ? mainCatMap.get(nav.mainCategoryId) : null;
+    const activeSubjectFolder = (activeMainCatFolder && nav.subjectId)
+      ? activeMainCatFolder.subjectsMap.get(nav.subjectId)
+      : null;
     const activeTopicFolder = (activeSubjectFolder && nav.topicId && nav.topicId !== 'ALL_IN_SUBJECT')
       ? activeSubjectFolder.topicsMap.get(nav.topicId)
       : null;
 
-    // Determine questions to display when in 'questions' view or when searching
-    const searchLow = String(nav.search || '').trim().toLowerCase();
+    // 3. Determine base question list for current sub-tab
     let baseQuestionList = [];
-    if (nav.level === 'questions' || searchLow) {
-      if (activeTopicFolder) {
-        baseQuestionList = activeTopicFolder.questions;
-      } else if (activeSubjectFolder) {
-        baseQuestionList = activeSubjectFolder.questions;
-      } else {
-        baseQuestionList = activeQuestions;
-      }
+    if (nav.subTab === 'subject_library') {
+      if (activeTopicFolder) baseQuestionList = activeTopicFolder.questions;
+      else if (activeSubjectFolder) baseQuestionList = activeSubjectFolder.questions;
+      else if (activeMainCatFolder) baseQuestionList = activeMainCatFolder.questions;
+      else baseQuestionList = activeQuestions;
+    } else if (nav.subTab === 'pyq_library') {
+      const selCat = nav.pyqCategory ? pyqTree.get(nav.pyqCategory) : null;
+      const selExam = (selCat && nav.pyqExamName) ? selCat.exams.get(nav.pyqExamName) : null;
+      const selYear = (selExam && nav.pyqYear) ? selExam.years.get(nav.pyqYear) : null;
+      const selPaper = (selYear && nav.pyqPaper) ? selYear.papers.get(nav.pyqPaper) : null;
+      if (selPaper) baseQuestionList = selPaper.questions;
+      else if (selYear) baseQuestionList = selYear.questions;
+      else if (selExam) baseQuestionList = selExam.questions;
+      else if (selCat) baseQuestionList = selCat.questions;
+      else baseQuestionList = activeQuestions.filter((q) => normalizeQuestionPyqReferences(q).length > 0);
+    } else {
+      baseQuestionList = activeQuestions;
     }
 
+    const searchLow = String(nav.search || '').trim().toLowerCase();
+    const sf = nav.advFilters;
     const filteredQuestions = baseQuestionList.filter((q) => {
       if (nav.difficulty !== 'ALL') {
         const qDiff = normalizeDifficultyValue(q.difficultyLevel || q.difficulty) || 'Moderate';
         if (qDiff !== nav.difficulty) return false;
       }
+      if (nav.subTab === 'search_filters') {
+        if (sf.mainCategoryId !== 'ALL' && q.mainCategoryId !== sf.mainCategoryId) return false;
+        if (sf.subjectId !== 'ALL' && q.subjectId !== sf.subjectId) return false;
+        if (sf.topicId !== 'ALL' && q.topicId !== sf.topicId) return false;
+        if (sf.verificationStatus !== 'ALL') {
+          const isUncat = q.subjectId === 'sub_uncategorised' || q.verificationStatus === 'needs_categorisation';
+          if (sf.verificationStatus === 'needs_categorisation' && !isUncat) return false;
+          if (sf.verificationStatus === 'verified' && (isUncat || q.verificationStatus !== 'verified')) return false;
+          if (sf.verificationStatus === 'possible_duplicate' && q.verificationStatus !== 'possible_duplicate') return false;
+        }
+        if (sf.language !== 'ALL') {
+          const langAvail = q.languageAvailability || ((q.questionHi && q.questionEn && q.questionHi !== q.questionEn) ? 'Bilingual' : (q.questionHi ? 'Hindi' : 'English'));
+          if (langAvail !== sf.language) return false;
+        }
+        if (sf.examFilter !== 'ALL') {
+          const refs = normalizeQuestionPyqReferences(q);
+          if (sf.examFilter === 'ANY_PYQ' && refs.length === 0) return false;
+          if (sf.examFilter.startsWith('CAT:')) {
+            const code = sf.examFilter.slice(4);
+            if (!refs.some((r) => r.examCategory === code)) return false;
+          }
+        }
+        if (sf.examYear && String(sf.examYear).trim()) {
+          const yr = String(sf.examYear).trim();
+          const refs = normalizeQuestionPyqReferences(q);
+          if (!refs.some((r) => String(r.examYear || '').includes(yr))) return false;
+        }
+      }
       if (searchLow) {
         const hay = [
-          q.questionHi, q.questionEn, q.subjectTag, q.topic,
+          q.questionId, q.id, q.questionHi, q.questionEn, q.mainCategory, q.subjectTag, q.topic,
           ...(q.optionsHi || []), ...(q.optionsEn || []),
-          q.explanationHi, q.explanationEn
+          q.explanationHi, q.explanationEn,
+          ...normalizeQuestionPyqReferences(q).map((r) => `${r.examCategory} ${r.examName} ${r.examYear} ${r.paperName}`)
         ].join(' ').toLowerCase();
         if (!hay.includes(searchLow)) return false;
       }
       return true;
     });
 
-    // Pagination for questions view
     const totalFiltered = filteredQuestions.length;
     const totalPages = Math.max(1, Math.ceil(totalFiltered / qbState.pageSize));
     if (qbState.page > totalPages) qbState.page = totalPages;
@@ -9983,417 +12099,78 @@ Return ONLY a valid JSON array of objects:
     );
     qbState.selectedIds = validSelectedIds;
     const selectedCount = validSelectedIds.size;
-    const letters = ['A', 'B', 'C', 'D'];
+    const uncatTotal = mainCatMap.get('cat_uncategorised')?.questions.length || 0;
 
     bodyEl.innerHTML = `
-      <!-- Top Summary & Compact Action Bar -->
-      <div class="card" style="border-left:5px solid var(--primary);margin-bottom:14px;padding:14px 16px;">
+      <!-- Top Header & Global Question Bank KPIs -->
+      <div class="card" style="border-left:5px solid var(--primary);margin-bottom:12px;padding:14px 16px;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
           <div>
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-              <span class="badge badge-exam">🤖 AI स्मार्ट प्रश्न बैंक (SUBJECT → TOPIC FOLDER SYSTEM)</span>
-              <span class="badge badge-review">📁 ${subjectFolders.length} विषय फ़ोल्डर</span>
-              <span class="badge badge-draft">📂 ${totalTopicFoldersCount} टॉपिक फ़ोल्डर</span>
-              <span class="badge badge-free">📝 ${activeQuestions.length} कुल प्रश्न (Test Builder के लिए तैयार)</span>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <span class="badge badge-exam">🏛️ CENTRAL QUESTION DATABASE (2-PART LIBRARY)</span>
+              <span class="badge badge-free">📝 ${activeQuestions.length} Central Questions</span>
+              <span class="badge badge-review">🏛️ ${totalPyqRefLinks} Exam PYQ References</span>
+              ${uncatTotal > 0 ? `<span class="badge badge-paid">⚠️ ${uncatTotal} Uncategorised</span>` : ''}
             </div>
-            <h3 style="font-size:1.06rem;font-weight:800;margin-top:6px;">
-              विषय-वार और टॉपिक-वार प्रश्न बैंक (Question Paper + Answer Key AI Scanner)
+            <h3 style="font-size:1.05rem;font-weight:800;margin-top:6px;">
+              CGpedia Central Question Bank — Subject-wise Library & Exam-wise PYQ Library
             </h3>
-          </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button class="btn btn-primary btn-sm" id="qbPopupAiPromptGenBtn" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);border:none;">✨ AI प्रॉम्प्ट से प्रश्न बनाएं</button>
-            <button class="btn btn-primary btn-sm" id="qbPopupPasteTextModalBtn" style="background:linear-gradient(135deg,#059669,#0d9488);border:none;">📋 पैराग्राफ / टेक्स्ट पेस्ट करें</button>
-            <button class="btn btn-primary btn-sm" id="qbPopupAddSingleQuestionBtn">➕ एक प्रश्न जोड़ें (Add Question)</button>
-            <button class="btn btn-outline btn-sm" id="qbPopupNewSubjectBtn">📁 + नया विषय</button>
-            <button class="btn btn-outline btn-sm" id="qbPopupNewTopicBtn">📂 + नया टॉपिक</button>
-            <button class="btn btn-outline btn-sm" id="qbQuickExportJsonBtn" title="प्रश्न बैंक बैकअप डाउनलोड करें">⬇️ Backup JSON</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Card 1: AI Dual-File Scanner (Question Paper + Answer Key -> Auto Subject/Topic Folder Save) -->
-      <div class="card" style="border:1.5px solid var(--secondary);background:linear-gradient(180deg, var(--surface) 0%, var(--surface-alt) 100%);margin-bottom:16px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
-          <div>
-            <h3 style="font-size:1.02rem;font-weight:800;color:var(--primary);display:flex;align-items:center;gap:6px;">
-              <span>🤖 AI से प्रश्न-पत्र और मॉडल उत्तर कुंजी स्कैन करें</span>
-              <span class="badge badge-free" style="font-size:0.7rem;">सीधे Subject → Topic फ़ोल्डर में सेव</span>
-            </h3>
-            <p style="font-size:0.8rem;color:var(--text-secondary);margin-top:2px;">
-              बस <strong>1. प्रश्न-पत्र (Question Paper)</strong> और <strong>2. उत्तर कुंजी (Answer Key)</strong> फ़ाइल चुनें — AI सभी प्रश्नों और सही उत्तरों को मिलाकर अपने-आप सही <strong>विषय (Subject) → टॉपिक (Topic)</strong> फ़ोल्डर में सेव कर देगा।
-            </p>
           </div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;">
-            <button class="btn btn-outline btn-sm" id="qbDownloadSampleCsvBtn">⬇️ Sample CSV</button>
-            <button class="btn btn-outline btn-sm" id="qbDownloadSampleJsonBtn">⬇️ Sample JSON</button>
+            <button class="btn btn-primary btn-sm" id="qbPopupAiPromptGenBtn" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);border:none;">✨ AI प्रॉम्प्ट से प्रश्न</button>
+            <button class="btn btn-primary btn-sm" id="qbPopupPasteTextModalBtn" style="background:linear-gradient(135deg,#059669,#0d9488);border:none;">📋 टेक्स्ट पेस्ट करें</button>
+            <button class="btn btn-primary btn-sm" id="qbPopupAddSingleQuestionBtn">➕ प्रश्न जोड़ें</button>
+            <button class="btn btn-outline btn-sm" id="qbQuickExportJsonBtn">⬇️ Backup JSON</button>
           </div>
         </div>
 
-        <div class="grid-3" style="gap:10px;margin-bottom:10px;">
-          <!-- Box 1: Question Paper File -->
-          <div style="padding:10px 12px;border-radius:10px;background:var(--surface);border:1.5px dashed var(--primary);">
-            <label class="form-label" style="color:var(--primary);font-weight:800;font-size:0.8rem;">
-              1️⃣ प्रश्न-पत्र फ़ाइल (Question Paper PDF / Image / CSV / JSON) *
-            </label>
-            <input type="file" accept=".pdf,.csv,.json,.png,.jpg,.jpeg,.webp,application/pdf,text/csv,application/json,image/*" class="form-input" id="qbAiQuestionFileInput" style="padding:6px;font-size:0.78rem;" />
-            <div id="qbSelectedQPFileLabel" style="font-size:0.75rem;margin-top:5px;color:${nav.selectedQuestionFile ? 'var(--success)' : 'var(--text-muted)'};font-weight:800;">
-              ${nav.selectedQuestionFile ? `✅ अपलोड हो गया (चुना गया): ${esc(nav.selectedQuestionFile.name)}` : 'कोई भी PDF, Photo, CSV या JSON प्रश्न-पत्र चुनें'}
-            </div>
-          </div>
-
-          <!-- Box 2: Answer Key File + Set Selector -->
-          <div style="padding:10px 12px;border-radius:10px;background:var(--surface);border:1.5px dashed var(--secondary);">
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:4px;">
-              <label class="form-label" style="color:var(--secondary);font-weight:800;font-size:0.8rem;margin-bottom:0;">
-                2️⃣ उत्तर कुंजी फ़ाइल (Answer Key — वैकल्पिक)
-              </label>
-              <select class="form-select" id="qbAiPaperSetSelect" style="width:auto;padding:2px 8px;font-size:0.74rem;height:26px;">
-                <option value="A" ${nav.paperSetCode === 'A' ? 'selected' : ''}>Set A</option>
-                <option value="B" ${nav.paperSetCode === 'B' ? 'selected' : ''}>Set B</option>
-                <option value="C" ${nav.paperSetCode === 'C' ? 'selected' : ''}>Set C</option>
-                <option value="D" ${nav.paperSetCode === 'D' ? 'selected' : ''}>Set D</option>
-              </select>
-            </div>
-            <input type="file" accept=".pdf,.txt,.csv,.png,.jpg,.jpeg,.webp,application/pdf,text/plain,text/csv,image/*" class="form-input" id="qbAiAnswerKeyFileInput" style="padding:6px;font-size:0.78rem;margin-bottom:4px;" />
-            <div id="qbSelectedAKFileLabel" style="font-size:0.75rem;margin-bottom:5px;color:${nav.selectedAnswerKeyFile ? 'var(--success)' : 'var(--text-muted)'};font-weight:800;">
-              ${nav.selectedAnswerKeyFile ? `✅ अपलोड हो गया (चुना गया): ${esc(nav.selectedAnswerKeyFile.name)}` : 'उत्तर कुंजी PDF, Photo, TXT या CSV चुनें (वैकल्पिक)'}
-            </div>
-            <input class="form-input" id="qbAiAnswerKeyTextInput" value="${esc(qbState.pendingAnswerKeyText || '')}" placeholder="या उत्तर लिखें: 1-A, 2-C, 3-B (वैकल्पिक)" style="padding:5px 8px;font-size:0.76rem;" />
-          </div>
-
-          <!-- Box 3: Folder Destination & Scan Button -->
-          <div style="padding:10px 12px;border-radius:10px;background:var(--surface);border:1px solid var(--border);display:flex;flex-direction:column;justify-content:space-between;">
-            <div>
-              <label class="form-label" style="font-weight:800;font-size:0.78rem;margin-bottom:4px;">
-                3️⃣ फ़ोल्डर चयन (AI Auto या निश्चित विषय)
-              </label>
-              <select class="form-select" id="qbAiOverrideSubjectSelect" style="padding:6px 8px;font-size:0.78rem;margin-bottom:6px;">
-                <option value="">🤖 AI अपने-आप सही विषय (Subject) पहचाने</option>
-                ${catalog.subjects.map((s) => `
-                  <option value="${esc(s.titleEn)}" ${nav.overrideSubject === s.titleEn ? 'selected' : ''}>
-                    📁 ${esc(s.titleHi)} (${esc(s.titleEn)})
-                  </option>
-                `).join('')}
-              </select>
-            </div>
-            <button class="btn btn-success" id="qbStartAiScanAndSaveBtn" style="width:100%;font-weight:800;padding:10px 12px;font-size:0.85rem;" ${nav.isScanning ? 'disabled' : ''}>
-              ${nav.isScanning ? '⏳ AI स्कैन और सेव हो रहा है...' : '🚀 AI से स्कैन करें और फ़ोल्डर में सेव करें'}
-            </button>
-          </div>
+        <!-- 5 Sub-Tabs Navigation Bar -->
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;padding-top:10px;border-top:1px solid var(--border);">
+          <button class="btn ${nav.subTab === 'subject_library' ? 'btn-primary' : 'btn-outline'} btn-sm" data-qb-subtab="subject_library">
+            📚 1. Subject-wise Library (${activeQuestions.length})
+          </button>
+          <button class="btn ${nav.subTab === 'pyq_library' ? 'btn-primary' : 'btn-outline'} btn-sm" data-qb-subtab="pyq_library">
+            🏛️ 2. Exam-wise PYQ Library (${totalPyqRefLinks})
+          </button>
+          <button class="btn ${nav.subTab === 'search_filters' ? 'btn-primary' : 'btn-outline'} btn-sm" data-qb-subtab="search_filters">
+            🔍 3. Search & Filters
+          </button>
+          <button class="btn ${nav.subTab === 'import_preview' ? 'btn-primary' : 'btn-outline'} btn-sm" data-qb-subtab="import_preview">
+            📥 4. Import & Preview ${qbState.previewSession ? `(${qbState.previewSession.records.length})` : ''}
+          </button>
+          <button class="btn ${nav.subTab === 'folder_management' ? 'btn-primary' : 'btn-outline'} btn-sm" data-qb-subtab="folder_management">
+            🗂️ 5. Folders & Migration Report
+          </button>
         </div>
-
-        ${nav.isScanning || nav.scanStatusText ? `
-          <div id="qbAiScanStatusBox" style="padding:10px 14px;border-radius:8px;background:var(--primary-soft);border:1px solid var(--primary);color:var(--primary);font-size:0.82rem;font-weight:800;margin-top:6px;">
-            ${esc(nav.scanStatusText || '⏳ कृपया प्रतीक्षा करें, AI फ़ाइल को स्कैन कर रहा है...')}
-          </div>
-        ` : ''}
-
-        ${nav.lastScanSummary ? `
-          <div style="padding:12px 14px;border-radius:10px;background:var(--success-soft);border:1.5px solid var(--success);margin-top:8px;">
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
-              <div style="font-weight:800;font-size:0.88rem;color:var(--success);">
-                ✅ ${esc(nav.lastScanSummary.message)}
-              </div>
-              <button class="btn btn-outline btn-sm" id="qbDismissScanSummaryBtn" style="padding:2px 8px;font-size:0.72rem;">✕ बंद करें</button>
-            </div>
-            ${Array.isArray(nav.lastScanSummary.folderBreakdown) && nav.lastScanSummary.folderBreakdown.length > 0 ? `
-              <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-                <span style="font-size:0.76rem;font-weight:700;color:var(--text-secondary);">सेव किए गए फ़ोल्डर खोलें:</span>
-                ${nav.lastScanSummary.folderBreakdown.map((fb) => `
-                  <button class="btn btn-outline btn-sm" data-open-scanned-folder="${esc(fb.subjectId)}:::${esc(fb.topicId)}" style="background:var(--surface);font-size:0.75rem;padding:4px 10px;">
-                    📁 ${esc(fb.subjectName)} › 📂 ${esc(fb.topicName)} (<strong>${fb.count} प्रश्न</strong>)
-                  </button>
-                `).join('')}
-              </div>
-            ` : ''}
-          </div>
-        ` : ''}
       </div>
 
-      <!-- Card 2: Subject -> Topic -> Questions Folder Explorer -->
-      <div class="card">
-        <!-- Breadcrumb & Search Header -->
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding-bottom:12px;margin-bottom:14px;border-bottom:1px solid var(--border);">
-          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-            <button class="btn ${nav.level === 'subjects' && !searchLow ? 'btn-primary' : 'btn-outline'} btn-sm" id="qbBreadcrumbHomeBtn">
-              🏠 सभी विषय फ़ोल्डर (${subjectFolders.length})
-            </button>
-            ${activeSubjectFolder ? `
-              <span style="font-weight:800;color:var(--text-muted);">›</span>
-              <button class="btn ${nav.level === 'topics' && !searchLow ? 'btn-primary' : 'btn-outline'} btn-sm" id="qbBreadcrumbSubjectBtn">
-                ${esc(activeSubjectFolder.icon)} ${esc(activeSubjectFolder.titleHi)} (${activeSubjectFolder.questions.length})
-              </button>
-            ` : ''}
-            ${activeTopicFolder ? `
-              <span style="font-weight:800;color:var(--text-muted);">›</span>
-              <span class="badge badge-exam" style="padding:6px 10px;font-size:0.8rem;">
-                📂 ${esc(activeTopicFolder.titleHi)} (${activeTopicFolder.questions.length} प्रश्न)
-              </span>
-            ` : (nav.level === 'questions' && activeSubjectFolder && nav.topicId === 'ALL_IN_SUBJECT' ? `
-              <span style="font-weight:800;color:var(--text-muted);">›</span>
-              <span class="badge badge-exam" style="padding:6px 10px;font-size:0.8rem;">
-                📋 सभी प्रश्न (${activeSubjectFolder.questions.length})
-              </span>
-            ` : '')}
-          </div>
-
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:1;max-width:420px;justify-content:flex-end;">
-            <input class="form-input" id="qbExplorerSearchInput" value="${esc(nav.search)}" placeholder="🔍 किसी भी प्रश्न या उत्तर को खोजें..." style="padding:7px 12px;font-size:0.82rem;flex:1;min-width:190px;" />
-            ${nav.search ? `<button class="btn btn-outline btn-sm" id="qbClearSearchBtn">✕</button>` : ''}
-          </div>
-        </div>
-
-        <!-- LEVEL 1: ALL SUBJECT FOLDERS GRID -->
-        ${nav.level === 'subjects' && !searchLow ? `
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
-            <div>
-              <h4 style="font-size:0.96rem;font-weight:800;">📁 विषय फ़ोल्डर चुनें (Click a Subject to View Topic Folders)</h4>
-              <p style="font-size:0.78rem;color:var(--text-secondary);">
-                प्रत्येक विषय के अंदर उसके अलग-अलग टॉपिक फ़ोल्डर हैं जिनमें AI द्वारा स्कैन किए गए प्रश्न-उत्तर सुरक्षित हैं।
-              </p>
-            </div>
-            <button class="btn btn-outline btn-sm" id="qbViewAllQuestionsFlatBtn">📋 सारे विषयों के सभी प्रश्न देखें (${activeQuestions.length})</button>
-          </div>
-
-          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(255px,1fr));gap:12px;">
-            ${subjectFolders.map((sf) => `
-              <div class="card" data-open-subject-folder="${esc(sf.subjectId)}" style="margin-bottom:0;cursor:pointer;border:1.5px solid ${sf.questions.length > 0 ? 'var(--primary)' : 'var(--border)'};background:${sf.questions.length > 0 ? 'var(--surface)' : 'var(--surface-alt)'};transition:transform 0.15s,box-shadow 0.15s;">
-                <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
-                  <div style="font-size:1.75rem;line-height:1;">${sf.icon}</div>
-                  <span class="badge ${sf.questions.length > 0 ? 'badge-free' : 'badge-draft'}" style="font-size:0.76rem;">
-                    📝 ${sf.questions.length} प्रश्न
-                  </span>
-                </div>
-                <div style="font-weight:800;font-size:0.95rem;margin-top:10px;color:var(--text);">
-                  ${esc(sf.titleHi)}
-                </div>
-                <div style="font-size:0.78rem;color:var(--text-secondary);font-weight:600;margin-top:2px;">
-                  ${esc(sf.titleEn)}
-                </div>
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding-top:8px;border-top:1px dashed var(--border);font-size:0.76rem;color:var(--primary);font-weight:800;">
-                  <span>📂 ${sf.topicsMap.size} टॉपिक फ़ोल्डर</span>
-                  <span>खोलें (Open) ▶</span>
-                </div>
-              </div>
-            `).join('')}
-          </div>
-        ` : ''}
-
-        <!-- LEVEL 2: TOPIC FOLDERS INSIDE SELECTED SUBJECT -->
-        ${nav.level === 'topics' && activeSubjectFolder && !searchLow ? `
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
-            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-              <button class="btn btn-outline btn-sm" id="qbBackToSubjectsBtn">⬅️ वापस सभी विषयों पर</button>
-              <div>
-                <h4 style="font-size:1rem;font-weight:800;">
-                  ${esc(activeSubjectFolder.icon)} ${esc(activeSubjectFolder.titleHi)} (${esc(activeSubjectFolder.titleEn)}) — टॉपिक फ़ोल्डर
-                </h4>
-                <div style="font-size:0.77rem;color:var(--text-secondary);">
-                  किसी भी टॉपिक फ़ोल्डर पर क्लिक करके उसके अंदर के प्रश्न और उत्तर देखें।
-                </div>
-              </div>
-            </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
-              <button class="btn btn-outline btn-sm" id="qbAddTopicInSubjectBtn">📂 + नया टॉपिक जोड़ें</button>
-              <button class="btn btn-primary btn-sm" id="qbAddQuestionInSubjectBtn">➕ इस विषय में प्रश्न जोड़ें</button>
-              <button class="btn btn-navy btn-sm" id="qbViewAllSubjectQuestionsBtn">📋 इस विषय के सभी प्रश्न (${activeSubjectFolder.questions.length})</button>
-            </div>
-          </div>
-
-          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(245px,1fr));gap:12px;">
-            ${Array.from(activeSubjectFolder.topicsMap.values()).map((tf) => `
-              <div class="card" data-open-topic-folder="${esc(tf.topicId)}" style="margin-bottom:0;cursor:pointer;border:1.5px solid ${tf.questions.length > 0 ? 'var(--secondary)' : 'var(--border)'};background:${tf.questions.length > 0 ? 'var(--surface)' : 'var(--surface-alt)'};">
-                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-                  <span style="font-size:1.45rem;">📂</span>
-                  <span class="badge ${tf.questions.length > 0 ? 'badge-exam' : 'badge-draft'}" style="font-size:0.75rem;">
-                    📝 ${tf.questions.length} प्रश्न
-                  </span>
-                </div>
-                <div style="font-weight:800;font-size:0.92rem;margin-top:8px;color:var(--text);">
-                  ${esc(tf.titleHi)}
-                </div>
-                <div style="font-size:0.76rem;color:var(--text-secondary);margin-top:2px;">
-                  ${esc(tf.titleEn)}
-                </div>
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;padding-top:8px;border-top:1px dashed var(--border);font-size:0.75rem;color:var(--secondary);font-weight:800;">
-                  <span>प्रश्न-उत्तर देखें</span>
-                  <span>खोलें ▶</span>
-                </div>
-              </div>
-            `).join('')}
-          </div>
-        ` : ''}
-
-        <!-- LEVEL 3 (or Active Search): SCANNED QUESTIONS & ANSWERS INSIDE TOPIC / SUBJECT -->
-        ${(nav.level === 'questions' || searchLow) ? `
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-              <button class="btn btn-outline btn-sm" id="qbBackFromQuestionsBtn">
-                ⬅️ ${activeSubjectFolder ? 'वापस टॉपिक फ़ोल्डर्स पर' : 'वापस विषय फ़ोल्डर्स पर'}
-              </button>
-              <div>
-                <h4 style="font-size:0.98rem;font-weight:800;">
-                  ${searchLow
-                    ? `🔍 खोज परिणाम: "${esc(nav.search)}" (${totalFiltered} प्रश्न)`
-                    : (activeTopicFolder
-                      ? `📂 ${esc(activeTopicFolder.titleHi)} (${esc(activeTopicFolder.titleEn)}) — ${totalFiltered} प्रश्न`
-                      : (activeSubjectFolder
-                        ? `📁 ${esc(activeSubjectFolder.titleHi)} — सभी ${totalFiltered} प्रश्न`
-                        : `📋 सभी विषयों के प्रश्न (${totalFiltered})`))}
-                </h4>
-              </div>
-            </div>
-
-            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-              <select class="form-select" id="qbQuestionsDiffFilter" style="width:auto;padding:5px 10px;font-size:0.78rem;">
-                <option value="ALL" ${nav.difficulty === 'ALL' ? 'selected' : ''}>कठिनाई: सभी (All)</option>
-                <option value="Easy" ${nav.difficulty === 'Easy' ? 'selected' : ''}>Easy (सरल)</option>
-                <option value="Moderate" ${nav.difficulty === 'Moderate' ? 'selected' : ''}>Moderate (मध्यम)</option>
-                <option value="Hard" ${nav.difficulty === 'Hard' ? 'selected' : ''}>Hard (कठिन)</option>
-              </select>
-              <button class="btn btn-primary btn-sm" id="qbAddQuestionInCurrentFolderBtn">➕ यहाँ नया प्रश्न जोड़ें</button>
-              <button class="btn btn-navy btn-sm" id="qbSendFolderToTestBuilderBtn" ${totalFiltered === 0 ? 'disabled' : ''}>
-                🧪 टेस्ट में जोड़ें (${selectedCount > 0 ? selectedCount : totalFiltered})
-              </button>
-              <button class="btn btn-outline btn-sm" id="qbExportCurrentFolderCsvBtn" ${totalFiltered === 0 ? 'disabled' : ''}>⬇️ CSV</button>
-            </div>
-          </div>
-
-          <!-- Bulk Action Strip -->
-          ${totalFiltered > 0 ? `
-            <div class="qb-bulk-toolbar" style="margin-bottom:12px;">
-              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-                <label style="display:inline-flex;align-items:center;gap:6px;font-size:0.8rem;font-weight:800;cursor:pointer;">
-                  <input type="checkbox" id="qbSelectAllPageChk" ${pageItems.length > 0 && pageItems.every((q) => validSelectedIds.has(q.id)) ? 'checked' : ''} />
-                  <span>इस पेज के सभी चुनें (${pageItems.length})</span>
-                </label>
-                <button class="btn btn-outline btn-sm" id="qbSelectAllFilteredBtn">☑️ फ़ोल्डर के सभी चुनें (${totalFiltered})</button>
-                ${selectedCount > 0 ? `<button class="btn btn-outline btn-sm" id="qbClearSelectionBtn">✕ चयन हटाएं (${selectedCount})</button>` : ''}
-              </div>
-              <div style="display:flex;gap:6px;flex-wrap:wrap;">
-                <button class="btn btn-outline btn-sm" id="qbBulkMoveFolderBtn" ${selectedCount === 0 ? 'disabled' : ''}>📂 Subject/Topic फ़ोल्डर बदलें (${selectedCount})</button>
-                <button class="btn btn-danger btn-sm" id="qbBulkDeleteBtn" ${selectedCount === 0 ? 'disabled' : ''}>🗑️ हटाएं (${selectedCount})</button>
-              </div>
-            </div>
-          ` : ''}
-
-          <!-- Scanned Question & Answer Cards List -->
-          ${totalFiltered === 0 ? `
-            <div style="padding:32px 16px;text-align:center;background:var(--surface-alt);border-radius:12px;border:1px dashed var(--border);">
-              <div style="font-size:2rem;margin-bottom:6px;">📂</div>
-              <div style="font-weight:800;font-size:0.95rem;color:var(--text);">इस फ़ोल्डर में अभी कोई प्रश्न नहीं है</div>
-              <p style="font-size:0.8rem;color:var(--text-secondary);margin-top:4px;margin-bottom:12px;">
-                ऊपर <strong>AI स्कैनर</strong> से Question Paper + Answer Key अपलोड करें या नीचे बटन से नया प्रश्न जोड़ें।
-              </p>
-              <button class="btn btn-primary btn-sm" id="qbEmptyFolderAddQBtn">➕ इस फ़ोल्डर में पहला प्रश्न जोड़ें</button>
-            </div>
-          ` : `
-            <div style="display:flex;flex-direction:column;gap:12px;">
-              ${pageItems.map((q, idx) => {
-                const qNum = startIdx + idx + 1;
-                const isChecked = validSelectedIds.has(q.id);
-                const corrIdx = Number(q.correctOptionIndex ?? q.correctIndex ?? 0);
-                const optsHi = Array.isArray(q.optionsHi) ? q.optionsHi : [q.optA_Hi || '', q.optB_Hi || '', q.optC_Hi || '', q.optD_Hi || ''];
-                const optsEn = Array.isArray(q.optionsEn) ? q.optionsEn : [q.optA_En || '', q.optB_En || '', q.optC_En || '', q.optD_En || ''];
-                const diff = normalizeDifficultyValue(q.difficultyLevel || q.difficulty) || 'Moderate';
-                const diffClass = diff === 'Easy' ? 'badge-diff-easy' : (diff === 'Hard' ? 'badge-diff-difficult' : 'badge-diff-moderate');
-
-                return `
-                  <div class="qb-preview-card status-valid" style="border-left:4px solid var(--primary);margin-bottom:0;">
-                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-                      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                        <input type="checkbox" data-qb-row-select="${esc(q.id)}" ${isChecked ? 'checked' : ''} style="width:16px;height:16px;cursor:pointer;" />
-                        <span class="badge badge-exam" style="font-size:0.78rem;">प्रश्न #${qNum}</span>
-                        <span class="badge badge-review">📁 ${esc(q.subjectTag || 'General Studies')}</span>
-                        <span class="badge badge-draft">📂 ${esc(q.topic || 'General Topic')}</span>
-                        <span class="badge ${diffClass}">${esc(diff)}</span>
-                      </div>
-                      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                        <div style="display:inline-flex;align-items:center;gap:3px;padding:2px 6px;border-radius:6px;background:var(--surface-alt);border:1px solid var(--border);font-size:0.72rem;">
-                          <span style="font-weight:700;color:var(--text-secondary);">सही उत्तर:</span>
-                          ${[0, 1, 2, 3].map((oi) => `
-                            <button type="button" class="btn ${corrIdx === oi ? 'btn-success' : 'btn-outline'} btn-sm" style="padding:1px 6px;min-height:22px;font-size:0.7rem;" data-quick-ans-qbank="${esc(q.id)}:${oi}" title="विकल्प ${letters[oi]} को सही उत्तर बनाएं">${letters[oi]}</button>
-                          `).join('')}
-                        </div>
-                        <button class="btn btn-outline btn-sm" data-edit-qbank="${esc(q.id)}" title="प्रश्न संपादित करें">✏️ Edit</button>
-                        <button class="btn btn-danger btn-sm" data-del-qbank="${esc(q.id)}" title="प्रश्न हटाएं">🗑️</button>
-                      </div>
-                    </div>
-
-                    <div style="font-weight:800;font-size:0.92rem;color:var(--text);line-height:1.45;">
-                      🇮🇳 ${esc(q.questionHi || q.questionEn)}
-                    </div>
-                    ${q.questionEn && q.questionEn !== q.questionHi ? `
-                      <div style="font-weight:600;font-size:0.83rem;color:var(--text-secondary);margin-top:3px;line-height:1.4;">
-                        🇬🇧 ${esc(q.questionEn)}
-                      </div>
-                    ` : ''}
-
-                    <div class="qb-options-grid" style="margin-top:8px;">
-                      ${[0, 1, 2, 3].map((oi) => {
-                        const isCorr = corrIdx === oi;
-                        const hiTxt = optsHi[oi] || '';
-                        const enTxt = optsEn[oi] || '';
-                        return `
-                          <div class="qb-option-pill ${isCorr ? 'is-correct' : ''}" style="cursor:pointer;" data-quick-ans-qbank="${esc(q.id)}:${oi}" title="क्लिक करके विकल्प ${letters[oi]} को सही उत्तर सेट करें">
-                            <div>
-                              <div style="font-weight:${isCorr ? '800' : '600'};">
-                                <strong>(${letters[oi]})</strong> ${esc(hiTxt || enTxt)}
-                              </div>
-                              ${enTxt && enTxt !== hiTxt ? `
-                                <div style="font-size:0.74rem;color:var(--text-secondary);">${esc(enTxt)}</div>
-                              ` : ''}
-                            </div>
-                            ${isCorr ? '<span class="badge badge-free">✓ सही उत्तर</span>' : ''}
-                          </div>
-                        `;
-                      }).join('')}
-                    </div>
-
-                    <div class="qb-explanation-box" style="margin-top:8px;">
-                      <div><strong>💡 व्याख्या:</strong> ${esc(q.explanationHi || q.explanationEn || 'सही उत्तर विकल्प ' + letters[corrIdx] + ' है।')}</div>
-                      ${q.explanationEn && q.explanationEn !== q.explanationHi ? `
-                        <div style="margin-top:2px;color:var(--text-secondary);"><strong>Explanation:</strong> ${esc(q.explanationEn)}</div>
-                      ` : ''}
-                    </div>
-                  </div>
-                `;
-              }).join('')}
-            </div>
-
-            <!-- Pagination Bar -->
-            <div class="qb-pagination-bar" style="margin-top:14px;">
-              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                <span>Showing <strong>${startIdx + 1}–${Math.min(totalFiltered, startIdx + pageItems.length)}</strong> of <strong>${totalFiltered}</strong> प्रश्न</span>
-                <select class="form-select" id="qbPageSizeSelect" style="width:auto;padding:4px 8px;font-size:0.76rem;">
-                  <option value="15" ${qbState.pageSize === 15 ? 'selected' : ''}>15 / पेज</option>
-                  <option value="25" ${qbState.pageSize === 25 ? 'selected' : ''}>25 / पेज</option>
-                  <option value="50" ${qbState.pageSize === 50 ? 'selected' : ''}>50 / पेज</option>
-                  <option value="100" ${qbState.pageSize === 100 ? 'selected' : ''}>100 / पेज</option>
-                </select>
-              </div>
-              <div style="display:flex;align-items:center;gap:6px;">
-                <button class="btn btn-outline btn-sm" id="qbPrevPageBtn" ${qbState.page <= 1 ? 'disabled' : ''}>◀ पिछला</button>
-                <span style="font-weight:700;padding:0 6px;">पेज ${qbState.page} / ${totalPages}</span>
-                <button class="btn btn-outline btn-sm" id="qbNextPageBtn" ${qbState.page >= totalPages ? 'disabled' : ''}>अगला ▶</button>
-              </div>
-            </div>
-          `}
-        ` : ''}
-      </div>
+      ${renderQuestionBankSubTabContent({
+        nav, catalog, activeQuestions, mainCatFolders, activeMainCatFolder,
+        activeSubjectFolder, activeTopicFolder, pyqTree, filteredQuestions,
+        pageItems, startIdx, totalFiltered, totalPages, validSelectedIds, selectedCount, state
+      })}
     `;
 
-    // Helper to open Add Single Question popup pre-filled with current Subject & Topic folder
+    // Sub-tab switcher
+    bodyEl.querySelectorAll('[data-qb-subtab]').forEach((btn) => {
+      btn.onclick = () => {
+        nav.subTab = btn.getAttribute('data-qb-subtab') || 'subject_library';
+        qbState.page = 1;
+        renderAdminConsole(rootEl, state, api);
+      };
+    });
+
+    // Helper to open Add Single Question modal
     const openAddQuestionPopup = () => {
-      const defaultSub = activeSubjectFolder ? activeSubjectFolder.titleEn : 'Chhattisgarh General Knowledge';
+      const defaultSub = activeSubjectFolder ? activeSubjectFolder.titleEn : 'History of Chhattisgarh';
       const defaultTop = activeTopicFolder
         ? activeTopicFolder.titleEn
         : (activeSubjectFolder && Array.from(activeSubjectFolder.topicsMap.values())[0]
           ? Array.from(activeSubjectFolder.topicsMap.values())[0].titleEn
-          : 'History of Chhattisgarh');
+          : 'Ancient History of Chhattisgarh');
 
       openQuestionFormModal({
-        title: '➕ नया प्रश्न जोड़ें (Add Question to Subject → Topic Folder)',
+        title: '➕ नया प्रश्न जोड़ें (Add to Central Question Database)',
         question: {
           subjectTag: defaultSub,
           topic: defaultTop,
@@ -10404,7 +12181,8 @@ Return ONLY a valid JSON array of objects:
           optionsEn: ['', '', '', ''],
           correctOptionIndex: 0,
           explanationHi: '',
-          explanationEn: ''
+          explanationEn: '',
+          pyqReferences: []
         },
         stateRef: state,
         onSave: (newFields) => {
@@ -10433,22 +12211,18 @@ Return ONLY a valid JSON array of objects:
           qDoc.questionId = qDoc.id;
           state.questionBank.unshift(qDoc);
           api.saveState();
-          if (window.CGpediaCloud) {
-            window.CGpediaCloud.saveCloudDoc('question_bank', qDoc.id, qDoc);
-          }
-          api.toast(`✅ प्रश्न "${qDoc.subjectTag} › ${qDoc.topic}" फ़ोल्डर में सेव हो गया!`);
+          if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('question_bank', qDoc.id, qDoc);
+          api.toast(`✅ प्रश्न "${qDoc.subjectTag} › ${qDoc.topic}" में सेव हो गया!`);
           renderAdminConsole(rootEl, state, api);
         }
       });
     };
 
-    // Wire Top Bar Buttons
     const aiPromptPopupBtn = document.getElementById('qbPopupAiPromptGenBtn');
     if (aiPromptPopupBtn) {
       aiPromptPopupBtn.onclick = () => {
         openAiPromptQuestionGeneratorModal({
-          state,
-          api,
+          state, api,
           defaultSubject: activeSubjectFolder ? activeSubjectFolder.titleEn : (nav.overrideSubject || ''),
           onSaved: () => renderAdminConsole(rootEl, state, api)
         });
@@ -10458,362 +12232,113 @@ Return ONLY a valid JSON array of objects:
     if (pasteTextPopupBtn) {
       pasteTextPopupBtn.onclick = () => {
         openPasteParagraphOrQuestionsModal({
-          state,
-          api,
+          state, api,
           defaultSubject: activeSubjectFolder ? activeSubjectFolder.titleEn : (nav.overrideSubject || ''),
           onSaved: () => renderAdminConsole(rootEl, state, api)
         });
       };
     }
-    const addSinglePopupBtn = document.getElementById('qbPopupAddSingleQuestionBtn');
-    if (addSinglePopupBtn) addSinglePopupBtn.onclick = openAddQuestionPopup;
-    const addQInSubBtn = document.getElementById('qbAddQuestionInSubjectBtn');
-    if (addQInSubBtn) addQInSubBtn.onclick = openAddQuestionPopup;
-    const addQInFolderBtn = document.getElementById('qbAddQuestionInCurrentFolderBtn');
-    if (addQInFolderBtn) addQInFolderBtn.onclick = openAddQuestionPopup;
-    const emptyAddQBtn = document.getElementById('qbEmptyFolderAddQBtn');
-    if (emptyAddQBtn) emptyAddQBtn.onclick = openAddQuestionPopup;
+    ['qbPopupAddSingleQuestionBtn', 'qbAddQuestionInCurrentFolderBtn', 'qbEmptyFolderAddQBtn'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.onclick = openAddQuestionPopup;
+    });
 
     const newSubBtn = document.getElementById('qbPopupNewSubjectBtn');
     if (newSubBtn) {
       newSubBtn.onclick = () => {
         openQuickFolderCreateModal({
           mode: 'subject',
-          state,
-          api,
+          state, api,
+          onCreated: () => renderAdminConsole(rootEl, state, api)
+        });
+      };
+    }
+    const newTopBtn = document.getElementById('qbPopupNewTopicBtn');
+    if (newTopBtn) {
+      newTopBtn.onclick = () => {
+        openQuickFolderCreateModal({
+          mode: 'topic',
+          defaultSubjectId: activeSubjectFolder ? activeSubjectFolder.subjectId : '',
+          state, api,
+          onCreated: () => renderAdminConsole(rootEl, state, api)
+        });
+      };
+    }
+    const createPyqFolderBtn = document.getElementById('qbCreatePyqFolderBtn');
+    if (createPyqFolderBtn) {
+      createPyqFolderBtn.onclick = () => {
+        openPyqFolderCreateModal({
+          state, api,
           onCreated: () => renderAdminConsole(rootEl, state, api)
         });
       };
     }
 
-    const openNewTopicPopup = () => {
-      openQuickFolderCreateModal({
-        mode: 'topic',
-        defaultSubjectId: activeSubjectFolder ? activeSubjectFolder.subjectId : '',
-        state,
-        api,
-        onCreated: () => renderAdminConsole(rootEl, state, api)
-      });
-    };
-    const newTopBtn = document.getElementById('qbPopupNewTopicBtn');
-    if (newTopBtn) newTopBtn.onclick = openNewTopicPopup;
-    const addTopInSubBtn = document.getElementById('qbAddTopicInSubjectBtn');
-    if (addTopInSubBtn) addTopInSubBtn.onclick = openNewTopicPopup;
-
     const quickExportJsonBtn = document.getElementById('qbQuickExportJsonBtn');
     if (quickExportJsonBtn) {
       quickExportJsonBtn.onclick = () => {
-        if (activeQuestions.length === 0) {
-          api.toast('⚠️ एक्सपोर्ट करने के लिए कोई प्रश्न नहीं है।');
-          return;
-        }
+        if (activeQuestions.length === 0) return api.toast('⚠️ कोई प्रश्न नहीं है।');
         exportQuestionsToJson(activeQuestions);
         api.toast(`⬇️ ${activeQuestions.length} प्रश्नों का JSON बैकअप डाउनलोड हो गया!`);
       };
     }
 
-    // Wire Sample CSV/JSON buttons
-    const sampleCsvBtn = document.getElementById('qbDownloadSampleCsvBtn');
-    if (sampleCsvBtn) {
-      sampleCsvBtn.onclick = () => {
-        const sampleRows = [{
-          subjectTag: 'Chhattisgarh General Knowledge',
-          topic: 'History of Chhattisgarh',
-          difficulty: 'Easy',
-          questionHi: 'छत्तीसगढ़ राज्य का गठन कब हुआ था?',
-          questionEn: 'When was the state of Chhattisgarh formed?',
-          optionsHi: ['1 नवंबर 2000', '15 नवंबर 2000', '9 नवंबर 2000', '1 जनवरी 2001'],
-          optionsEn: ['1 November 2000', '15 November 2000', '9 November 2000', '1 January 2001'],
-          correctOptionIndex: 0,
-          explanationHi: 'छत्तीसगढ़ राज्य का गठन 1 नवंबर 2000 को भारत के 26वें राज्य के रूप में हुआ था।',
-          explanationEn: 'Chhattisgarh was formed on 1 November 2000 as the 26th state of India.'
-        }];
-        exportQuestionsToCsv(sampleRows, 'cgpedia-sample-questions.csv');
-      };
-    }
-    const sampleJsonBtn = document.getElementById('qbDownloadSampleJsonBtn');
-    if (sampleJsonBtn) {
-      sampleJsonBtn.onclick = () => {
-        const sampleRows = [{
-          subjectTag: 'Chhattisgarh General Knowledge',
-          topic: 'Geography, Rivers & Climate of CG',
-          difficulty: 'Easy',
-          questionHi: 'महानदी का उद्गम किस जिले से होता है?',
-          questionEn: 'In which district is the origin of the Mahanadi river located?',
-          optionsHi: ['धमतरी (सिहावा पर्वत)', 'कांकेर', 'बस्तर', 'सरगुजा'],
-          optionsEn: ['Dhamtari (Sihawa Hills)', 'Kanker', 'Bastar', 'Surguja'],
-          correctOptionIndex: 0,
-          explanationHi: 'महानदी का उद्गम धमतरी जिले के सिहावा पर्वत से होता है।',
-          explanationEn: 'The Mahanadi river originates from the Sihawa hills in Dhamtari district.'
-        }];
-        exportQuestionsToJson(sampleRows, 'cgpedia-sample-questions.json');
-      };
-    }
-
-    // Wire AI Dual-File Inputs & One-Click Scan + Direct Folder Save
-    const qpFileInp = document.getElementById('qbAiQuestionFileInput');
-    if (qpFileInp) {
-      qpFileInp.onchange = () => {
-        if (qpFileInp.files && qpFileInp.files[0]) {
-          nav.selectedQuestionFile = qpFileInp.files[0];
-          const lbl = document.getElementById('qbSelectedQPFileLabel');
-          if (lbl) {
-            lbl.style.color = 'var(--success)';
-            lbl.textContent = `✅ अपलोड हो गया (चुना गया): ${nav.selectedQuestionFile.name}`;
-          }
-          api.toast(`📄 प्रश्न-पत्र फ़ाइल (${nav.selectedQuestionFile.name}) अपलोड हो गई!`);
-        }
-      };
-    }
-
-    const akFileInp = document.getElementById('qbAiAnswerKeyFileInput');
-    if (akFileInp) {
-      akFileInp.onchange = async () => {
-        if (akFileInp.files && akFileInp.files[0]) {
-          nav.selectedAnswerKeyFile = akFileInp.files[0];
-          const akLbl = document.getElementById('qbSelectedAKFileLabel');
-          if (akLbl) {
-            akLbl.style.color = 'var(--success)';
-            akLbl.textContent = `✅ अपलोड हो गया (चुना गया): ${nav.selectedAnswerKeyFile.name}`;
-          }
-          api.toast(`🔑 उत्तर कुंजी फ़ाइल (${nav.selectedAnswerKeyFile.name}) अपलोड हो गई!`);
-          try {
-            const cleanAk = await extractAnswerKeyWithAiFallback(
-              nav.selectedAnswerKeyFile,
-              nav.paperSetCode || 'A',
-              null,
-              { skipCanvasOcr: true }
-            );
-            if (cleanAk) {
-              qbState.pendingAnswerKeyText = cleanAk;
-              const akTxtInp = document.getElementById('qbAiAnswerKeyTextInput');
-              if (akTxtInp) akTxtInp.value = cleanAk;
-            }
-          } catch (e) {
-            console.warn('Answer key quick read error:', e);
-          }
-        }
-      };
-    }
-
-    const akTextInp = document.getElementById('qbAiAnswerKeyTextInput');
-    if (akTextInp) {
-      akTextInp.oninput = () => {
-        qbState.pendingAnswerKeyText = akTextInp.value;
-      };
-    }
-
-    const setSel = document.getElementById('qbAiPaperSetSelect');
-    if (setSel) {
-      setSel.onchange = () => {
-        nav.paperSetCode = setSel.value || 'A';
-      };
-    }
-
-    const overrideSubSel = document.getElementById('qbAiOverrideSubjectSelect');
-    if (overrideSubSel) {
-      overrideSubSel.onchange = () => {
-        nav.overrideSubject = overrideSubSel.value || '';
-      };
-    }
-
-    const startAiScanBtn = document.getElementById('qbStartAiScanAndSaveBtn');
-    if (startAiScanBtn) {
-      startAiScanBtn.onclick = async () => {
-        const qFile = (qpFileInp && qpFileInp.files && qpFileInp.files[0]) || nav.selectedQuestionFile;
-        if (!qFile) {
-          api.toast('⚠️ कृपया पहले 1️⃣ प्रश्न-पत्र फ़ाइल (Question Paper File) चुनें।');
-          return;
-        }
-        const optionalAkFile = (akFileInp && akFileInp.files && akFileInp.files[0]) || nav.selectedAnswerKeyFile || null;
-        nav.isScanning = true;
-        nav.lastScanSummary = null;
-        nav.scanStatusText = `⏳ Step 1/3: "${qFile.name}" को स्कैनिंग के लिए तैयार किया जा रहा है...`;
-        renderAdminConsole(rootEl, state, api);
-
-        const folderCounts = new Map();
-        let liveSavedCount = 0;
-
-        const saveDocsBatchLive = async (newDocsBatch, allDocsSoFar, pageLabel) => {
-          if (!Array.isArray(newDocsBatch) || newDocsBatch.length === 0) return;
-          const docsToSync = [];
-          newDocsBatch.forEach((doc) => {
-            const existingIdx = state.questionBank.findIndex(
-              (q) => q.id === doc.id || normalizeTextForComparison(q.questionHi) === normalizeTextForComparison(doc.questionHi)
-            );
-            if (existingIdx >= 0) {
-              state.questionBank[existingIdx] = Object.assign({}, state.questionBank[existingIdx], doc);
-              docsToSync.push(state.questionBank[existingIdx]);
-            } else {
-              state.questionBank.unshift(doc);
-              docsToSync.push(doc);
-            }
-            const fKey = `${doc.subjectId}:::${doc.topicId}`;
-            const cur = folderCounts.get(fKey) || {
-              subjectId: doc.subjectId,
-              subjectName: doc.subjectTag,
-              topicId: doc.topicId,
-              topicName: doc.topic,
-              count: 0
-            };
-            cur.count += 1;
-            folderCounts.set(fKey, cur);
-          });
-          liveSavedCount = allDocsSoFar ? allDocsSoFar.length : (liveSavedCount + newDocsBatch.length);
-          api.saveState();
-          if (window.CGpediaCloud && window.CGpediaCloud.batchSaveCloudDocs && docsToSync.length > 0) {
-            window.CGpediaCloud.batchSaveCloudDocs('question_bank', docsToSync).catch(() => {});
-          }
-          const liveMsg = `✅ ${pageLabel || 'स्कैन'} पूरा — अब तक ${liveSavedCount} प्रश्न Subject → Topic फ़ोल्डर में लाइव सेव हो चुके हैं...`;
-          nav.scanStatusText = liveMsg;
-          const box = document.getElementById('qbAiScanStatusBox');
-          if (box) box.textContent = liveMsg;
-        };
-
-        try {
-          let answerKeyText = String(qbState.pendingAnswerKeyText || '').trim();
-          if (optionalAkFile && !answerKeyText) {
-            answerKeyText = await extractAnswerKeyWithAiFallback(
-              optionalAkFile,
-              nav.paperSetCode || 'A',
-              (msg) => {
-                nav.scanStatusText = msg;
-                const box = document.getElementById('qbAiScanStatusBox');
-                if (box) box.textContent = msg;
-              },
-              { skipCanvasOcr: false }
-            );
-            qbState.pendingAnswerKeyText = answerKeyText;
-          }
-
-          const qKind = await detectUploadedFileKind(qFile, '');
-          const isImg = qKind === 'image';
-          // Fast digital text pass (skipCanvasOcr: true so it finishes in <1s; page-by-page OCR with Live Save happens inside scanAndCategorizeWithAiOrFallback)
-          const rawQuestionText = isImg
-            ? ''
-            : await extractTextFromUploadedFile(
-                qFile,
-                (msg) => {
-                  nav.scanStatusText = msg;
-                  const box = document.getElementById('qbAiScanStatusBox');
-                  if (box) box.textContent = msg;
-                },
-                { skipCanvasOcr: true }
-              );
-
-          const scannedDocs = await scanAndCategorizeWithAiOrFallback({
-            questionFile: qFile,
-            rawQuestionText,
-            answerKeyText,
-            paperSetCode: nav.paperSetCode || 'A',
-            forcedSubjectTag: nav.overrideSubject || '',
-            forcedTopic: '',
-            state,
-            onProgress: (msg) => {
-              nav.scanStatusText = msg;
-              const box = document.getElementById('qbAiScanStatusBox');
-              if (box) box.textContent = msg;
-            },
-            onLiveSaveDocs: saveDocsBatchLive
-          });
-
-          if ((!scannedDocs || scannedDocs.length === 0) && liveSavedCount === 0) {
-            nav.isScanning = false;
-            nav.scanStatusText = '';
-            api.toast('⚠️ फ़ाइल में कोई प्रश्न नहीं मिला। कृपया स्पष्ट PDF, Image, CSV या JSON फ़ाइल अपलोड करें।');
-            renderAdminConsole(rootEl, state, api);
-            return;
-          }
-
-          // Ensure any remaining docs not yet in folderCounts are saved
-          if (Array.isArray(scannedDocs) && scannedDocs.length > liveSavedCount) {
-            await saveDocsBatchLive(scannedDocs.slice(liveSavedCount), scannedDocs, 'अंतिम सेव');
-          }
-
-          const totalSaved = Math.max(liveSavedCount, Array.isArray(scannedDocs) ? scannedDocs.length : 0);
-          const breakdown = Array.from(folderCounts.values());
-          nav.isScanning = false;
-          nav.scanStatusText = '';
-          nav.selectedQuestionFile = null;
-          nav.selectedAnswerKeyFile = null;
-          nav.lastScanSummary = {
-            message: `${totalSaved} प्रश्न सफलतापूर्वक स्कैन होकर ${breakdown.length} Topic फ़ोल्डर में लाइव सेव हो गए! (Test Builder के लिए तैयार)`,
-            folderBreakdown: breakdown
-          };
-          api.toast(`✅ ${totalSaved} प्रश्न सीधे Subject → Topic फ़ोल्डर में सेव हो गए!`);
-          renderAdminConsole(rootEl, state, api);
-        } catch (scanErr) {
-          console.error('AI Scan error:', scanErr);
-          nav.isScanning = false;
-          nav.scanStatusText = '';
-          api.toast('⚠️ फ़ाइल स्कैन करने में त्रुटि आई। कृपया पुनः प्रयास करें।');
-          renderAdminConsole(rootEl, state, api);
-        }
-      };
-    }
-
-    const dismissScanSummaryBtn = document.getElementById('qbDismissScanSummaryBtn');
-    if (dismissScanSummaryBtn) {
-      dismissScanSummaryBtn.onclick = () => {
-        nav.lastScanSummary = null;
-        renderAdminConsole(rootEl, state, api);
-      };
-    }
-
-    bodyEl.querySelectorAll('[data-open-scanned-folder]').forEach((btn) => {
-      btn.onclick = () => {
-        const parts = String(btn.getAttribute('data-open-scanned-folder') || '').split(':::');
-        nav.subjectId = parts[0] || '';
-        nav.topicId = parts[1] || '';
-        nav.level = 'questions';
-        qbState.page = 1;
-        renderAdminConsole(rootEl, state, api);
-      };
-    });
-
-    // Wire Folder Explorer Navigation (Subjects -> Topics -> Questions)
+    // Subject Library Navigation
     const homeBtn = document.getElementById('qbBreadcrumbHomeBtn');
     if (homeBtn) {
       homeBtn.onclick = () => {
-        nav.level = 'subjects';
+        nav.level = 'mainCategories';
+        nav.mainCategoryId = '';
         nav.subjectId = '';
         nav.topicId = '';
-        nav.search = '';
         qbState.page = 1;
         renderAdminConsole(rootEl, state, api);
       };
     }
-
+    const backToMainCatsBtn = document.getElementById('qbBackToMainCatsBtn');
+    if (backToMainCatsBtn) {
+      backToMainCatsBtn.onclick = () => {
+        nav.level = 'mainCategories';
+        nav.mainCategoryId = '';
+        nav.subjectId = '';
+        nav.topicId = '';
+        qbState.page = 1;
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+    const mainCatBreadBtn = document.getElementById('qbBreadcrumbMainCatBtn');
+    if (mainCatBreadBtn) {
+      mainCatBreadBtn.onclick = () => {
+        if (activeMainCatFolder && activeMainCatFolder.directTopics) {
+          const firstSub = Array.from(activeMainCatFolder.subjectsMap.values())[0];
+          nav.subjectId = firstSub ? firstSub.subjectId : '';
+          nav.topicId = '';
+          nav.level = 'topics';
+        } else {
+          nav.subjectId = '';
+          nav.topicId = '';
+          nav.level = 'subjects';
+        }
+        qbState.page = 1;
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
     const subBreadBtn = document.getElementById('qbBreadcrumbSubjectBtn');
     if (subBreadBtn) {
       subBreadBtn.onclick = () => {
-        nav.level = 'topics';
         nav.topicId = '';
-        nav.search = '';
+        nav.level = 'topics';
         qbState.page = 1;
         renderAdminConsole(rootEl, state, api);
       };
     }
-
     const backToSubjectsBtn = document.getElementById('qbBackToSubjectsBtn');
     if (backToSubjectsBtn) {
       backToSubjectsBtn.onclick = () => {
-        nav.level = 'subjects';
-        nav.subjectId = '';
-        nav.topicId = '';
-        qbState.page = 1;
-        renderAdminConsole(rootEl, state, api);
-      };
-    }
-
-    const backFromQuestionsBtn = document.getElementById('qbBackFromQuestionsBtn');
-    if (backFromQuestionsBtn) {
-      backFromQuestionsBtn.onclick = () => {
-        if (nav.search) {
-          nav.search = '';
-        }
-        if (activeSubjectFolder) {
-          nav.level = 'topics';
+        if (activeMainCatFolder && activeMainCatFolder.directTopics) {
+          nav.level = 'mainCategories';
+          nav.mainCategoryId = '';
+          nav.subjectId = '';
           nav.topicId = '';
         } else {
           nav.level = 'subjects';
@@ -10824,7 +12349,42 @@ Return ONLY a valid JSON array of objects:
         renderAdminConsole(rootEl, state, api);
       };
     }
+    const backFromQuestionsBtn = document.getElementById('qbBackFromQuestionsBtn');
+    if (backFromQuestionsBtn) {
+      backFromQuestionsBtn.onclick = () => {
+        if (activeSubjectFolder) {
+          nav.level = 'topics';
+          nav.topicId = '';
+        } else if (activeMainCatFolder) {
+          nav.level = 'subjects';
+          nav.subjectId = '';
+        } else {
+          nav.level = 'mainCategories';
+        }
+        qbState.page = 1;
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
 
+    bodyEl.querySelectorAll('[data-open-main-cat]').forEach((card) => {
+      card.onclick = () => {
+        const mcId = card.getAttribute('data-open-main-cat') || '';
+        nav.mainCategoryId = mcId;
+        const mcObj = mainCatMap.get(mcId);
+        if (mcObj && (mcObj.directTopics || mcObj.subjectsMap.size === 1)) {
+          const onlySub = Array.from(mcObj.subjectsMap.values())[0];
+          nav.subjectId = onlySub ? onlySub.subjectId : '';
+          nav.topicId = '';
+          nav.level = 'topics';
+        } else {
+          nav.subjectId = '';
+          nav.topicId = '';
+          nav.level = 'subjects';
+        }
+        qbState.page = 1;
+        renderAdminConsole(rootEl, state, api);
+      };
+    });
     bodyEl.querySelectorAll('[data-open-subject-folder]').forEach((card) => {
       card.onclick = () => {
         nav.subjectId = card.getAttribute('data-open-subject-folder') || '';
@@ -10834,7 +12394,6 @@ Return ONLY a valid JSON array of objects:
         renderAdminConsole(rootEl, state, api);
       };
     });
-
     bodyEl.querySelectorAll('[data-open-topic-folder]').forEach((card) => {
       card.onclick = () => {
         nav.topicId = card.getAttribute('data-open-topic-folder') || '';
@@ -10843,10 +12402,10 @@ Return ONLY a valid JSON array of objects:
         renderAdminConsole(rootEl, state, api);
       };
     });
-
     const viewAllFlatBtn = document.getElementById('qbViewAllQuestionsFlatBtn');
     if (viewAllFlatBtn) {
       viewAllFlatBtn.onclick = () => {
+        nav.mainCategoryId = '';
         nav.subjectId = '';
         nav.topicId = '';
         nav.level = 'questions';
@@ -10854,7 +12413,16 @@ Return ONLY a valid JSON array of objects:
         renderAdminConsole(rootEl, state, api);
       };
     }
-
+    const viewAllMainCatQBtn = document.getElementById('qbViewAllMainCatQuestionsBtn');
+    if (viewAllMainCatQBtn) {
+      viewAllMainCatQBtn.onclick = () => {
+        nav.subjectId = '';
+        nav.topicId = '';
+        nav.level = 'questions';
+        qbState.page = 1;
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
     const viewAllSubQBtn = document.getElementById('qbViewAllSubjectQuestionsBtn');
     if (viewAllSubQBtn) {
       viewAllSubQBtn.onclick = () => {
@@ -10865,30 +12433,113 @@ Return ONLY a valid JSON array of objects:
       };
     }
 
-    // Wire Search & Difficulty filter
-    const searchInp = document.getElementById('qbExplorerSearchInput');
-    if (searchInp) {
-      searchInp.oninput = () => {
-        const pos = searchInp.selectionStart;
-        nav.search = searchInp.value;
+    // PYQ Library Navigation
+    const pyqRootBtn = document.getElementById('qbPyqRootBtn');
+    if (pyqRootBtn) {
+      pyqRootBtn.onclick = () => {
+        nav.pyqCategory = '';
+        nav.pyqExamName = '';
+        nav.pyqYear = '';
+        nav.pyqPaper = '';
         qbState.page = 1;
         renderAdminConsole(rootEl, state, api);
-        const nextInp = document.getElementById('qbExplorerSearchInput');
+      };
+    }
+    const pyqCatBreadBtn = document.getElementById('qbPyqCatBreadBtn');
+    if (pyqCatBreadBtn) {
+      pyqCatBreadBtn.onclick = () => {
+        nav.pyqExamName = '';
+        nav.pyqYear = '';
+        nav.pyqPaper = '';
+        qbState.page = 1;
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+    const pyqExamBreadBtn = document.getElementById('qbPyqExamBreadBtn');
+    if (pyqExamBreadBtn) {
+      pyqExamBreadBtn.onclick = () => {
+        nav.pyqYear = '';
+        nav.pyqPaper = '';
+        qbState.page = 1;
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+    bodyEl.querySelectorAll('[data-open-pyq-cat]').forEach((card) => {
+      card.onclick = () => {
+        nav.pyqCategory = card.getAttribute('data-open-pyq-cat') || '';
+        nav.pyqExamName = '';
+        nav.pyqYear = '';
+        nav.pyqPaper = '';
+        qbState.page = 1;
+        renderAdminConsole(rootEl, state, api);
+      };
+    });
+    bodyEl.querySelectorAll('[data-open-pyq-exam]').forEach((card) => {
+      card.onclick = () => {
+        nav.pyqExamName = card.getAttribute('data-open-pyq-exam') || '';
+        nav.pyqYear = '';
+        nav.pyqPaper = '';
+        qbState.page = 1;
+        renderAdminConsole(rootEl, state, api);
+      };
+    });
+    bodyEl.querySelectorAll('[data-open-pyq-year]').forEach((card) => {
+      card.onclick = () => {
+        nav.pyqYear = card.getAttribute('data-open-pyq-year') || '';
+        nav.pyqPaper = '';
+        qbState.page = 1;
+        renderAdminConsole(rootEl, state, api);
+      };
+    });
+    bodyEl.querySelectorAll('[data-open-pyq-paper]').forEach((btn) => {
+      btn.onclick = () => {
+        nav.pyqPaper = btn.getAttribute('data-open-pyq-paper') || '';
+        qbState.page = 1;
+        renderAdminConsole(rootEl, state, api);
+      };
+    });
+
+    // Advanced Search & Filters wiring
+    const advSearchInp = document.getElementById('qbAdvSearchInput');
+    if (advSearchInp) {
+      advSearchInp.oninput = () => {
+        const pos = advSearchInp.selectionStart;
+        nav.search = advSearchInp.value;
+        qbState.page = 1;
+        renderAdminConsole(rootEl, state, api);
+        const nextInp = document.getElementById('qbAdvSearchInput');
         if (nextInp) {
           nextInp.focus();
           try { nextInp.setSelectionRange(pos, pos); } catch (_) {}
         }
       };
     }
-    const clearSearchBtn = document.getElementById('qbClearSearchBtn');
-    if (clearSearchBtn) {
-      clearSearchBtn.onclick = () => {
-        nav.search = '';
+    const bindSelectFilter = (elemId, key, resetSub) => {
+      const el = document.getElementById(elemId);
+      if (el) {
+        el.onchange = () => {
+          nav.advFilters[key] = el.value;
+          if (resetSub) nav.advFilters.topicId = 'ALL';
+          qbState.page = 1;
+          renderAdminConsole(rootEl, state, api);
+        };
+      }
+    };
+    bindSelectFilter('qbAdvMainCatSelect', 'mainCategoryId', false);
+    bindSelectFilter('qbAdvSubjectSelect', 'subjectId', true);
+    bindSelectFilter('qbAdvTopicSelect', 'topicId', false);
+    bindSelectFilter('qbAdvExamSelect', 'examFilter', false);
+    bindSelectFilter('qbAdvLangSelect', 'language', false);
+    bindSelectFilter('qbAdvVerifySelect', 'verificationStatus', false);
+
+    const advYrInp = document.getElementById('qbAdvYearInput');
+    if (advYrInp) {
+      advYrInp.onchange = () => {
+        nav.advFilters.examYear = advYrInp.value.trim();
         qbState.page = 1;
         renderAdminConsole(rootEl, state, api);
       };
     }
-
     const diffFilterSel = document.getElementById('qbQuestionsDiffFilter');
     if (diffFilterSel) {
       diffFilterSel.onchange = () => {
@@ -10897,8 +12548,276 @@ Return ONLY a valid JSON array of objects:
         renderAdminConsole(rootEl, state, api);
       };
     }
+    const resetAdvBtn = document.getElementById('qbResetAdvFiltersBtn');
+    if (resetAdvBtn) {
+      resetAdvBtn.onclick = () => {
+        nav.search = '';
+        nav.difficulty = 'ALL';
+        nav.advFilters = {
+          mainCategoryId: 'ALL', subjectId: 'ALL', topicId: 'ALL',
+          examFilter: 'ALL', examYear: '', language: 'ALL', verificationStatus: 'ALL'
+        };
+        qbState.page = 1;
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
 
-    // Wire Selection, Bulk Move, Assign to Test, Export, 1-Click Answer Switch, Edit & Delete
+    // Import & Preview wiring
+    const sampleCsvBtn = document.getElementById('qbDownloadSampleCsvBtn');
+    if (sampleCsvBtn) {
+      sampleCsvBtn.onclick = () => {
+        exportQuestionsToCsv([{
+          mainCategory: 'Chhattisgarh GK',
+          subjectTag: 'History of Chhattisgarh',
+          topic: 'Ancient History of Chhattisgarh',
+          difficulty: 'Easy',
+          questionHi: 'छत्तीसगढ़ राज्य का गठन कब हुआ था?',
+          questionEn: 'When was the state of Chhattisgarh formed?',
+          optionsHi: ['1 नवंबर 2000', '15 नवंबर 2000', '9 नवंबर 2000', '1 जनवरी 2001'],
+          optionsEn: ['1 November 2000', '15 November 2000', '9 November 2000', '1 January 2001'],
+          correctOptionIndex: 0,
+          explanationHi: 'छत्तीसगढ़ का गठन 1 नवंबर 2000 को हुआ था।',
+          explanationEn: 'Chhattisgarh was formed on 1 November 2000.',
+          pyqReferences: [{ examCategory: 'CGPSC', examName: 'CGPSC State Service Exam (Prelims)', examYear: '2020', paperName: 'GS Paper 1', shift: 'Morning' }]
+        }], 'cgpedia-sample-questions.csv');
+      };
+    }
+    const sampleJsonBtn = document.getElementById('qbDownloadSampleJsonBtn');
+    if (sampleJsonBtn) {
+      sampleJsonBtn.onclick = () => {
+        exportQuestionsToJson([{
+          mainCategory: 'Chhattisgarh GK',
+          subjectTag: 'Geography of Chhattisgarh',
+          topic: 'Rivers & Drainage System',
+          difficulty: 'Easy',
+          questionHi: 'महानदी का उद्गम किस जिले से होता है?',
+          questionEn: 'In which district is the origin of the Mahanadi river located?',
+          optionsHi: ['धमतरी (सिहावा पर्वत)', 'कांकेर', 'बस्तर', 'सरगुजा'],
+          optionsEn: ['Dhamtari (Sihawa Hills)', 'Kanker', 'Bastar', 'Surguja'],
+          correctOptionIndex: 0,
+          explanationHi: 'महानदी का उद्गम धमतरी जिले के सिहावा पर्वत से होता है।',
+          explanationEn: 'The Mahanadi originates from Sihawa hills in Dhamtari.',
+          pyqReferences: [{ examCategory: 'CG_VYAPAM', examName: 'Patwari / RI / Amin', examYear: '2022', paperName: 'Set A' }]
+        }], 'cgpedia-sample-questions.json');
+      };
+    }
+
+    const qpFileInp = document.getElementById('qbAiQuestionFileInput');
+    if (qpFileInp) {
+      qpFileInp.onchange = () => {
+        if (qpFileInp.files && qpFileInp.files[0]) {
+          nav.selectedQuestionFile = qpFileInp.files[0];
+          renderAdminConsole(rootEl, state, api);
+        }
+      };
+    }
+    const akFileInp = document.getElementById('qbAiAnswerKeyFileInput');
+    if (akFileInp) {
+      akFileInp.onchange = async () => {
+        if (akFileInp.files && akFileInp.files[0]) {
+          nav.selectedAnswerKeyFile = akFileInp.files[0];
+          try {
+            const cleanAk = await extractAnswerKeyWithAiFallback(nav.selectedAnswerKeyFile, nav.paperSetCode || 'A', null, { skipCanvasOcr: true });
+            if (cleanAk) qbState.pendingAnswerKeyText = cleanAk;
+          } catch (_) {}
+          renderAdminConsole(rootEl, state, api);
+        }
+      };
+    }
+    const akTextInp = document.getElementById('qbAiAnswerKeyTextInput');
+    if (akTextInp) akTextInp.oninput = () => { qbState.pendingAnswerKeyText = akTextInp.value; };
+    const setSel = document.getElementById('qbAiPaperSetSelect');
+    if (setSel) setSel.onchange = () => { nav.paperSetCode = setSel.value || 'A'; };
+    const overrideSubSel = document.getElementById('qbAiOverrideSubjectSelect');
+    if (overrideSubSel) overrideSubSel.onchange = () => { nav.overrideSubject = overrideSubSel.value || ''; };
+
+    const loadPreviewBtn = document.getElementById('qbLoadImportPreviewBtn');
+    if (loadPreviewBtn) {
+      loadPreviewBtn.onclick = async () => {
+        const qFile = (qpFileInp && qpFileInp.files && qpFileInp.files[0]) || nav.selectedQuestionFile;
+        if (!qFile) return api.toast('⚠️ कृपया पहले CSV, JSON, PDF या TXT फ़ाइल चुनें।');
+        try {
+          nav.isScanning = true;
+          nav.scanStatusText = `⏳ "${qFile.name}" का Import Preview तैयार किया जा रहा है...`;
+          renderAdminConsole(rootEl, state, api);
+          const parsed = await parseRawImportFile(qFile, {
+            answerKeyText: qbState.pendingAnswerKeyText || '',
+            paperSetCode: nav.paperSetCode || 'A'
+          });
+          qbState.previewSession = buildAndValidatePreviewSession(parsed.rawItems, qFile.name, parsed.format, state);
+          nav.isScanning = false;
+          nav.scanStatusText = '';
+          api.toast(`🧐 ${qbState.previewSession.records.length} प्रश्न Preview के लिए तैयार हैं!`);
+          renderAdminConsole(rootEl, state, api);
+        } catch (err) {
+          nav.isScanning = false;
+          nav.scanStatusText = '';
+          api.toast('⚠️ फ़ाइल पढ़ने के लिए "AI Scan & Save" का उपयोग करें।');
+          renderAdminConsole(rootEl, state, api);
+        }
+      };
+    }
+
+    const startAiScanBtn = document.getElementById('qbStartAiScanAndSaveBtn');
+    if (startAiScanBtn) {
+      startAiScanBtn.onclick = async () => {
+        const qFile = (qpFileInp && qpFileInp.files && qpFileInp.files[0]) || nav.selectedQuestionFile;
+        if (!qFile) return api.toast('⚠️ कृपया पहले फ़ाइल चुनें।');
+        nav.isScanning = true;
+        nav.scanStatusText = `⏳ "${qFile.name}" को AI द्वारा स्कैन किया जा रहा है...`;
+        renderAdminConsole(rootEl, state, api);
+        try {
+          const qKind = await detectUploadedFileKind(qFile, '');
+          const rawQuestionText = qKind === 'image' ? '' : await extractTextFromUploadedFile(qFile, null, { skipCanvasOcr: true });
+          const scannedDocs = await scanAndCategorizeWithAiOrFallback({
+            questionFile: qFile,
+            rawQuestionText,
+            answerKeyText: qbState.pendingAnswerKeyText || '',
+            paperSetCode: nav.paperSetCode || 'A',
+            forcedSubjectTag: nav.overrideSubject || '',
+            forcedTopic: '',
+            state,
+            onProgress: (msg) => {
+              nav.scanStatusText = msg;
+              const box = document.getElementById('qbAiScanStatusBox');
+              if (box) box.textContent = msg;
+            }
+          });
+          nav.isScanning = false;
+          nav.scanStatusText = '';
+          if (!scannedDocs || scannedDocs.length === 0) {
+            api.toast('⚠️ कोई प्रश्न नहीं मिला।');
+            renderAdminConsole(rootEl, state, api);
+            return;
+          }
+          qbState.previewSession = buildAndValidatePreviewSession(scannedDocs, qFile.name, 'AI_SCAN', state);
+          api.toast(`✅ ${scannedDocs.length} प्रश्न स्कैन हुए — कृपया Preview में जाँच कर Confirm दबाएं!`);
+          renderAdminConsole(rootEl, state, api);
+        } catch (e) {
+          nav.isScanning = false;
+          nav.scanStatusText = '';
+          api.toast('⚠️ स्कैनिंग में त्रुटि आई।');
+          renderAdminConsole(rootEl, state, api);
+        }
+      };
+    }
+
+    bodyEl.querySelectorAll('[data-toggle-preview-exclude]').forEach((chk) => {
+      chk.onchange = () => {
+        const rIdx = Number(chk.getAttribute('data-toggle-preview-exclude'));
+        if (qbState.previewSession && qbState.previewSession.records[rIdx]) {
+          qbState.previewSession.records[rIdx].excluded = !chk.checked;
+        }
+      };
+    });
+    bodyEl.querySelectorAll('[data-approve-missing-folder]').forEach((btn) => {
+      btn.onclick = () => {
+        const rIdx = Number(btn.getAttribute('data-approve-missing-folder'));
+        const rec = qbState.previewSession && qbState.previewSession.records[rIdx];
+        if (!rec || !rec.missingFolderInfo) return;
+        const mf = rec.missingFolderInfo;
+        addCustomTaxonomyEntry(state, api, {
+          examCode: 'CGPSC',
+          subjectName: mf.rawSubject || 'Chhattisgarh GK',
+          topicName: mf.rawTopic || 'General Topic',
+          subtopicName: ''
+        });
+        mf.hasMissingFolder = false;
+        rec.normalized.subjectTag = mf.rawSubject || rec.normalized.subjectTag;
+        rec.normalized.topic = mf.rawTopic || rec.normalized.topic;
+        rec.normalized.needsCategorisation = false;
+        rec.normalized.verificationStatus = 'verified';
+        api.toast(`✅ नया फ़ोल्डर "${mf.rawSubject} › ${mf.rawTopic}" अप्रूव और तैयार कर दिया गया!`);
+        renderAdminConsole(rootEl, state, api);
+      };
+    });
+
+    const cancelPrevBtn = document.getElementById('qbCancelPreviewBtn');
+    if (cancelPrevBtn) {
+      cancelPrevBtn.onclick = () => {
+        qbState.previewSession = null;
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+    const commitPrevBtn = document.getElementById('qbCommitPreviewBtn');
+    if (commitPrevBtn) {
+      commitPrevBtn.onclick = async () => {
+        if (!qbState.previewSession) return;
+        const summary = await commitImportPreviewSession(qbState.previewSession, state, api);
+        if (summary) {
+          api.toast(`✅ ${summary.newQuestionsSaved} नए प्रश्न और ${summary.pyqReferencesAdded} PYQ References सेव हो गए!`);
+        }
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+    const dismissImpRepBtn = document.getElementById('qbDismissImportRepBtn');
+    if (dismissImpRepBtn) {
+      dismissImpRepBtn.onclick = () => {
+        qbState.lastImportReport = null;
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+
+    // Folder Management & Migration wiring
+    const runMigBtn = document.getElementById('qbRunSafeMigrationBtn');
+    if (runMigBtn) {
+      runMigBtn.onclick = () => {
+        qbState.migrationReport = migrateExistingQuestionBankRecords(state, api, { skipCloudSync: false });
+        api.toast('✅ Safe Question Bank Migration सफलतापूर्वक पूरा हुआ!');
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+    const restoreBackupBtn = document.getElementById('qbRestorePreMigBackupBtn');
+    if (restoreBackupBtn) {
+      restoreBackupBtn.onclick = () => {
+        openConfirmationDialog({
+          title: 'Pre-Migration Backup रिस्टोर करें',
+          message: 'क्या आप माइग्रेशन से पहले के प्रश्न बैंक बैकअप को रिस्टोर करना चाहते हैं?',
+          confirmLabel: 'हाँ, रिस्टोर करें',
+          isDanger: false,
+          onConfirm: () => {
+            try {
+              const raw = localStorage.getItem('cgpedia_qb_pre_migration_backup_v2');
+              const parsed = JSON.parse(raw || '[]');
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                state.questionBank = parsed;
+                api.saveState();
+                api.toast(`✅ ${parsed.length} प्रश्नों का बैकअप रिस्टोर हो गया!`);
+                renderAdminConsole(rootEl, state, api);
+              }
+            } catch (_) {
+              api.toast('⚠️ बैकअप रिस्टोर करने में त्रुटि आई।');
+            }
+          }
+        });
+      };
+    }
+
+    bodyEl.querySelectorAll('[data-rename-folder]').forEach((btn) => {
+      btn.onclick = () => {
+        const [fType, fId] = String(btn.getAttribute('data-rename-folder') || '').split(':::');
+        openFolderRenameModal({
+          folderType: fType,
+          folderId: fId,
+          state, api,
+          onRenamed: () => renderAdminConsole(rootEl, state, api)
+        });
+      };
+    });
+    bodyEl.querySelectorAll('[data-delete-empty-folder]').forEach((btn) => {
+      btn.onclick = () => {
+        const [fType, fId] = String(btn.getAttribute('data-delete-empty-folder') || '').split(':::');
+        const res = deleteEmptyCategoryFolder(state, api, fType, fId);
+        if (res && res.ok) {
+          api.toast('🗑️ खाली फ़ोल्डर हटा दिया गया।');
+          renderAdminConsole(rootEl, state, api);
+        } else {
+          api.toast(`⚠️ ${(res && res.reason) || 'केवल खाली कस्टम फ़ोल्डर ही हटाए जा सकते हैं।'}`);
+        }
+      };
+    });
+
+    // Selection & Bulk Actions
     const selectAllPageChk = document.getElementById('qbSelectAllPageChk');
     if (selectAllPageChk) {
       selectAllPageChk.onchange = () => {
@@ -10957,10 +12876,15 @@ Return ONLY a valid JSON array of objects:
               q.difficultyLevel = changes.difficulty;
             }
             const resolved = resolveCanonicalQuestionHierarchy(q, updatedCat);
+            q.mainCategoryId = resolved.mainCategoryId || q.mainCategoryId || 'cat_cg_gk';
+            q.mainCategory = resolved.mainCategory || q.mainCategory || 'Chhattisgarh GK';
             q.subjectId = resolved.subjectId || makeSlugId('sub', q.subjectTag);
             q.subjectTag = resolved.subjectTag || q.subjectTag;
             q.topicId = resolved.topicId || makeSlugId('top', q.topic);
             q.topic = resolved.topic || q.topic;
+            q.needsCategorisation = false;
+            q.verificationStatus = 'verified';
+            q.status = 'verified';
             q.updatedAt = nowIso;
             q.updatedAtIso = nowIso;
             updatedDocs.push(q);
@@ -10983,12 +12907,9 @@ Return ONLY a valid JSON array of objects:
           ? activeQuestions.filter((q) => qbState.selectedIds.has(q.id))
           : filteredQuestions;
         if (targetQs.length === 0) return;
-        openAssignToTestModal(targetQs, state, api, () => {
-          renderAdminConsole(rootEl, state, api);
-        });
+        openAssignToTestModal(targetQs, state, api, () => renderAdminConsole(rootEl, state, api));
       };
     }
-
     const exportCsvBtn = document.getElementById('qbExportCurrentFolderCsvBtn');
     if (exportCsvBtn) {
       exportCsvBtn.onclick = () => {
@@ -11000,7 +12921,6 @@ Return ONLY a valid JSON array of objects:
         api.toast(`⬇️ ${targetQs.length} प्रश्न CSV में एक्सपोर्ट किए गए!`);
       };
     }
-
     const bulkDelBtn = document.getElementById('qbBulkDeleteBtn');
     if (bulkDelBtn) {
       bulkDelBtn.onclick = () => {
@@ -11008,7 +12928,7 @@ Return ONLY a valid JSON array of objects:
         if (idsToDelete.length === 0) return;
         openConfirmationDialog({
           title: 'चयनित प्रश्न हटाएं (Confirm Bulk Delete)',
-          message: `क्या आप वाकई ${idsToDelete.length} चयनित प्रश्नों को प्रश्न बैंक से हटाना चाहते हैं?`,
+          message: `क्या आप वाकई ${idsToDelete.length} चयनित प्रश्नों को हटाना चाहते हैं?`,
           confirmLabel: `हाँ, ${idsToDelete.length} प्रश्न हटाएं`,
           isDanger: true,
           onConfirm: async () => {
@@ -11026,18 +12946,17 @@ Return ONLY a valid JSON array of objects:
       };
     }
 
-    // 1-Click Correct Option Switcher on Question Cards
+    // 9 Question Card Actions Wiring
+    const letters = ['A', 'B', 'C', 'D'];
     bodyEl.querySelectorAll('[data-quick-ans-qbank]').forEach((el) => {
       el.onclick = () => {
-        const pair = String(el.getAttribute('data-quick-ans-qbank') || '').split(':');
-        const qid = pair[0];
-        const newIdx = Number(pair[1]);
+        const [qid, idxStr] = String(el.getAttribute('data-quick-ans-qbank') || '').split(':');
+        const newIdx = Number(idxStr);
         const qObj = (state.questionBank || []).find((q) => q.id === qid);
         if (!qObj || Number.isNaN(newIdx) || newIdx < 0 || newIdx > 3) return;
         qObj.correctIndex = newIdx;
         qObj.correctOptionIndex = newIdx;
         qObj.updatedAt = new Date().toISOString();
-        qObj.updatedAtIso = qObj.updatedAt;
         api.saveState();
         if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('question_bank', qObj.id, qObj);
         api.toast(`✅ सही उत्तर विकल्प ${letters[newIdx]} सेट किया गया!`);
@@ -11045,47 +12964,144 @@ Return ONLY a valid JSON array of objects:
       };
     });
 
-    // Edit & Delete single question
+    // 1. View
+    bodyEl.querySelectorAll('[data-view-qbank]').forEach((btn) => {
+      btn.onclick = () => {
+        const qObj = (state.questionBank || []).find((q) => q.id === btn.getAttribute('data-view-qbank'));
+        if (qObj) openQuestionDetailViewModal(qObj, state);
+      };
+    });
+
+    // 2. Edit, 4. Move, 5. Change Subject, 6. Change Topic
+    const openEditOrMoveForQuestion = (qObj, modalTitle) => {
+      openQuestionFormModal({
+        title: modalTitle || '✏️ प्रश्न संपादित करें (Edit Question & Folder)',
+        question: qObj,
+        stateRef: state,
+        onSave: (updatedFields) => {
+          addCustomTaxonomyEntry(state, api, {
+            examCode: 'CGPSC',
+            subjectName: updatedFields.subjectTag,
+            topicName: updatedFields.topic,
+            subtopicName: ''
+          });
+          const resolved = resolveCanonicalQuestionHierarchy(updatedFields, getTaxonomyCatalog(state));
+          Object.assign(qObj, updatedFields, {
+            mainCategoryId: resolved.mainCategoryId || updatedFields.mainCategoryId || 'cat_cg_gk',
+            mainCategory: resolved.mainCategory || updatedFields.mainCategory || 'Chhattisgarh GK',
+            subjectId: resolved.subjectId || updatedFields.subjectId,
+            topicId: resolved.topicId || updatedFields.topicId,
+            verified: true,
+            adminVerified: true,
+            status: 'verified',
+            verificationStatus: 'verified',
+            needsCategorisation: false
+          });
+          api.saveState();
+          if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('question_bank', qObj.id, qObj);
+          api.toast('✅ प्रश्न और फ़ोल्डर सफलतापूर्वक अपडेट हो गए!');
+          renderAdminConsole(rootEl, state, api);
+        }
+      });
+    };
     bodyEl.querySelectorAll('[data-edit-qbank]').forEach((btn) => {
       btn.onclick = () => {
-        const qid = btn.getAttribute('data-edit-qbank');
-        const qObj = (state.questionBank || []).find((q) => q.id === qid);
+        const qObj = (state.questionBank || []).find((q) => q.id === btn.getAttribute('data-edit-qbank'));
+        if (qObj) openEditOrMoveForQuestion(qObj, '✏️ प्रश्न संपादित करें (Edit Question)');
+      };
+    });
+    bodyEl.querySelectorAll('[data-move-qbank]').forEach((btn) => {
+      btn.onclick = () => {
+        const qObj = (state.questionBank || []).find((q) => q.id === btn.getAttribute('data-move-qbank'));
+        if (qObj) openEditOrMoveForQuestion(qObj, '📂 प्रश्न का फ़ोल्डर बदलें (Move Question Folder)');
+      };
+    });
+    bodyEl.querySelectorAll('[data-change-sub-qbank]').forEach((btn) => {
+      btn.onclick = () => {
+        const qObj = (state.questionBank || []).find((q) => q.id === btn.getAttribute('data-change-sub-qbank'));
+        if (qObj) openEditOrMoveForQuestion(qObj, '📁 विषय बदलें (Change Subject)');
+      };
+    });
+    bodyEl.querySelectorAll('[data-change-top-qbank]').forEach((btn) => {
+      btn.onclick = () => {
+        const qObj = (state.questionBank || []).find((q) => q.id === btn.getAttribute('data-change-top-qbank'));
+        if (qObj) openEditOrMoveForQuestion(qObj, '📂 टॉपिक बदलें (Change Topic)');
+      };
+    });
+
+    // 3. Duplicate
+    bodyEl.querySelectorAll('[data-dup-qbank]').forEach((btn) => {
+      btn.onclick = () => {
+        const qObj = (state.questionBank || []).find((q) => q.id === btn.getAttribute('data-dup-qbank'));
         if (!qObj) return;
+        const copyDraft = JSON.parse(JSON.stringify(qObj));
+        copyDraft.questionHi = `${copyDraft.questionHi || ''} (Copy)`.trim();
         openQuestionFormModal({
-          title: '✏️ प्रश्न संपादित करें (Edit Question & Folder)',
-          question: qObj,
+          title: '📄 प्रश्न की प्रतिलिपि बनाएं (Duplicate Question)',
+          question: copyDraft,
           stateRef: state,
-          onSave: (updatedFields) => {
-            addCustomTaxonomyEntry(state, api, {
-              examCode: 'CGPSC',
-              subjectName: updatedFields.subjectTag,
-              topicName: updatedFields.topic,
-              subtopicName: ''
+          onSave: (newFields) => {
+            const nowIso = new Date().toISOString();
+            const dupDoc = Object.assign({}, copyDraft, newFields, {
+              id: `q_dup_${Date.now().toString(36)}`,
+              questionId: `q_dup_${Date.now().toString(36)}`,
+              createdAt: nowIso,
+              updatedAt: nowIso
             });
-            Object.assign(qObj, updatedFields, {
-              verified: true,
-              adminVerified: true,
-              status: 'verified',
-              verificationStatus: 'verified',
-              needsCategorisation: false
-            });
+            state.questionBank.unshift(dupDoc);
             api.saveState();
-            if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('question_bank', qObj.id, qObj);
-            api.toast('✅ प्रश्न सफलतापूर्वक अपडेट हो गया!');
+            if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('question_bank', dupDoc.id, dupDoc);
+            api.toast('📄 डुप्लीकेट प्रश्न सेव हो गया!');
             renderAdminConsole(rootEl, state, api);
           }
         });
       };
     });
 
+    // 7. Add Exam / PYQ Reference
+    bodyEl.querySelectorAll('[data-pyq-qbank]').forEach((btn) => {
+      btn.onclick = () => {
+        const qObj = (state.questionBank || []).find((q) => q.id === btn.getAttribute('data-pyq-qbank'));
+        if (!qObj) return;
+        openPyqReferenceModal({
+          question: qObj,
+          state, api,
+          onSaved: () => renderAdminConsole(rootEl, state, api)
+        });
+      };
+    });
+
+    // 8. Verify
+    bodyEl.querySelectorAll('[data-verify-qbank]').forEach((btn) => {
+      btn.onclick = () => {
+        const qObj = (state.questionBank || []).find((q) => q.id === btn.getAttribute('data-verify-qbank'));
+        if (!qObj) return;
+        if (qObj.subjectId === 'sub_uncategorised' || qObj.subjectTag === 'Uncategorised') {
+          return openEditOrMoveForQuestion(qObj, '✅ Verify करने से पहले सही Subject और Topic चुनें');
+        }
+        qObj.verified = true;
+        qObj.adminVerified = true;
+        qObj.status = 'verified';
+        qObj.verificationStatus = 'verified';
+        qObj.needsCategorisation = false;
+        qObj.updatedAt = new Date().toISOString();
+        api.saveState();
+        if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('question_bank', qObj.id, qObj);
+        api.toast('✅ प्रश्न Verified हो गया!');
+        renderAdminConsole(rootEl, state, api);
+      };
+    });
+
+    // 9. Delete (with Published Test & PYQ Reference safety check)
     bodyEl.querySelectorAll('[data-del-qbank]').forEach((btn) => {
       btn.onclick = () => {
         const qid = btn.getAttribute('data-del-qbank');
         const qObj = (state.questionBank || []).find((q) => q.id === qid);
         if (!qObj) return;
+        const safety = checkQuestionSafetyBeforeDelete(qObj, state);
         openConfirmationDialog({
-          title: 'प्रश्न हटाएं (Delete Question)',
-          message: `क्या आप इस प्रश्न को हटाना चाहते हैं: "${(qObj.questionHi || qObj.questionEn || '').slice(0, 80)}..."?`,
+          title: 'प्रश्न हटाएं (Delete Question Safety Check)',
+          message: `${safety.warningMessage ? `⚠️ चेतावनी: ${safety.warningMessage}\n\n` : ''}क्या आप इस प्रश्न को हटाना चाहते हैं: "${(qObj.questionHi || qObj.questionEn || '').slice(0, 80)}..."?`,
           confirmLabel: 'हाँ, हटाएं',
           isDanger: true,
           onConfirm: () => {

@@ -18,3 +18,8 @@ local.properties
 debug.keystore
 *-debug.log
 DRAFT_firestore.rules
+*.apk
+*.aab
+.build-outputs/
+/app/build/
+serve-apk.js
