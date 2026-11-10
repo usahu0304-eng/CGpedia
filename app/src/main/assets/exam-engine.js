@@ -275,6 +275,62 @@
     const currentUid = (window.CGpediaApp && typeof window.CGpediaApp.getCurrentStudentUid === 'function')
       ? (window.CGpediaApp.getCurrentStudentUid() || '')
       : '';
+
+    let preparedQuestions = existingSession ? existingSession.questions : JSON.parse(JSON.stringify(
+      (Array.isArray(testObj.publishedQuestionsSnapshot) && testObj.publishedQuestionsSnapshot.length > 0)
+        ? testObj.publishedQuestionsSnapshot
+        : (questions || [])
+    ));
+
+    if (!existingSession && Array.isArray(preparedQuestions)) {
+      // Normalize options and correctOptionIndex on every question
+      preparedQuestions.forEach((q) => {
+        if (!Array.isArray(q.optionsHi) || q.optionsHi.length < 4) {
+          q.optionsHi = [q.optA_Hi || q.optA_En || '', q.optB_Hi || q.optB_En || '', q.optC_Hi || q.optC_En || '', q.optD_Hi || q.optD_En || ''];
+        }
+        if (!Array.isArray(q.optionsEn) || q.optionsEn.length < 4) {
+          q.optionsEn = [q.optA_En || q.optA_Hi || '', q.optB_En || q.optB_Hi || '', q.optC_En || q.optC_Hi || '', q.optD_En || q.optD_Hi || ''];
+        }
+        if (q.correctOptionIndex === undefined && q.correctIndex !== undefined) {
+          q.correctOptionIndex = Number(q.correctIndex);
+        }
+        if (q.correctIndex === undefined && q.correctOptionIndex !== undefined) {
+          q.correctIndex = Number(q.correctOptionIndex);
+        }
+      });
+
+      // Part 11: Random Question Order
+      if (testObj.questionOrder === 'random') {
+        for (let i = preparedQuestions.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          const tmp = preparedQuestions[i];
+          preparedQuestions[i] = preparedQuestions[j];
+          preparedQuestions[j] = tmp;
+        }
+      }
+
+      // Part 11: Random Option Order
+      if (testObj.optionOrder === 'random') {
+        preparedQuestions.forEach((q) => {
+          const indices = [0, 1, 2, 3];
+          for (let i = indices.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            const tmp = indices[i];
+            indices[i] = indices[j];
+            indices[j] = tmp;
+          }
+          const origCorr = Number(q.correctOptionIndex !== undefined ? q.correctOptionIndex : (q.correctIndex || 0));
+          const newCorr = indices.indexOf(origCorr);
+          q.optionsHi = indices.map((idx) => q.optionsHi[idx]);
+          q.optionsEn = indices.map((idx) => q.optionsEn[idx]);
+          q.optA_Hi = q.optionsHi[0]; q.optB_Hi = q.optionsHi[1]; q.optC_Hi = q.optionsHi[2]; q.optD_Hi = q.optionsHi[3];
+          q.optA_En = q.optionsEn[0]; q.optB_En = q.optionsEn[1]; q.optC_En = q.optionsEn[2]; q.optD_En = q.optionsEn[3];
+          q.correctOptionIndex = newCorr >= 0 ? newCorr : 0;
+          q.correctIndex = q.correctOptionIndex;
+        });
+      }
+    }
+
     const session = existingSession || {
       sessionId: 'cbt_' + Date.now(),
       attemptId: 'att_' + Date.now(),
@@ -285,7 +341,10 @@
       examCode: testObj.examCode || 'CGPSC',
       marksPerQuestion: Number(testObj.marksPerQuestion || 2),
       negativeMarking: Number(testObj.negativeMarking !== undefined ? testObj.negativeMarking : 0.66),
-      questions: questions,
+      unattemptedMarks: Number(testObj.unattemptedMarks || 0),
+      autoSubmitOnTimeUp: testObj.autoSubmitOnTimeUp !== false,
+      resultSettings: testObj.resultSettings || null,
+      questions: preparedQuestions,
       currentIndex: 0,
       activeSection: 'ALL',
       langMode: chosenLang || 'bilingual',
@@ -874,10 +933,11 @@
       subjectStats[subj].timeSec += Number(session.questionTimeSec[idx] || 0);
 
       const chosen = session.answers[idx];
+      const corrOpt = Number(q.correctOptionIndex !== undefined ? q.correctOptionIndex : q.correctIndex);
       if (chosen !== undefined && chosen !== null) {
         attempted++;
         subjectStats[subj].attempted++;
-        if (Number(chosen) === Number(q.correctOptionIndex)) {
+        if (Number(chosen) === corrOpt) {
           correct++;
           subjectStats[subj].correct++;
         } else {
@@ -889,9 +949,10 @@
     });
 
     const unattempted = Math.max(0, questions.length - attempted);
+    const unattemptedBonus = +(unattempted * Number(session.unattemptedMarks || 0)).toFixed(2);
     const positiveMarks = +(correct * marksPos).toFixed(2);
     const negativeDeduction = +(incorrect * marksNeg).toFixed(2);
-    const netScore = +(positiveMarks - negativeDeduction).toFixed(2);
+    const netScore = +(positiveMarks - negativeDeduction + unattemptedBonus).toFixed(2);
     const maxScore = +(questions.length * marksPos).toFixed(2);
     const accuracyPercent = attempted > 0 ? Math.round((correct / attempted) * 100) : 0;
     const timeTakenSeconds = Math.max(1, (session.totalDurationSeconds || 0) - (session.remainingSeconds || 0));
@@ -918,6 +979,7 @@
       selectedAnswers: session.answers,
       questionTimeSec: session.questionTimeSec,
       subjectStats,
+      resultSettings: session.resultSettings || null,
       questionsSnapshot: questions,
       submittedAtIso: new Date().toISOString()
     };

@@ -355,6 +355,8 @@
       return;
     }
     if (activeSection === 'tests') {
+      renderTestSeriesBuilderV2(bodyEl, rootEl, state, api);
+      return;
       const catalog = getTaxonomyCatalog(state);
       const exams = catalog.examCategories;
       const tbState = state._testBuilderUiState || {
@@ -13143,6 +13145,3713 @@ Return ONLY a valid JSON array of objects:
         }
       };
     }
+  }
+
+  // ============================================================================
+  // ADVANCED SYLLABUS-BASED INTELLIGENT TEST BUILDER (PARTS 1 - 17)
+  // ============================================================================
+
+  const TEST_BUILDER_EXAM_CATEGORIES = [
+    { code: 'CGPSC', labelHi: 'CGPSC (छत्तीसगढ़ लोक सेवा आयोग)', labelEn: 'CGPSC' },
+    { code: 'CG_VYAPAM', labelHi: 'CG Vyapam (छत्तीसगढ़ व्यापम)', labelEn: 'CG Vyapam' },
+    { code: 'SSC', labelHi: 'SSC (कर्मचारी चयन आयोग)', labelEn: 'SSC' },
+    { code: 'UPSC', labelHi: 'UPSC (संघ लोक सेवा आयोग)', labelEn: 'UPSC' },
+    { code: 'RAILWAY', labelHi: 'Railway (रेलवे भर्ती बोर्ड)', labelEn: 'Railway' },
+    { code: 'BANKING', labelHi: 'Banking (बैंकिंग परीक्षा)', labelEn: 'Banking' },
+    { code: 'TEACHING', labelHi: 'Teaching Exams (शिक्षक भर्ती / TET)', labelEn: 'Teaching Exams' },
+    { code: 'POLICE_DEFENCE', labelHi: 'Police & Defence (पुलिस एवं रक्षा)', labelEn: 'Police & Defence' },
+    { code: 'OTHER', labelHi: 'Other Competitive Exams (अन्य परीक्षाएं)', labelEn: 'Other Exams' }
+  ];
+
+  const TEST_BUILDER_TEST_TYPES = [
+    { id: 'Full Length Test', labelHi: 'Full Length Test (पूर्ण लंबाई टेस्ट)' },
+    { id: 'Subject-wise Test', labelHi: 'Subject-wise Test (विषयवार टेस्ट)' },
+    { id: 'Topic-wise Test', labelHi: 'Topic-wise Test (टॉपिक-वार टेस्ट)' },
+    { id: 'Sectional Test', labelHi: 'Sectional Test (सेक्शनल टेस्ट)' },
+    { id: 'Practice Test', labelHi: 'Practice Test (अभ्यास टेस्ट)' },
+    { id: 'PYQ Test', labelHi: 'PYQ Test (पूर्व वर्ष प्रश्न पत्र टेस्ट)' },
+    { id: 'Custom Test', labelHi: 'Custom Test (कस्टम टेस्ट)' }
+  ];
+
+  function createDefaultWizardDraft(state, catalog) {
+    const firstFolder = (state.folders || [])[0];
+    const defaultSubDist = {};
+    const defaultTopDist = {};
+    (catalog.subjects || []).forEach((s) => {
+      defaultSubDist[s.subjectId] = {
+        subjectId: s.subjectId,
+        subjectNameHi: s.titleHi,
+        subjectNameEn: s.titleEn,
+        mainCategoryId: s.mainCategoryId || 'cat_cg_gk',
+        included: false,
+        questionCount: 0
+      };
+    });
+    (catalog.topics || []).forEach((t) => {
+      defaultTopDist[t.topicId] = {
+        topicId: t.topicId,
+        subjectId: t.subjectId,
+        topicNameHi: t.titleHi,
+        topicNameEn: t.titleEn,
+        mode: 'Auto', // 'Include' | 'Exclude' | 'Auto'
+        questionCount: 0
+      };
+    });
+
+    return {
+      id: `test_${Date.now()}`,
+      isEditingExisting: false,
+      folderId: firstFolder ? firstFolder.id : '',
+      titleHi: '',
+      titleEn: '',
+      examCategory: firstFolder ? (firstFolder.examCode || 'CGPSC') : 'CGPSC',
+      examName: 'CGPSC Prelims',
+      descriptionHi: 'नवीनतम परीक्षा पाठ्यक्रम (Syllabus) पर आधारित मॉक टेस्ट',
+      descriptionEn: 'Syllabus-based comprehensive mock test',
+      instructionsHi: '1. सभी प्रश्न अनिवार्य हैं।\n2. प्रत्येक गलत उत्तर के लिए निर्धारित ऋणात्मक अंक (Negative Marking) काटे जाएंगे।\n3. समय समाप्त होने पर टेस्ट स्वतः सबमिट हो जाएगा।',
+      testType: 'Full Length Test',
+      totalQuestions: 50,
+      marksPerQuestion: 2,
+      totalMarks: 100,
+      durationMinutes: 60,
+      negativeMarkingEnabled: true,
+      negativeMarking: 0.66,
+      unattemptedMarks: 0,
+      language: 'Bilingual (Hindi + English)',
+      isFree: false,
+      scheduleMode: 'immediate', // 'immediate' | 'scheduled'
+      startDate: '',
+      startTime: '09:00',
+      endDate: '',
+      endTime: '23:59',
+      visibility: 'public', // 'public' | 'enrolled' | 'hidden'
+      status: 'draft', // 'draft' | 'scheduled' | 'published' | 'completed' | 'unpublished'
+      // CBT & Result Settings (Part 11)
+      autoSubmitOnTimeUp: true,
+      questionOrder: 'fixed', // 'fixed' | 'random'
+      optionOrder: 'fixed', // 'fixed' | 'random'
+      resultReleaseMode: 'immediate', // 'immediate' | 'after_completion' | 'scheduled'
+      showCorrectAnswers: true,
+      showExplanation: true,
+      showMarks: true,
+      showRank: true,
+      // Question Source Selection (Part 3)
+      questionSourceMode: 'subject_bank', // 'subject_bank' | 'pyq_library' | 'both'
+      normalQuestionCount: 50,
+      pyqQuestionCount: 0,
+      pyqFilters: {
+        examCategory: 'ALL',
+        examName: '',
+        examYear: '',
+        paperShift: ''
+      },
+      // Syllabus Profile link (Part 6)
+      syllabusProfileId: '',
+      syllabusProfileName: '',
+      syllabusVersion: '2025',
+      // Distributions (Part 4 & Part 5)
+      subjectDistribution: defaultSubDist,
+      topicDistribution: defaultTopDist,
+      // Selected Questions (Part 7, 8, 9)
+      questions: [],
+      questionIds: [],
+      previouslySelectedIds: [],
+      shortageAlerts: [],
+      lastGenerationSummary: null
+    };
+  }
+
+  function ensureTestBuilderCollections(state, catalog) {
+    state.folders = state.folders || [];
+    state.tests = state.tests || [];
+    state.testHistoryLog = state.testHistoryLog || [];
+    state.testTemplates = state.testTemplates || [];
+
+    if (!Array.isArray(state.syllabusProfiles) || state.syllabusProfiles.length === 0) {
+      // Build customizable starter profiles linked to actual catalog subjectIds
+      const cgSubjects = (catalog.subjects || []).filter((s) => s.mainCategoryId === 'cat_cg_gk');
+      const gsSubjects = (catalog.subjects || []).filter((s) => s.mainCategoryId === 'cat_indian_gs');
+      const mathSub = (catalog.subjects || []).find((s) => s.mainCategoryId === 'cat_maths');
+      const reasSub = (catalog.subjects || []).find((s) => s.mainCategoryId === 'cat_reasoning');
+      const hinSub = (catalog.subjects || []).find((s) => s.mainCategoryId === 'cat_hindi');
+      const engSub = (catalog.subjects || []).find((s) => s.mainCategoryId === 'cat_english');
+
+      const cgpscSubDist = {};
+      cgSubjects.slice(0, 5).forEach((s) => {
+        cgpscSubDist[s.subjectId] = { subjectId: s.subjectId, subjectNameHi: s.titleHi, subjectNameEn: s.titleEn, included: true, questionCount: 10 };
+      });
+      gsSubjects.slice(0, 5).forEach((s) => {
+        cgpscSubDist[s.subjectId] = { subjectId: s.subjectId, subjectNameHi: s.titleHi, subjectNameEn: s.titleEn, included: true, questionCount: 10 };
+      });
+
+      const vyapamSubDist = {};
+      if (cgSubjects[0]) vyapamSubDist[cgSubjects[0].subjectId] = { subjectId: cgSubjects[0].subjectId, subjectNameHi: cgSubjects[0].titleHi, subjectNameEn: cgSubjects[0].titleEn, included: true, questionCount: 20 };
+      if (gsSubjects[0]) vyapamSubDist[gsSubjects[0].subjectId] = { subjectId: gsSubjects[0].subjectId, subjectNameHi: gsSubjects[0].titleHi, subjectNameEn: gsSubjects[0].titleEn, included: true, questionCount: 20 };
+      if (mathSub) vyapamSubDist[mathSub.subjectId] = { subjectId: mathSub.subjectId, subjectNameHi: mathSub.titleHi, subjectNameEn: mathSub.titleEn, included: true, questionCount: 20 };
+      if (reasSub) vyapamSubDist[reasSub.subjectId] = { subjectId: reasSub.subjectId, subjectNameHi: reasSub.titleHi, subjectNameEn: reasSub.titleEn, included: true, questionCount: 15 };
+      if (hinSub) vyapamSubDist[hinSub.subjectId] = { subjectId: hinSub.subjectId, subjectNameHi: hinSub.titleHi, subjectNameEn: hinSub.titleEn, included: true, questionCount: 15 };
+      if (engSub) vyapamSubDist[engSub.subjectId] = { subjectId: engSub.subjectId, subjectNameHi: engSub.titleHi, subjectNameEn: engSub.titleEn, included: true, questionCount: 10 };
+
+      state.syllabusProfiles = [
+        {
+          profileId: 'syl_cgpsc_prelims_gs1_2025',
+          profileName: 'CGPSC Prelims (GS Paper-1) Standard Profile',
+          examCategory: 'CGPSC',
+          examName: 'CGPSC State Service Prelims',
+          version: '2025',
+          isAdminVerified: true,
+          totalQuestions: 100,
+          marksPerQuestion: 2,
+          totalMarks: 200,
+          durationMinutes: 120,
+          negativeMarkingEnabled: true,
+          negativeMarking: 0.66,
+          questionSourceMode: 'both',
+          normalQuestionCount: 70,
+          pyqQuestionCount: 30,
+          subjectDistribution: cgpscSubDist,
+          topicDistribution: {},
+          notes: 'Chhattisgarh GK (50 Qs) + Indian GS (50 Qs) — Admin Customizable Syllabus Profile',
+          updatedAt: new Date().toISOString()
+        },
+        {
+          profileId: 'syl_cg_vyapam_general_2025',
+          profileName: 'CG Vyapam Combined Recruitment Profile',
+          examCategory: 'CG_VYAPAM',
+          examName: 'CG Vyapam Recruitment Exam',
+          version: '2025',
+          isAdminVerified: true,
+          totalQuestions: 100,
+          marksPerQuestion: 1,
+          totalMarks: 100,
+          durationMinutes: 120,
+          negativeMarkingEnabled: true,
+          negativeMarking: 0.25,
+          questionSourceMode: 'subject_bank',
+          normalQuestionCount: 100,
+          pyqQuestionCount: 0,
+          subjectDistribution: vyapamSubDist,
+          topicDistribution: {},
+          notes: 'CG GK + Indian GS + Maths + Reasoning + Hindi + English — Admin Customizable Profile',
+          updatedAt: new Date().toISOString()
+        }
+      ];
+    }
+
+    if (!state._testBuilderV2) {
+      state._testBuilderV2 = {
+        subTab: 'wizard', // 'wizard' | 'manage_tests' | 'syllabus_profiles' | 'templates' | 'draft_tests' | 'published_tests' | 'test_history' | 'analytics' | 'series_folders'
+        wizardStep: 1,
+        draft: createDefaultWizardDraft(state, catalog),
+        subjectSearch: '',
+        subjectMainCatFilter: 'ALL',
+        expandedSubjectIdForTopics: '',
+        topicSearch: '',
+        manualSearch: {
+          query: '',
+          subjectId: 'ALL',
+          topicId: 'ALL',
+          sourceType: 'ALL', // 'ALL' | 'NORMAL' | 'PYQ'
+          pyqExam: '',
+          pyqYear: '',
+          language: 'ALL',
+          selectedManualIds: []
+        },
+        manageTestsFilter: {
+          search: '',
+          examCategory: 'ALL',
+          status: 'ALL',
+          testType: 'ALL',
+          folderId: 'ALL'
+        },
+        editingProfileDraft: null
+      };
+    }
+  }
+
+  function getQuestionCanonicalMeta(q, catalog) {
+    const resolved = resolveCanonicalQuestionHierarchy(q, catalog);
+    const qId = String(q.questionId || q.id || '').trim();
+    const pyqRefs = Array.isArray(q.pyqReferences) ? q.pyqReferences : [];
+    const hasPyq = Boolean(pyqRefs.length > 0 || q.isPYQ || q.pyqExamName || q.pyqYear || q.pyqTag);
+    const qHi = String(q.questionHi || '').trim();
+    const qEn = String(q.questionEn || '').trim();
+    const hasHi = Boolean(qHi);
+    const hasEn = Boolean(qEn);
+    let langType = 'Bilingual';
+    if (hasHi && !hasEn) langType = 'Hindi';
+    else if (!hasHi && hasEn) langType = 'English';
+    else if (!hasHi && !hasEn) langType = 'Missing';
+
+    const isUncategorised = Boolean(
+      q.needsCategorisation ||
+      q.verificationStatus === 'needs_categorisation' ||
+      q.status === 'needs_categorisation' ||
+      resolved.subjectId === 'sub_uncategorised' ||
+      resolved.topicId === 'top_uncategorised' ||
+      String(q.subjectTag || '').toLowerCase() === 'uncategorised' ||
+      String(q.topic || '').toLowerCase() === 'uncategorised'
+    );
+    const isDeleted = Boolean(q.isDeleted || q.deleted || String(q.status || '').toLowerCase() === 'deleted');
+    const isVerified = Boolean(!isDeleted && !isUncategorised && q.verified !== false && q.adminVerified !== false && q.status !== 'unverified');
+
+    const optsHi = Array.isArray(q.optionsHi) && q.optionsHi.length === 4
+      ? q.optionsHi
+      : [q.optA_Hi, q.optB_Hi, q.optC_Hi, q.optD_Hi].filter((x) => x !== undefined && x !== null && String(x).trim() !== '');
+    const optsEn = Array.isArray(q.optionsEn) && q.optionsEn.length === 4
+      ? q.optionsEn
+      : [q.optA_En, q.optB_En, q.optC_En, q.optD_En].filter((x) => x !== undefined && x !== null && String(x).trim() !== '');
+    const hasFourOptions = optsHi.length === 4 || optsEn.length === 4;
+    const corrIdx = Number(q.correctIndex !== undefined ? q.correctIndex : q.correctOptionIndex);
+    const hasValidAnswer = Number.isInteger(corrIdx) && corrIdx >= 0 && corrIdx <= 3;
+
+    return {
+      questionId: qId,
+      mainCategoryId: resolved.mainCategoryId || q.mainCategoryId || 'cat_cg_gk',
+      mainCategory: resolved.mainCategory || q.mainCategory || 'Chhattisgarh GK',
+      subjectId: resolved.subjectId || q.subjectId || '',
+      subjectName: resolved.subjectTag || q.subjectTag || '',
+      topicId: resolved.topicId || q.topicId || '',
+      topicName: resolved.topic || q.topic || '',
+      hasPyq,
+      pyqRefs,
+      langType,
+      hasHi,
+      hasEn,
+      isUncategorised,
+      isDeleted,
+      isVerified,
+      hasFourOptions,
+      hasValidAnswer,
+      isEligibleForAuto: Boolean(isVerified && hasFourOptions && hasValidAnswer && (hasHi || hasEn))
+    };
+  }
+
+  function questionMatchesPyqFilters(q, meta, pyqFilters) {
+    if (!meta.hasPyq) return false;
+    if (!pyqFilters) return true;
+    const catFilter = String(pyqFilters.examCategory || 'ALL').trim();
+    const nameFilter = String(pyqFilters.examName || '').trim().toLowerCase();
+    const yearFilter = String(pyqFilters.examYear || '').trim();
+    const shiftFilter = String(pyqFilters.paperShift || '').trim().toLowerCase();
+
+    if (catFilter === 'ALL' && !nameFilter && !yearFilter && !shiftFilter) {
+      return true;
+    }
+
+    const refs = meta.pyqRefs.length > 0 ? meta.pyqRefs : [{
+      examCategory: q.examCode || '',
+      examName: q.pyqExamName || q.pyqTag || '',
+      examYear: q.pyqYear || '',
+      paperShift: q.pyqShift || ''
+    }];
+
+    return refs.some((r) => {
+      if (catFilter && catFilter !== 'ALL') {
+        const rCat = String(r.examCategory || r.examCategoryCode || '').toUpperCase();
+        if (!rCat.includes(catFilter.toUpperCase())) return false;
+      }
+      if (nameFilter) {
+        const rName = `${r.examName || ''} ${r.subCategoryName || ''} ${q.pyqTag || ''}`.toLowerCase();
+        if (!rName.includes(nameFilter)) return false;
+      }
+      if (yearFilter) {
+        const rYear = String(r.examYear || q.pyqYear || '').trim();
+        if (rYear !== yearFilter) return false;
+      }
+      if (shiftFilter) {
+        const rShift = String(r.paperShift || r.paperName || '').toLowerCase();
+        if (!rShift.includes(shiftFilter)) return false;
+      }
+      return true;
+    });
+  }
+
+  function computeTestBuilderPoolStats(state, draft, catalog) {
+    const bank = state.questionBank || [];
+    const bySubject = {};
+    const byTopic = {};
+    let totalEligiblePool = 0;
+    let totalNormalPool = 0;
+    let totalPyqPool = 0;
+
+    (catalog.subjects || []).forEach((s) => {
+      bySubject[s.subjectId] = { availableTotal: 0, availableNormal: 0, availablePyq: 0, selectedCount: 0 };
+    });
+    (catalog.topics || []).forEach((t) => {
+      byTopic[t.topicId] = { availableTotal: 0, availableNormal: 0, availablePyq: 0, selectedCount: 0 };
+    });
+
+    const sourceMode = draft.questionSourceMode || 'subject_bank';
+    const pyqFilters = draft.pyqFilters || {};
+
+    bank.forEach((q) => {
+      const meta = getQuestionCanonicalMeta(q, catalog);
+      if (!meta.isEligibleForAuto) return;
+
+      const isPyqMatch = questionMatchesPyqFilters(q, meta, pyqFilters);
+      const isNormalMatch = true; // All verified subject-categorised questions are in Subject Library
+
+      let matchesSource = false;
+      if (sourceMode === 'subject_bank') matchesSource = isNormalMatch;
+      else if (sourceMode === 'pyq_library') matchesSource = isPyqMatch;
+      else matchesSource = isNormalMatch || isPyqMatch;
+
+      if (!matchesSource) return;
+
+      totalEligiblePool += 1;
+      if (isPyqMatch) totalPyqPool += 1;
+      else totalNormalPool += 1;
+
+      if (meta.subjectId) {
+        if (!bySubject[meta.subjectId]) {
+          bySubject[meta.subjectId] = { availableTotal: 0, availableNormal: 0, availablePyq: 0, selectedCount: 0 };
+        }
+        bySubject[meta.subjectId].availableTotal += 1;
+        if (isPyqMatch) bySubject[meta.subjectId].availablePyq += 1;
+        else bySubject[meta.subjectId].availableNormal += 1;
+      }
+      if (meta.topicId) {
+        if (!byTopic[meta.topicId]) {
+          byTopic[meta.topicId] = { availableTotal: 0, availableNormal: 0, availablePyq: 0, selectedCount: 0 };
+        }
+        byTopic[meta.topicId].availableTotal += 1;
+        if (isPyqMatch) byTopic[meta.topicId].availablePyq += 1;
+        else byTopic[meta.topicId].availableNormal += 1;
+      }
+    });
+
+    (draft.questions || []).forEach((q) => {
+      const meta = getQuestionCanonicalMeta(q, catalog);
+      if (meta.subjectId && bySubject[meta.subjectId]) {
+        bySubject[meta.subjectId].selectedCount += 1;
+      }
+      if (meta.topicId && byTopic[meta.topicId]) {
+        byTopic[meta.topicId].selectedCount += 1;
+      }
+    });
+
+    return {
+      totalEligiblePool,
+      totalNormalPool,
+      totalPyqPool,
+      bySubject,
+      byTopic
+    };
+  }
+
+  function syncDraftSubjectAndTopicMapsWithCatalog(draft, catalog) {
+    draft.subjectDistribution = draft.subjectDistribution || {};
+    draft.topicDistribution = draft.topicDistribution || {};
+
+    (catalog.subjects || []).forEach((s) => {
+      if (!draft.subjectDistribution[s.subjectId]) {
+        draft.subjectDistribution[s.subjectId] = {
+          subjectId: s.subjectId,
+          subjectNameHi: s.titleHi,
+          subjectNameEn: s.titleEn,
+          mainCategoryId: s.mainCategoryId || 'cat_cg_gk',
+          included: false,
+          questionCount: 0
+        };
+      } else {
+        draft.subjectDistribution[s.subjectId].subjectNameHi = s.titleHi;
+        draft.subjectDistribution[s.subjectId].subjectNameEn = s.titleEn;
+        draft.subjectDistribution[s.subjectId].mainCategoryId = s.mainCategoryId || 'cat_cg_gk';
+      }
+    });
+
+    (catalog.topics || []).forEach((t) => {
+      if (!draft.topicDistribution[t.topicId]) {
+        draft.topicDistribution[t.topicId] = {
+          topicId: t.topicId,
+          subjectId: t.subjectId,
+          topicNameHi: t.titleHi,
+          topicNameEn: t.titleEn,
+          mode: 'Auto',
+          questionCount: 0
+        };
+      } else {
+        draft.topicDistribution[t.topicId].subjectId = t.subjectId;
+        draft.topicDistribution[t.topicId].topicNameHi = t.titleHi;
+        draft.topicDistribution[t.topicId].topicNameEn = t.titleEn;
+      }
+    });
+  }
+
+  // PART 7 & PART 9: AUTOMATIC QUESTION SELECTION ENGINE (WITH REGENERATE & SHORTAGE ALERT)
+  function runIntelligentQuestionSelectionEngine(state, draft, catalog, options = {}) {
+    syncDraftSubjectAndTopicMapsWithCatalog(draft, catalog);
+    const isRegenerate = Boolean(options.regenerate);
+    const preserveManualQuestions = Boolean(options.preserveManual);
+
+    const previousIdsSet = new Set([
+      ...(draft.previouslySelectedIds || []),
+      ...(isRegenerate ? (draft.questions || []).map((q) => String(q.centralQuestionId || q.questionId || q.id)) : [])
+    ]);
+
+    const selectedQuestions = [];
+    const selectedQuestionIds = new Set();
+    const shortageAlerts = [];
+
+    if (preserveManualQuestions && Array.isArray(draft.questions)) {
+      draft.questions.filter((q) => q._selectionSource === 'manual').forEach((mq) => {
+        const qid = String(mq.centralQuestionId || mq.questionId || mq.id);
+        if (!selectedQuestionIds.has(qid)) {
+          selectedQuestionIds.add(qid);
+          selectedQuestions.push(mq);
+        }
+      });
+    }
+
+    const sourceMode = draft.questionSourceMode || 'subject_bank';
+    const targetTotal = Math.max(1, Number(draft.totalQuestions || 50));
+    const targetPyqCount = sourceMode === 'pyq_library'
+      ? targetTotal
+      : (sourceMode === 'both' ? Math.max(0, Number(draft.pyqQuestionCount || 0)) : 0);
+    let currentPyqSelected = selectedQuestions.filter((q) => q._isPyqSelection).length;
+
+    // Gather all eligible Central Question Bank items with canonical metadata
+    const eligibleItems = [];
+    (state.questionBank || []).forEach((q) => {
+      const meta = getQuestionCanonicalMeta(q, catalog);
+      if (!meta.isEligibleForAuto) return;
+      const isPyqMatch = questionMatchesPyqFilters(q, meta, draft.pyqFilters);
+      if (sourceMode === 'pyq_library' && !isPyqMatch) return;
+      eligibleItems.push({ q, meta, isPyqMatch });
+    });
+
+    // Helper to shuffle array deterministically-random
+    const shufflePool = (arr) => {
+      const copy = [...arr];
+      for (let i = copy.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const tmp = copy[i];
+        copy[i] = copy[j];
+        copy[j] = tmp;
+      }
+      // Prioritize unseen questions when regenerating
+      if (isRegenerate && previousIdsSet.size > 0) {
+        copy.sort((a, b) => {
+          const aSeen = previousIdsSet.has(a.meta.questionId) ? 1 : 0;
+          const bSeen = previousIdsSet.has(b.meta.questionId) ? 1 : 0;
+          return aSeen - bSeen;
+        });
+      }
+      return copy;
+    };
+
+    const pickFromCandidateList = (candidates, countNeeded, preferPyqRatio) => {
+      const picked = [];
+      if (countNeeded <= 0) return picked;
+      const ordered = shufflePool(candidates).filter((item) => !selectedQuestionIds.has(item.meta.questionId));
+
+      if (sourceMode === 'both' && preferPyqRatio) {
+        const pyqRemaining = Math.max(0, targetPyqCount - currentPyqSelected);
+        const pyqCands = ordered.filter((x) => x.isPyqMatch);
+        const normalCands = ordered.filter((x) => !x.isPyqMatch);
+
+        const desiredPyqHere = Math.min(pyqRemaining, Math.round((targetPyqCount / targetTotal) * countNeeded));
+        for (let i = 0; i < pyqCands.length && picked.length < desiredPyqHere; i++) {
+          const item = pyqCands[i];
+          selectedQuestionIds.add(item.meta.questionId);
+          currentPyqSelected += 1;
+          picked.push({ ...item, usedAsPyq: true });
+        }
+        for (let i = 0; i < normalCands.length && picked.length < countNeeded; i++) {
+          const item = normalCands[i];
+          if (selectedQuestionIds.has(item.meta.questionId)) continue;
+          selectedQuestionIds.add(item.meta.questionId);
+          picked.push({ ...item, usedAsPyq: false });
+        }
+        // If still short, fill from remaining pyqCands if allowed
+        for (let i = 0; i < ordered.length && picked.length < countNeeded; i++) {
+          const item = ordered[i];
+          if (selectedQuestionIds.has(item.meta.questionId)) continue;
+          selectedQuestionIds.add(item.meta.questionId);
+          if (item.isPyqMatch) currentPyqSelected += 1;
+          picked.push({ ...item, usedAsPyq: item.isPyqMatch });
+        }
+      } else {
+        for (let i = 0; i < ordered.length && picked.length < countNeeded; i++) {
+          const item = ordered[i];
+          selectedQuestionIds.add(item.meta.questionId);
+          if (item.isPyqMatch) currentPyqSelected += 1;
+          picked.push({ ...item, usedAsPyq: item.isPyqMatch });
+        }
+      }
+      return picked;
+    };
+
+    const formatQuestionForTest = (item, seqNum) => {
+      const { q, meta, usedAsPyq } = item;
+      const copy = JSON.parse(JSON.stringify(q));
+      copy.id = `${draft.id}_q_${seqNum}_${meta.questionId}`;
+      copy.centralQuestionId = meta.questionId;
+      copy.questionId = meta.questionId;
+      copy.mainCategoryId = meta.mainCategoryId;
+      copy.mainCategory = meta.mainCategory;
+      copy.subjectId = meta.subjectId;
+      copy.subjectTag = meta.subjectName;
+      copy.topicId = meta.topicId;
+      copy.topic = meta.topicName;
+      copy._selectionSource = 'auto';
+      copy._isPyqSelection = Boolean(usedAsPyq || meta.hasPyq);
+      copy._langType = meta.langType;
+      return copy;
+    };
+
+    // Determine Included Subjects
+    const includedSubjects = Object.values(draft.subjectDistribution || {}).filter((s) => s.included && Number(s.questionCount) > 0);
+    const excludedSubjectIds = new Set(
+      Object.values(draft.subjectDistribution || {})
+        .filter((s) => !s.included)
+        .map((s) => s.subjectId)
+    );
+    const excludedTopicIds = new Set(
+      Object.values(draft.topicDistribution || {})
+        .filter((t) => t.mode === 'Exclude')
+        .map((t) => t.topicId)
+    );
+
+    if (includedSubjects.length === 0) {
+      return {
+        questions: [],
+        shortageAlerts: [{
+          level: 'subject',
+          subjectName: 'कोई विषय चयनित नहीं (No Subject Included)',
+          requested: targetTotal,
+          available: 0,
+          shortage: targetTotal,
+          message: 'कृपया Step 4 (Subject Distribution) में कम से कम एक Subject को Include करें और प्रश्नों की संख्या निर्धारित करें।'
+        }],
+        summary: 'कोई Subject Include नहीं किया गया है।'
+      };
+    }
+
+    // Iterate over every Included Subject
+    includedSubjects.forEach((subCfg) => {
+      const subId = subCfg.subjectId;
+      const subTarget = Math.max(0, Number(subCfg.questionCount || 0));
+      if (subTarget === 0) return;
+
+      const subTopics = Object.values(draft.topicDistribution || {}).filter((t) => t.subjectId === subId);
+      const explicitIncludeTopics = subTopics.filter((t) => t.mode === 'Include' && Number(t.questionCount) > 0);
+      const autoTopics = subTopics.filter((t) => t.mode === 'Auto' || (t.mode === 'Include' && Number(t.questionCount || 0) === 0));
+
+      let pickedInSubject = 0;
+
+      // 1. Fulfill explicit Include Topic quotas first (Rule 1)
+      explicitIncludeTopics.forEach((topCfg) => {
+        const topReq = Math.max(0, Number(topCfg.questionCount || 0));
+        if (topReq === 0) return;
+        const topicPool = eligibleItems.filter(
+          (item) =>
+            item.meta.subjectId === subId &&
+            item.meta.topicId === topCfg.topicId &&
+            !excludedSubjectIds.has(item.meta.subjectId) &&
+            !excludedTopicIds.has(item.meta.topicId) &&
+            !selectedQuestionIds.has(item.meta.questionId)
+        );
+        const pickedForTopic = pickFromCandidateList(topicPool, topReq, true);
+        pickedForTopic.forEach((pItem) => {
+          selectedQuestions.push(formatQuestionForTest(pItem, selectedQuestions.length + 1));
+        });
+        pickedInSubject += pickedForTopic.length;
+
+        if (pickedForTopic.length < topReq) {
+          shortageAlerts.push({
+            level: 'topic',
+            subjectId: subId,
+            subjectName: subCfg.subjectNameHi || subCfg.subjectNameEn,
+            topicId: topCfg.topicId,
+            topicName: topCfg.topicNameHi || topCfg.topicNameEn,
+            requested: topReq,
+            available: pickedForTopic.length,
+            shortage: topReq - pickedForTopic.length,
+            message: `Topic "${topCfg.topicNameHi}" (${subCfg.subjectNameHi}): मांगे गए प्रश्न = ${topReq}, उपलब्ध प्रश्न = ${pickedForTopic.length}, कमी = ${topReq - pickedForTopic.length} प्रश्न।`
+          });
+        }
+      });
+
+      // 2. Fulfill remaining Subject quota from Auto (non-excluded) Topics (Rule 2 & Rule 3)
+      const remainingForSubject = Math.max(0, subTarget - pickedInSubject);
+      if (remainingForSubject > 0) {
+        const allowedAutoTopicIds = new Set(autoTopics.map((t) => t.topicId));
+        const autoPool = eligibleItems.filter(
+          (item) =>
+            item.meta.subjectId === subId &&
+            !excludedSubjectIds.has(item.meta.subjectId) &&
+            !excludedTopicIds.has(item.meta.topicId) &&
+            (allowedAutoTopicIds.size === 0 || allowedAutoTopicIds.has(item.meta.topicId)) &&
+            !selectedQuestionIds.has(item.meta.questionId)
+        );
+
+        const pickedAuto = pickFromCandidateList(autoPool, remainingForSubject, true);
+        pickedAuto.forEach((pItem) => {
+          selectedQuestions.push(formatQuestionForTest(pItem, selectedQuestions.length + 1));
+        });
+        pickedInSubject += pickedAuto.length;
+
+        if (pickedAuto.length < remainingForSubject) {
+          shortageAlerts.push({
+            level: 'subject',
+            subjectId: subId,
+            subjectName: subCfg.subjectNameHi || subCfg.subjectNameEn,
+            topicId: '',
+            topicName: 'Auto Topics (Excluded Topics Skipped)',
+            requested: subTarget,
+            available: pickedInSubject,
+            shortage: subTarget - pickedInSubject,
+            message: `Subject "${subCfg.subjectNameHi}": कुल मांगे गए = ${subTarget}, उपलब्ध (Excluded Topics को छोड़कर) = ${pickedInSubject}, कमी = ${subTarget - pickedInSubject} प्रश्न।`
+          });
+        }
+      }
+    });
+
+    draft.questions = selectedQuestions;
+    draft.questionIds = selectedQuestions.map((q) => q.centralQuestionId || q.questionId || q.id);
+    draft.previouslySelectedIds = Array.from(new Set([...previousIdsSet, ...draft.questionIds]));
+    draft.shortageAlerts = shortageAlerts;
+    draft.lastGenerationSummary = {
+      timestamp: new Date().toISOString(),
+      requestedTotal: targetTotal,
+      selectedTotal: selectedQuestions.length,
+      pyqSelected: selectedQuestions.filter((q) => q._isPyqSelection).length,
+      normalSelected: selectedQuestions.filter((q) => !q._isPyqSelection).length,
+      shortageCount: shortageAlerts.reduce((acc, s) => acc + s.shortage, 0),
+      wasRegenerated: isRegenerate
+    };
+
+    return {
+      questions: selectedQuestions,
+      shortageAlerts,
+      summary: draft.lastGenerationSummary
+    };
+  }
+
+  // PART 10: TEST BLUEPRINT & PRE-PUBLISH VALIDATION ENGINE
+  function computeTestBlueprintAndValidation(draft, state, catalog) {
+    syncDraftSubjectAndTopicMapsWithCatalog(draft, catalog);
+    const questions = draft.questions || [];
+    const targetTotal = Number(draft.totalQuestions || 0);
+    const actualTotal = questions.length;
+
+    const subjectBreakdown = {};
+    const topicBreakdown = {};
+    const pyqExamBreakdown = {};
+    let normalCount = 0;
+    let pyqCount = 0;
+    let bilingualCount = 0;
+    let hindiOnlyCount = 0;
+    let englishOnlyCount = 0;
+    let missingLangCount = 0;
+    let unverifiedOrUncatCount = 0;
+    let missingOptionsOrAnswerCount = 0;
+    let excludedViolationCount = 0;
+
+    const seenQIds = new Set();
+    let duplicateCount = 0;
+
+    const excludedSubjectIds = new Set(
+      Object.values(draft.subjectDistribution || {})
+        .filter((s) => !s.included)
+        .map((s) => s.subjectId)
+    );
+    const excludedTopicIds = new Set(
+      Object.values(draft.topicDistribution || {})
+        .filter((t) => t.mode === 'Exclude')
+        .map((t) => t.topicId)
+    );
+
+    questions.forEach((q) => {
+      const meta = getQuestionCanonicalMeta(q, catalog);
+      const qid = meta.questionId;
+      if (seenQIds.has(qid)) duplicateCount += 1;
+      else seenQIds.add(qid);
+
+      if (!meta.isVerified || meta.isUncategorised) unverifiedOrUncatCount += 1;
+      if (!meta.hasFourOptions || !meta.hasValidAnswer) missingOptionsOrAnswerCount += 1;
+
+      if (excludedSubjectIds.has(meta.subjectId) || excludedTopicIds.has(meta.topicId)) {
+        excludedViolationCount += 1;
+      }
+
+      if (meta.langType === 'Bilingual') bilingualCount += 1;
+      else if (meta.langType === 'Hindi') hindiOnlyCount += 1;
+      else if (meta.langType === 'English') englishOnlyCount += 1;
+      else missingLangCount += 1;
+
+      if (meta.hasPyq || q._isPyqSelection) {
+        pyqCount += 1;
+        const refs = meta.pyqRefs.length > 0 ? meta.pyqRefs : [{ examName: q.pyqExamName || q.pyqTag || 'PYQ', examYear: q.pyqYear || '' }];
+        refs.forEach((r) => {
+          const key = `${r.examName || r.examCategory || 'PYQ'}${r.examYear ? ' (' + r.examYear + ')' : ''}`;
+          pyqExamBreakdown[key] = (pyqExamBreakdown[key] || 0) + 1;
+        });
+      } else {
+        normalCount += 1;
+      }
+
+      const sKey = meta.subjectId || 'unknown_subject';
+      if (!subjectBreakdown[sKey]) {
+        const subCfg = (draft.subjectDistribution || {})[sKey];
+        subjectBreakdown[sKey] = {
+          subjectId: sKey,
+          subjectName: subCfg ? subCfg.subjectNameHi : (meta.subjectName || sKey),
+          targetCount: subCfg && subCfg.included ? Number(subCfg.questionCount || 0) : 0,
+          actualCount: 0,
+          isExcluded: excludedSubjectIds.has(sKey)
+        };
+      }
+      subjectBreakdown[sKey].actualCount += 1;
+
+      const tKey = meta.topicId || 'unknown_topic';
+      if (!topicBreakdown[tKey]) {
+        const topCfg = (draft.topicDistribution || {})[tKey];
+        topicBreakdown[tKey] = {
+          topicId: tKey,
+          topicName: topCfg ? topCfg.topicNameHi : (meta.topicName || tKey),
+          subjectName: subjectBreakdown[sKey].subjectName,
+          mode: topCfg ? topCfg.mode : 'Auto',
+          targetCount: topCfg && topCfg.mode === 'Include' ? Number(topCfg.questionCount || 0) : 0,
+          actualCount: 0,
+          isExcluded: excludedTopicIds.has(tKey)
+        };
+      }
+      topicBreakdown[tKey].actualCount += 1;
+    });
+
+    // Also include Included Subjects with 0 actual questions so mismatch is visible
+    Object.values(draft.subjectDistribution || {}).forEach((sCfg) => {
+      if (sCfg.included && Number(sCfg.questionCount || 0) > 0 && !subjectBreakdown[sCfg.subjectId]) {
+        subjectBreakdown[sCfg.subjectId] = {
+          subjectId: sCfg.subjectId,
+          subjectName: sCfg.subjectNameHi || sCfg.subjectNameEn,
+          targetCount: Number(sCfg.questionCount || 0),
+          actualCount: 0,
+          isExcluded: false
+        };
+      }
+    });
+
+    const errors = [];
+    const warnings = [];
+
+    if (!String(draft.titleHi || draft.titleEn || '').trim()) {
+      errors.push('Test Name (टेस्ट का नाम) खाली है।');
+    }
+    if (actualTotal === 0) {
+      errors.push('टेस्ट में अभी कोई प्रश्न चयनित नहीं है (0 Questions Selected)।');
+    }
+    if (actualTotal !== targetTotal) {
+      errors.push(`कुल प्रश्नों की संख्या मेल नहीं खाती: निर्धारित (Target) = ${targetTotal}, चयनित (Selected) = ${actualTotal} (अंतर: ${Math.abs(targetTotal - actualTotal)})।`);
+    }
+    if (excludedViolationCount > 0) {
+      errors.push(`${excludedViolationCount} प्रश्न ऐसे हैं जो Excluded Subject या Excluded Topic से हैं। इन्हें हटाना अनिवार्य है।`);
+    }
+    if (duplicateCount > 0) {
+      errors.push(`टेस्ट में ${duplicateCount} Duplicate प्रश्न पाए गए हैं।`);
+    }
+    if (missingOptionsOrAnswerCount > 0) {
+      errors.push(`${missingOptionsOrAnswerCount} प्रश्नों में 4 विकल्प या सही उत्तर (Correct Option) अपूर्ण हैं।`);
+    }
+    if (unverifiedOrUncatCount > 0) {
+      errors.push(`${unverifiedOrUncatCount} प्रश्न Uncategorised या Unverified हैं।`);
+    }
+    if (Number(draft.totalMarks || 0) <= 0) {
+      errors.push('Total Marks (कुल अंक) 0 से अधिक होना चाहिए।');
+    }
+    if (Number(draft.durationMinutes || 0) <= 0) {
+      errors.push('Test Duration (समय) 0 मिनट से अधिक होना चाहिए।');
+    }
+    if (draft.scheduleMode === 'scheduled' && !draft.startDate) {
+      errors.push('Scheduled Test के लिए Start Date चुनना अनिवार्य है।');
+    }
+
+    // Subject distribution check
+    Object.values(subjectBreakdown).forEach((sb) => {
+      if (sb.targetCount > 0 && sb.actualCount !== sb.targetCount) {
+        warnings.push(`Subject "${sb.subjectName}": निर्धारित = ${sb.targetCount}, वास्तविक चयनित = ${sb.actualCount}।`);
+      }
+    });
+
+    // Language availability warning (Rule: do NOT auto-generate missing language; inform Admin in Preview)
+    if (draft.language.includes('Bilingual') && (hindiOnlyCount > 0 || englishOnlyCount > 0)) {
+      warnings.push(`भाषा सूचना: टेस्ट की भाषा Bilingual चुनी गई है, किंतु ${hindiOnlyCount} प्रश्न केवल हिंदी में और ${englishOnlyCount} प्रश्न केवल अंग्रेज़ी में उपलब्ध हैं (नियम के अनुसार सिस्टम अपने आप अनुवाद नहीं बनाता है)।`);
+    } else if (draft.language === 'Hindi' && englishOnlyCount > 0) {
+      warnings.push(`भाषा सूचना: ${englishOnlyCount} प्रश्न केवल English में उपलब्ध हैं।`);
+    } else if (draft.language === 'English' && hindiOnlyCount > 0) {
+      warnings.push(`भाषा सूचना: ${hindiOnlyCount} प्रश्न केवल Hindi में उपलब्ध हैं।`);
+    }
+
+    return {
+      targetTotal,
+      actualTotal,
+      missingQuestionsCount: Math.max(0, targetTotal - actualTotal),
+      totalMarks: Number(draft.totalMarks || 0),
+      durationMinutes: Number(draft.durationMinutes || 0),
+      normalCount,
+      pyqCount,
+      bilingualCount,
+      hindiOnlyCount,
+      englishOnlyCount,
+      duplicateCount,
+      unverifiedOrUncatCount,
+      missingOptionsOrAnswerCount,
+      excludedViolationCount,
+      subjectBreakdown: Object.values(subjectBreakdown),
+      topicBreakdown: Object.values(topicBreakdown),
+      pyqExamBreakdown,
+      errors,
+      warnings,
+      isValidForPublish: errors.length === 0
+    };
+  }
+
+  // PART 9B: REPLACE INDIVIDUAL QUESTION MODAL
+  function openReplaceSingleQuestionModal(qIndex, draft, state, api, rootEl, catalog) {
+    const currentQ = (draft.questions || [])[qIndex];
+    if (!currentQ) return;
+    const currentMeta = getQuestionCanonicalMeta(currentQ, catalog);
+    const modalRoot = document.getElementById('genericModalContainer');
+    if (!modalRoot) return;
+
+    const currentIdsInTest = new Set((draft.questions || []).map((q) => String(q.centralQuestionId || q.questionId || q.id)));
+    const excludedTopicIds = new Set(
+      Object.values(draft.topicDistribution || {})
+        .filter((t) => t.mode === 'Exclude')
+        .map((t) => t.topicId)
+    );
+
+    let scopeMode = 'same_topic'; // 'same_topic' | 'same_subject'
+    let searchKw = '';
+
+    const renderReplaceModalInner = () => {
+      const candidates = [];
+      (state.questionBank || []).forEach((q) => {
+        const meta = getQuestionCanonicalMeta(q, catalog);
+        if (!meta.isEligibleForAuto) return;
+        if (currentIdsInTest.has(meta.questionId)) return;
+        if (excludedTopicIds.has(meta.topicId)) return;
+        if (scopeMode === 'same_topic' && meta.topicId !== currentMeta.topicId) return;
+        if (scopeMode === 'same_subject' && meta.subjectId !== currentMeta.subjectId) return;
+        if (searchKw) {
+          const text = `${q.questionHi || ''} ${q.questionEn || ''} ${meta.questionId} ${meta.topicName}`.toLowerCase();
+          if (!text.includes(searchKw.toLowerCase())) return;
+        }
+        candidates.push({ q, meta });
+      });
+
+      modalRoot.innerHTML = `
+        <div class="modal-backdrop">
+          <div class="modal-card" style="max-width:820px;max-height:88vh;overflow-y:auto;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+              <div>
+                <h2 style="font-size:1.05rem;font-weight:800;color:var(--primary);">🔁 प्रश्न बदलें (Replace Question #${qIndex + 1})</h2>
+                <p style="font-size:0.78rem;color:var(--text-secondary);">
+                  वर्तमान Topic: <strong>${esc(currentMeta.topicName)}</strong> | Subject: <strong>${esc(currentMeta.subjectName)}</strong> (Excluded Topics एवं पहले से चयनित प्रश्न स्वतः रोके गए हैं)
+                </p>
+              </div>
+              <button class="btn btn-outline btn-sm" id="closeReplaceQModalBtn">✕ बंद करें</button>
+            </div>
+
+            <div style="padding:10px;border-radius:8px;background:var(--surface-alt);border:1px solid var(--border);margin-bottom:12px;">
+              <div style="font-size:0.75rem;font-weight:800;color:var(--text-muted);margin-bottom:4px;">वर्तमान प्रश्न (Current Question #${qIndex + 1}):</div>
+              <div style="font-size:0.86rem;font-weight:700;">${esc(currentQ.questionHi || currentQ.questionEn)}</div>
+            </div>
+
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+              <select class="form-select" id="replaceQScopeSelect" style="width:auto;min-width:260px;">
+                <option value="same_topic" ${scopeMode === 'same_topic' ? 'selected' : ''}>🎯 केवल इसी Topic से (${esc(currentMeta.topicName)})</option>
+                <option value="same_subject" ${scopeMode === 'same_subject' ? 'selected' : ''}>📚 इसी Subject के अन्य Included Topics से (${esc(currentMeta.subjectName)})</option>
+              </select>
+              <input class="form-input" id="replaceQSearchInput" value="${esc(searchKw)}" placeholder="प्रश्न या ID खोजें..." style="flex:1;min-width:180px;" />
+              <button class="btn btn-primary btn-sm" id="replaceQAutoRandomBtn">🎲 Auto-Pick Random Replacement (${candidates.length} उपलब्ध)</button>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:8px;max-height:420px;overflow-y:auto;">
+              ${candidates.length === 0 ? `
+                <div style="padding:20px;text-align:center;color:var(--danger);font-weight:700;">
+                  ⚠️ इस फ़िल्टर में कोई अन्य अप्रयुक्त (Unselected) सत्यापित प्रश्न उपलब्ध नहीं है। आप ऊपर ड्रॉपडाउन से "इसी Subject के अन्य Included Topics" चुन सकते हैं।
+                </div>
+              ` : candidates.slice(0, 40).map(({ q, meta }) => `
+                <div style="padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--surface);display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+                  <div style="flex:1;">
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px;">
+                      <span class="badge badge-primary" style="font-size:0.65rem;">${esc(meta.topicName)}</span>
+                      <span class="badge badge-muted" style="font-size:0.65rem;">ID: ${esc(meta.questionId)}</span>
+                      ${meta.hasPyq ? `<span class="badge badge-info" style="font-size:0.65rem;">🏛️ PYQ</span>` : ''}
+                      <span class="badge badge-success" style="font-size:0.65rem;">${esc(meta.langType)}</span>
+                    </div>
+                    <div style="font-size:0.85rem;font-weight:700;">${esc(q.questionHi || q.questionEn)}</div>
+                    ${q.questionEn && q.questionHi ? `<div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px;">${esc(q.questionEn)}</div>` : ''}
+                  </div>
+                  <button class="btn btn-success btn-sm" data-pick-replace-qid="${esc(meta.questionId)}">✅ इसे चुनें</button>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+      `;
+
+      document.getElementById('closeReplaceQModalBtn').onclick = () => { modalRoot.innerHTML = ''; };
+      document.getElementById('replaceQScopeSelect').onchange = (e) => {
+        scopeMode = e.target.value;
+        renderReplaceModalInner();
+      };
+      document.getElementById('replaceQSearchInput').oninput = (e) => {
+        searchKw = e.target.value;
+        renderReplaceModalInner();
+      };
+
+      const applyReplacement = (chosenItem) => {
+        const { q, meta } = chosenItem;
+        const copy = JSON.parse(JSON.stringify(q));
+        copy.id = `${draft.id}_q_${qIndex + 1}_${meta.questionId}`;
+        copy.centralQuestionId = meta.questionId;
+        copy.questionId = meta.questionId;
+        copy.mainCategoryId = meta.mainCategoryId;
+        copy.mainCategory = meta.mainCategory;
+        copy.subjectId = meta.subjectId;
+        copy.subjectTag = meta.subjectName;
+        copy.topicId = meta.topicId;
+        copy.topic = meta.topicName;
+        copy._selectionSource = 'replaced';
+        copy._isPyqSelection = meta.hasPyq;
+        copy._langType = meta.langType;
+
+        draft.questions[qIndex] = copy;
+        draft.questionIds = draft.questions.map((x) => x.centralQuestionId || x.questionId || x.id);
+        modalRoot.innerHTML = '';
+        api.toast(`✅ प्रश्न #${qIndex + 1} सफलतापूर्वक बदल दिया गया!`);
+        renderAdminConsole(rootEl, state, api);
+      };
+
+      const autoBtn = document.getElementById('replaceQAutoRandomBtn');
+      if (autoBtn) {
+        autoBtn.onclick = () => {
+          if (candidates.length === 0) {
+            api.toast('⚠️ कोई वैकल्पिक प्रश्न उपलब्ध नहीं है।');
+            return;
+          }
+          const randItem = candidates[Math.floor(Math.random() * candidates.length)];
+          applyReplacement(randItem);
+        };
+      }
+
+      modalRoot.querySelectorAll('[data-pick-replace-qid]').forEach((btn) => {
+        btn.onclick = () => {
+          const targetId = btn.getAttribute('data-pick-replace-qid');
+          const found = candidates.find((c) => c.meta.questionId === targetId);
+          if (found) applyReplacement(found);
+        };
+      });
+    };
+
+    renderReplaceModalInner();
+  }
+
+  // PART 12: SAVE DRAFT / SCHEDULE / PUBLISH TEST WITH IMMUTABLE SNAPSHOT
+  function persistWizardTestWithStatus(draft, desiredStatus, state, api, rootEl, catalog) {
+    const bp = computeTestBlueprintAndValidation(draft, state, catalog);
+    if ((desiredStatus === 'published' || desiredStatus === 'scheduled') && !bp.isValidForPublish) {
+      api.toast(`❌ Publish रोका गया: ${bp.errors[0]}`);
+      state._testBuilderV2.wizardStep = 7;
+      renderAdminConsole(rootEl, state, api);
+      return false;
+    }
+
+    let folderId = draft.folderId;
+    if (!folderId) {
+      if ((state.folders || []).length > 0) {
+        folderId = state.folders[0].id;
+      } else {
+        const autoFolder = {
+          id: `folder_${Date.now()}`,
+          examCode: draft.examCategory || 'CGPSC',
+          titleHi: `${draft.examName || 'CGPSC'} टेस्ट सीरीज़`,
+          titleEn: `${draft.examName || 'CGPSC'} Test Series`,
+          descHi: draft.descriptionHi || 'नवीनतम सिलेबस पर आधारित टेस्ट सीरीज़',
+          descEn: draft.descriptionEn || 'Syllabus-based test series',
+          totalTests: 10,
+          freeTests: 2,
+          price: draft.isFree ? 0 : 199,
+          originalPrice: draft.isFree ? 0 : 399,
+          isFree: Boolean(draft.isFree),
+          badgeHi: draft.isFree ? 'निःशुल्क' : 'प्रीमियम',
+          badgeEn: draft.isFree ? 'Free' : 'Premium'
+        };
+        state.folders.unshift(autoFolder);
+        folderId = autoFolder.id;
+        if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('exam_folders', autoFolder.id, autoFolder);
+      }
+    }
+
+    const nowIso = new Date().toISOString();
+    const questionsCopy = JSON.parse(JSON.stringify(draft.questions || []));
+    const isNowPublished = desiredStatus === 'published';
+    const isNowScheduled = desiredStatus === 'scheduled';
+
+    // Save immutable snapshot of Syllabus & Questions so future edits in Question Bank or Syllabus Profiles do not break published tests
+    const syllabusSnapshot = {
+      syllabusProfileId: draft.syllabusProfileId || '',
+      syllabusProfileName: draft.syllabusProfileName || 'Custom Test Syllabus',
+      syllabusVersion: draft.syllabusVersion || '2025',
+      questionSourceMode: draft.questionSourceMode || 'subject_bank',
+      normalQuestionCount: draft.normalQuestionCount || 0,
+      pyqQuestionCount: draft.pyqQuestionCount || 0,
+      pyqFilters: JSON.parse(JSON.stringify(draft.pyqFilters || {})),
+      subjectDistribution: JSON.parse(JSON.stringify(draft.subjectDistribution || {})),
+      topicDistribution: JSON.parse(JSON.stringify(draft.topicDistribution || {}))
+    };
+
+    const existingIdx = (state.tests || []).findIndex((t) => t.id === draft.id);
+    const prevTest = existingIdx >= 0 ? state.tests[existingIdx] : null;
+    const historyArr = Array.isArray(prevTest && prevTest.history) ? [...prevTest.history] : [];
+    historyArr.unshift({
+      action: desiredStatus.toUpperCase(),
+      timestamp: nowIso,
+      questionCount: questionsCopy.length,
+      totalMarks: Number(draft.totalMarks || 0),
+      syllabusVersion: draft.syllabusVersion || '2025'
+    });
+
+    const testRecord = {
+      ...(prevTest || {}),
+      id: draft.id,
+      folderId,
+      examCode: draft.examCategory || 'CGPSC',
+      examCategory: draft.examCategory || 'CGPSC',
+      examName: draft.examName || 'CGPSC Prelims',
+      titleHi: String(draft.titleHi || draft.titleEn || 'Untitled Test').trim(),
+      titleEn: String(draft.titleEn || draft.titleHi || 'Untitled Test').trim(),
+      descriptionHi: draft.descriptionHi || '',
+      descriptionEn: draft.descriptionEn || '',
+      instructionsHi: draft.instructionsHi || '',
+      testType: draft.testType || 'Full Length Test',
+      totalQuestions: Number(draft.totalQuestions || questionsCopy.length || 0),
+      marksPerQuestion: Number(draft.marksPerQuestion || 2),
+      totalMarks: Number(draft.totalMarks || 100),
+      durationMinutes: Number(draft.durationMinutes || 60),
+      negativeMarkingEnabled: Boolean(draft.negativeMarkingEnabled),
+      negativeMarking: draft.negativeMarkingEnabled ? Number(draft.negativeMarking || 0) : 0,
+      unattemptedMarks: Number(draft.unattemptedMarks || 0),
+      language: draft.language || 'Bilingual (Hindi + English)',
+      isFree: Boolean(draft.isFree),
+      scheduleMode: isNowScheduled ? 'scheduled' : (draft.scheduleMode || 'immediate'),
+      startDate: draft.startDate || '',
+      startTime: draft.startTime || '09:00',
+      endDate: draft.endDate || '',
+      endTime: draft.endTime || '23:59',
+      visibility: draft.visibility || 'public',
+      status: desiredStatus,
+      isPublished: isNowPublished,
+      publishedAt: isNowPublished ? (prevTest && prevTest.publishedAt ? prevTest.publishedAt : nowIso) : null,
+      updatedAt: nowIso,
+      // CBT & Result Settings (Part 11)
+      autoSubmitOnTimeUp: draft.autoSubmitOnTimeUp !== false,
+      questionOrder: draft.questionOrder || 'fixed',
+      optionOrder: draft.optionOrder || 'fixed',
+      resultSettings: {
+        resultReleaseMode: draft.resultReleaseMode || 'immediate',
+        showCorrectAnswers: draft.showCorrectAnswers !== false,
+        showExplanation: draft.showExplanation !== false,
+        showMarks: draft.showMarks !== false,
+        showRank: draft.showRank !== false
+      },
+      subject: Object.values(draft.subjectDistribution || {})
+        .filter((s) => s.included && Number(s.questionCount) > 0)
+        .map((s) => s.subjectNameHi)
+        .join(', ') || 'Syllabus Based Mock',
+      questionSourceMode: draft.questionSourceMode || 'subject_bank',
+      normalQuestionCount: Number(draft.normalQuestionCount || 0),
+      pyqQuestionCount: Number(draft.pyqQuestionCount || 0),
+      pyqFilters: JSON.parse(JSON.stringify(draft.pyqFilters || {})),
+      syllabusProfileId: draft.syllabusProfileId || '',
+      syllabusProfileName: draft.syllabusProfileName || '',
+      syllabusVersion: draft.syllabusVersion || '2025',
+      syllabusSnapshot,
+      questionIds: questionsCopy.map((q) => q.centralQuestionId || q.questionId || q.id),
+      questions: questionsCopy,
+      publishedQuestionsSnapshot: (isNowPublished || isNowScheduled)
+        ? JSON.parse(JSON.stringify(questionsCopy))
+        : (prevTest && prevTest.publishedQuestionsSnapshot ? prevTest.publishedQuestionsSnapshot : null),
+      history: historyArr.slice(0, 25)
+    };
+
+    if (existingIdx >= 0) {
+      state.tests[existingIdx] = testRecord;
+    } else {
+      state.tests.unshift(testRecord);
+    }
+
+    state.testHistoryLog = state.testHistoryLog || [];
+    state.testHistoryLog.unshift({
+      logId: `th_${Date.now()}`,
+      testId: testRecord.id,
+      testTitle: testRecord.titleHi,
+      examCategory: testRecord.examCode,
+      testType: testRecord.testType,
+      action: desiredStatus.toUpperCase(),
+      questionCount: questionsCopy.length,
+      totalMarks: testRecord.totalMarks,
+      syllabusProfileName: testRecord.syllabusProfileName || 'Custom',
+      syllabusVersion: testRecord.syllabusVersion || '2025',
+      timestamp: nowIso
+    });
+
+    api.saveState();
+    if (window.CGpediaCloud) {
+      window.CGpediaCloud.saveCloudDoc('tests', testRecord.id, testRecord);
+    }
+
+    draft.isEditingExisting = true;
+    draft.status = desiredStatus;
+
+    if (desiredStatus === 'published') {
+      api.toast(`🚀 टेस्ट "${testRecord.titleHi}" सफलतापूर्वक PUBLISH हो गया है (Question Snapshot सुरक्षित)!`);
+    } else if (desiredStatus === 'scheduled') {
+      api.toast(`📅 टेस्ट "${testRecord.titleHi}" निर्धारित समय (${testRecord.startDate} ${testRecord.startTime}) के लिए SCHEDULE हो गया!`);
+    } else {
+      api.toast(`💾 टेस्ट "${testRecord.titleHi}" DRAFT में सुरक्षित कर लिया गया है!`);
+    }
+    renderAdminConsole(rootEl, state, api);
+    return true;
+  }
+
+  function loadExistingTestIntoWizard(testObj, state, catalog) {
+    const wDraft = createDefaultWizardDraft(state, catalog);
+    const snap = testObj.syllabusSnapshot || {};
+    Object.assign(wDraft, {
+      id: testObj.id,
+      isEditingExisting: true,
+      folderId: testObj.folderId || wDraft.folderId,
+      titleHi: testObj.titleHi || '',
+      titleEn: testObj.titleEn || '',
+      examCategory: testObj.examCategory || testObj.examCode || 'CGPSC',
+      examName: testObj.examName || testObj.examCode || 'CGPSC Prelims',
+      descriptionHi: testObj.descriptionHi || '',
+      descriptionEn: testObj.descriptionEn || '',
+      instructionsHi: testObj.instructionsHi || wDraft.instructionsHi,
+      testType: testObj.testType || 'Full Length Test',
+      totalQuestions: Number(testObj.totalQuestions || (testObj.questions || []).length || 50),
+      marksPerQuestion: Number(testObj.marksPerQuestion || 2),
+      totalMarks: Number(testObj.totalMarks || 100),
+      durationMinutes: Number(testObj.durationMinutes || 60),
+      negativeMarkingEnabled: testObj.negativeMarkingEnabled !== undefined ? Boolean(testObj.negativeMarkingEnabled) : Number(testObj.negativeMarking || 0) > 0,
+      negativeMarking: Number(testObj.negativeMarking || 0),
+      unattemptedMarks: Number(testObj.unattemptedMarks || 0),
+      language: testObj.language || 'Bilingual (Hindi + English)',
+      isFree: Boolean(testObj.isFree),
+      scheduleMode: testObj.scheduleMode || (testObj.status === 'scheduled' ? 'scheduled' : 'immediate'),
+      startDate: testObj.startDate || '',
+      startTime: testObj.startTime || '09:00',
+      endDate: testObj.endDate || '',
+      endTime: testObj.endTime || '23:59',
+      visibility: testObj.visibility || 'public',
+      status: testObj.status || 'draft',
+      autoSubmitOnTimeUp: testObj.autoSubmitOnTimeUp !== false,
+      questionOrder: testObj.questionOrder || 'fixed',
+      optionOrder: testObj.optionOrder || 'fixed',
+      resultReleaseMode: (testObj.resultSettings && testObj.resultSettings.resultReleaseMode) || 'immediate',
+      showCorrectAnswers: !testObj.resultSettings || testObj.resultSettings.showCorrectAnswers !== false,
+      showExplanation: !testObj.resultSettings || testObj.resultSettings.showExplanation !== false,
+      showMarks: !testObj.resultSettings || testObj.resultSettings.showMarks !== false,
+      showRank: !testObj.resultSettings || testObj.resultSettings.showRank !== false,
+      questionSourceMode: testObj.questionSourceMode || snap.questionSourceMode || 'subject_bank',
+      normalQuestionCount: Number(testObj.normalQuestionCount !== undefined ? testObj.normalQuestionCount : (snap.normalQuestionCount || (testObj.questions || []).length || 50)),
+      pyqQuestionCount: Number(testObj.pyqQuestionCount !== undefined ? testObj.pyqQuestionCount : (snap.pyqQuestionCount || 0)),
+      pyqFilters: JSON.parse(JSON.stringify(testObj.pyqFilters || snap.pyqFilters || wDraft.pyqFilters)),
+      syllabusProfileId: testObj.syllabusProfileId || snap.syllabusProfileId || '',
+      syllabusProfileName: testObj.syllabusProfileName || snap.syllabusProfileName || '',
+      syllabusVersion: testObj.syllabusVersion || snap.syllabusVersion || '2025',
+      questions: JSON.parse(JSON.stringify(testObj.questions || [])),
+      questionIds: (testObj.questions || []).map((q) => q.centralQuestionId || q.questionId || q.id)
+    });
+
+    if (snap.subjectDistribution) {
+      Object.keys(snap.subjectDistribution).forEach((sid) => {
+        if (wDraft.subjectDistribution[sid]) {
+          Object.assign(wDraft.subjectDistribution[sid], snap.subjectDistribution[sid]);
+        }
+      });
+    } else {
+      // Infer subject distribution from existing test questions
+      const countsBySub = {};
+      (wDraft.questions || []).forEach((q) => {
+        const meta = getQuestionCanonicalMeta(q, catalog);
+        if (meta.subjectId) countsBySub[meta.subjectId] = (countsBySub[meta.subjectId] || 0) + 1;
+      });
+      Object.keys(countsBySub).forEach((sid) => {
+        if (wDraft.subjectDistribution[sid]) {
+          wDraft.subjectDistribution[sid].included = true;
+          wDraft.subjectDistribution[sid].questionCount = countsBySub[sid];
+        }
+      });
+    }
+
+    if (snap.topicDistribution) {
+      Object.keys(snap.topicDistribution).forEach((tid) => {
+        if (wDraft.topicDistribution[tid]) {
+          Object.assign(wDraft.topicDistribution[tid], snap.topicDistribution[tid]);
+        }
+      });
+    }
+
+    state._testBuilderV2.draft = wDraft;
+    state._testBuilderV2.subTab = 'wizard';
+    state._testBuilderV2.wizardStep = 1;
+  }
+
+  function applySyllabusProfileToDraft(profile, draft, catalog) {
+    syncDraftSubjectAndTopicMapsWithCatalog(draft, catalog);
+    draft.syllabusProfileId = profile.profileId;
+    draft.syllabusProfileName = profile.profileName;
+    draft.syllabusVersion = profile.version || '2025';
+    draft.examCategory = profile.examCategory || draft.examCategory;
+    draft.examName = profile.examName || draft.examName;
+    if (profile.totalQuestions) draft.totalQuestions = Number(profile.totalQuestions);
+    if (profile.marksPerQuestion) draft.marksPerQuestion = Number(profile.marksPerQuestion);
+    if (profile.totalMarks) draft.totalMarks = Number(profile.totalMarks);
+    if (profile.durationMinutes) draft.durationMinutes = Number(profile.durationMinutes);
+    if (profile.negativeMarkingEnabled !== undefined) draft.negativeMarkingEnabled = Boolean(profile.negativeMarkingEnabled);
+    if (profile.negativeMarking !== undefined) draft.negativeMarking = Number(profile.negativeMarking);
+    if (profile.questionSourceMode) draft.questionSourceMode = profile.questionSourceMode;
+    if (profile.normalQuestionCount !== undefined) draft.normalQuestionCount = Number(profile.normalQuestionCount);
+    if (profile.pyqQuestionCount !== undefined) draft.pyqQuestionCount = Number(profile.pyqQuestionCount);
+
+    // Reset all subjects to excluded first, then apply profile's subjectDistribution copy
+    Object.values(draft.subjectDistribution).forEach((s) => {
+      s.included = false;
+      s.questionCount = 0;
+    });
+    Object.entries(profile.subjectDistribution || {}).forEach(([sid, cfg]) => {
+      if (draft.subjectDistribution[sid]) {
+        draft.subjectDistribution[sid].included = Boolean(cfg.included);
+        draft.subjectDistribution[sid].questionCount = Number(cfg.questionCount || 0);
+      }
+    });
+
+    Object.values(draft.topicDistribution).forEach((t) => {
+      t.mode = 'Auto';
+      t.questionCount = 0;
+    });
+    Object.entries(profile.topicDistribution || {}).forEach(([tid, cfg]) => {
+      if (draft.topicDistribution[tid]) {
+        draft.topicDistribution[tid].mode = cfg.mode || 'Auto';
+        draft.topicDistribution[tid].questionCount = Number(cfg.questionCount || 0);
+      }
+    });
+  }
+
+  function renderTestSeriesBuilderV2(bodyEl, rootEl, state, api) {
+    state.questionBank = state.questionBank || [];
+    if (state.questionBank.some((q) => !q.questionId || !q.mainCategoryId)) {
+      migrateExistingQuestionBankRecords(state, api, { skipCloudSync: true });
+    }
+    const catalog = getTaxonomyCatalog(state);
+    ensureTestBuilderCollections(state, catalog);
+    const tb = state._testBuilderV2;
+    const draft = tb.draft;
+    syncDraftSubjectAndTopicMapsWithCatalog(draft, catalog);
+
+    const poolStats = computeTestBuilderPoolStats(state, draft, catalog);
+    const blueprint = computeTestBlueprintAndValidation(draft, state, catalog);
+
+    const allTests = state.tests || [];
+    const draftTestsList = allTests.filter((t) => t.status === 'draft' || t.status === 'unpublished' || (!t.status && !t.isPublished));
+    const publishedTestsList = allTests.filter((t) => t.status === 'published' || t.isPublished);
+    const scheduledTestsList = allTests.filter((t) => t.status === 'scheduled');
+
+    const navTabs = [
+      { id: 'wizard', label: `1. Create New Test ${draft.isEditingExisting ? '(Editing)' : ''}`, icon: '✨' },
+      { id: 'manage_tests', label: `2. Manage Existing Tests (${allTests.length})`, icon: '🗂️' },
+      { id: 'syllabus_profiles', label: `3. Saved Syllabus Profiles (${(state.syllabusProfiles || []).length})`, icon: '📐' },
+      { id: 'templates', label: `4. Test Templates (${(state.testTemplates || []).length})`, icon: '📋' },
+      { id: 'draft_tests', label: `5. Draft Tests (${draftTestsList.length})`, icon: '📝' },
+      { id: 'published_tests', label: `6. Published Tests (${publishedTestsList.length + scheduledTestsList.length})`, icon: '🚀' },
+      { id: 'test_history', label: `7. Test History`, icon: '🕓' },
+      { id: 'analytics', label: `8. Test Analytics`, icon: '📊' },
+      { id: 'series_folders', label: `📁 Test Series (${(state.folders || []).length})`, icon: '📚' }
+    ];
+
+    const renderSubTabContent = () => {
+      // ======================================================================
+      // TAB 1: 8-STEP INTELLIGENT TEST CREATION WIZARD
+      // ======================================================================
+      if (tb.subTab === 'wizard') {
+        const steps = [
+          { num: 1, title: 'Step 1: Test Details', sub: 'नाम, अंक, समय व शेड्यूल' },
+          { num: 2, title: 'Step 2: Question Source', sub: 'Subject Bank / PYQ / Both' },
+          { num: 3, title: 'Step 3: Syllabus Selection', sub: 'Saved Profile या Custom' },
+          { num: 4, title: 'Step 4: Subject Distribution', sub: 'Include/Exclude व प्रश्न संख्या' },
+          { num: 5, title: 'Step 5: Topic Distribution', sub: 'Include / Exclude / Auto' },
+          { num: 6, title: 'Step 6: Question Generation', sub: 'Auto Engine + Manual Selection' },
+          { num: 7, title: 'Step 7: Preview & Validation', sub: 'Blueprint व प्रश्न जांच' },
+          { num: 8, title: 'Step 8: Save / Publish', sub: 'Draft, Schedule या Publish' }
+        ];
+
+        const includedSubjectList = Object.values(draft.subjectDistribution || {}).filter((s) => s.included);
+        const sumSubjectQuestions = includedSubjectList.reduce((acc, s) => acc + Number(s.questionCount || 0), 0);
+        const subjectSumMismatch = sumSubjectQuestions !== Number(draft.totalQuestions || 0);
+
+        let stepHtml = '';
+
+        // ---- STEP 1: TEST DETAILS & CBT SETTINGS (PART 2 & PART 11) ----
+        if (tb.wizardStep === 1) {
+          stepHtml = `
+            <div class="card" style="border:1.5px solid var(--primary);">
+              <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+                <div>
+                  <h3 style="font-size:1.02rem;font-weight:800;color:var(--primary);">📋 Step 1: Test Details, Schedule &amp; CBT Settings</h3>
+                  <p style="font-size:0.78rem;color:var(--text-secondary);">
+                    टेस्ट का नाम, परीक्षा श्रेणी, पूर्णांक, ऋणात्मक अंक, भाषा और शेड्यूल निर्धारित करें। (कठिनाई स्तर / Difficulty Level का कोई अनिवार्य प्रतिबंध नहीं है।)
+                  </p>
+                </div>
+                <button class="btn btn-outline btn-sm" id="tbResetNewWizardBtn">➕ Start Fresh Blank Test</button>
+              </div>
+
+              <div class="grid-3" style="gap:10px;margin-bottom:10px;">
+                <div class="form-group" style="margin-bottom:0;">
+                  <label class="form-label">Test Name (Hindi) *</label>
+                  <input class="form-input" id="tbStep1TitleHi" value="${esc(draft.titleHi)}" placeholder="उदा. CGPSC प्रीलिम्स फुल लेंथ मॉक टेस्ट 01" />
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                  <label class="form-label">Test Name (English)</label>
+                  <input class="form-input" id="tbStep1TitleEn" value="${esc(draft.titleEn)}" placeholder="e.g. CGPSC Prelims Full Length Mock Test 01" />
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                  <label class="form-label">Test Series Package / Folder *</label>
+                  <select class="form-select" id="tbStep1FolderId">
+                    ${(state.folders || []).map((f) => `<option value="${esc(f.id)}" ${draft.folderId === f.id ? 'selected' : ''}>[${esc(f.examCode)}] ${esc(f.titleHi)}</option>`).join('')}
+                  </select>
+                </div>
+              </div>
+
+              <div class="grid-4" style="gap:10px;margin-bottom:10px;">
+                <div class="form-group" style="margin-bottom:0;">
+                  <label class="form-label">Exam Category *</label>
+                  <select class="form-select" id="tbStep1ExamCat">
+                    ${TEST_BUILDER_EXAM_CATEGORIES.map((c) => `<option value="${esc(c.code)}" ${draft.examCategory === c.code ? 'selected' : ''}>${esc(c.labelHi)}</option>`).join('')}
+                  </select>
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                  <label class="form-label">Exam Name *</label>
+                  <input class="form-input" id="tbStep1ExamName" value="${esc(draft.examName)}" placeholder="उदा. CGPSC Prelims / Hostel Warden / SSC CGL" />
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                  <label class="form-label">Test Type *</label>
+                  <select class="form-select" id="tbStep1TestType">
+                    ${TEST_BUILDER_TEST_TYPES.map((tt) => `<option value="${esc(tt.id)}" ${draft.testType === tt.id ? 'selected' : ''}>${esc(tt.labelHi)}</option>`).join('')}
+                  </select>
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                  <label class="form-label">Language (भाषा) *</label>
+                  <select class="form-select" id="tbStep1Language">
+                    <option value="Bilingual (Hindi + English)" ${draft.language.includes('Bilingual') ? 'selected' : ''}>Bilingual (Hindi + English)</option>
+                    <option value="Hindi" ${draft.language === 'Hindi' ? 'selected' : ''}>Hindi (केवल हिंदी)</option>
+                    <option value="English" ${draft.language === 'English' ? 'selected' : ''}>English (केवल अंग्रेज़ी)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="grid-4" style="gap:10px;margin-bottom:10px;">
+                <div class="form-group" style="margin-bottom:0;">
+                  <label class="form-label">Total Questions (कुल प्रश्न) *</label>
+                  <input type="number" min="1" max="300" class="form-input" id="tbStep1TotalQ" value="${draft.totalQuestions}" />
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                  <label class="form-label">Marks Per Question (प्रति प्रश्न अंक) *</label>
+                  <input type="number" step="0.25" min="0.25" class="form-input" id="tbStep1MarksPerQ" value="${draft.marksPerQuestion}" />
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                  <label class="form-label">Total Marks (कुल अंक) *</label>
+                  <input type="number" step="0.5" min="1" class="form-input" id="tbStep1TotalMarks" value="${draft.totalMarks}" />
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                  <label class="form-label">Test Duration (समय - मिनट में) *</label>
+                  <input type="number" min="5" max="360" class="form-input" id="tbStep1Duration" value="${draft.durationMinutes}" />
+                </div>
+              </div>
+
+              <div class="grid-4" style="gap:10px;margin-bottom:12px;">
+                <div class="form-group" style="margin-bottom:0;">
+                  <label class="form-label">Negative Marking (ऋणात्मक अंक)</label>
+                  <select class="form-select" id="tbStep1NegEnabled">
+                    <option value="true" ${draft.negativeMarkingEnabled ? 'selected' : ''}>Enabled (लागू है)</option>
+                    <option value="false" ${!draft.negativeMarkingEnabled ? 'selected' : ''}>Disabled (कोई नेगेटिव मार्किंग नहीं)</option>
+                  </select>
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                  <label class="form-label">Negative Marks (प्रति गलत उत्तर कटाव)</label>
+                  <input type="number" step="0.01" min="0" class="form-input" id="tbStep1NegMarks" value="${draft.negativeMarking}" ${!draft.negativeMarkingEnabled ? 'disabled' : ''} />
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                  <label class="form-label">Unattempted Question Marks</label>
+                  <input type="number" step="0.01" class="form-input" id="tbStep1UnattemptedMarks" value="${draft.unattemptedMarks}" />
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                  <label class="form-label">Access Type (Free / Paid Pro)</label>
+                  <select class="form-select" id="tbStep1IsFree">
+                    <option value="false" ${!draft.isFree ? 'selected' : ''}>Paid Pro Series Test</option>
+                    <option value="true" ${draft.isFree ? 'selected' : ''}>Free Mock Test (निःशुल्क)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="grid-2" style="gap:10px;margin-bottom:12px;">
+                <div class="form-group" style="margin-bottom:0;">
+                  <label class="form-label">Test Description (विवरण)</label>
+                  <input class="form-input" id="tbStep1DescHi" value="${esc(draft.descriptionHi)}" placeholder="टेस्ट के मुख्य बिंदु एवं सिलेबस कवरेज..." />
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                  <label class="form-label">Test Instructions (परीक्षा निर्देश)</label>
+                  <input class="form-input" id="tbStep1InstrHi" value="${esc(draft.instructionsHi)}" placeholder="परीक्षा शुरू होने से पहले छात्रों को दिखने वाले निर्देश..." />
+                </div>
+              </div>
+
+              <!-- Schedule & Visibility Settings -->
+              <div style="padding:12px;border-radius:10px;background:var(--surface-alt);border:1px solid var(--border);margin-bottom:12px;">
+                <div style="font-size:0.84rem;font-weight:800;color:var(--primary);margin-bottom:8px;">📅 Test Schedule &amp; Visibility Settings</div>
+                <div class="grid-4" style="gap:10px;">
+                  <div>
+                    <label class="form-label" style="font-size:0.75rem;">Publish Mode</label>
+                    <select class="form-select" id="tbStep1ScheduleMode">
+                      <option value="immediate" ${draft.scheduleMode === 'immediate' ? 'selected' : ''}>Immediate Publish / Draft</option>
+                      <option value="scheduled" ${draft.scheduleMode === 'scheduled' ? 'selected' : ''}>Schedule for Later (निर्धारित तिथि)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="form-label" style="font-size:0.75rem;">Start Date &amp; Time</label>
+                    <div style="display:flex;gap:4px;">
+                      <input type="date" class="form-input" id="tbStep1StartDate" value="${esc(draft.startDate)}" style="flex:1;" />
+                      <input type="time" class="form-input" id="tbStep1StartTime" value="${esc(draft.startTime)}" style="width:105px;" />
+                    </div>
+                  </div>
+                  <div>
+                    <label class="form-label" style="font-size:0.75rem;">End Date &amp; Time (Optional)</label>
+                    <div style="display:flex;gap:4px;">
+                      <input type="date" class="form-input" id="tbStep1EndDate" value="${esc(draft.endDate)}" style="flex:1;" />
+                      <input type="time" class="form-input" id="tbStep1EndTime" value="${esc(draft.endTime)}" style="width:105px;" />
+                    </div>
+                  </div>
+                  <div>
+                    <label class="form-label" style="font-size:0.75rem;">Test Visibility</label>
+                    <select class="form-select" id="tbStep1Visibility">
+                      <option value="public" ${draft.visibility === 'public' ? 'selected' : ''}>Public (All Students)</option>
+                      <option value="enrolled" ${draft.visibility === 'enrolled' ? 'selected' : ''}>Enrolled Students Only</option>
+                      <option value="hidden" ${draft.visibility === 'hidden' ? 'selected' : ''}>Hidden / Direct Link</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <!-- CBT Display & Result Settings (Part 11) -->
+              <div style="padding:12px;border-radius:10px;background:var(--surface-alt);border:1px solid var(--border);">
+                <div style="font-size:0.84rem;font-weight:800;color:var(--primary);margin-bottom:8px;">🖥️ CBT Exam Engine &amp; Result Settings (Part 11)</div>
+                <div class="grid-4" style="gap:10px;margin-bottom:8px;">
+                  <div>
+                    <label class="form-label" style="font-size:0.75rem;">Question Order (प्रश्न क्रम)</label>
+                    <select class="form-select" id="tbStep1QuestionOrder">
+                      <option value="fixed" ${draft.questionOrder === 'fixed' ? 'selected' : ''}>Fixed Question Order</option>
+                      <option value="random" ${draft.questionOrder === 'random' ? 'selected' : ''}>Random Question Order (Shuffle)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="form-label" style="font-size:0.75rem;">Option Order (विकल्प क्रम)</label>
+                    <select class="form-select" id="tbStep1OptionOrder">
+                      <option value="fixed" ${draft.optionOrder === 'fixed' ? 'selected' : ''}>Fixed Option Order (A, B, C, D)</option>
+                      <option value="random" ${draft.optionOrder === 'random' ? 'selected' : ''}>Random Option Order</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="form-label" style="font-size:0.75rem;">Timer Expiry Action</label>
+                    <select class="form-select" id="tbStep1AutoSubmit">
+                      <option value="true" ${draft.autoSubmitOnTimeUp !== false ? 'selected' : ''}>Auto Submit on Time Up</option>
+                      <option value="false" ${draft.autoSubmitOnTimeUp === false ? 'selected' : ''}>Manual Submit Prompt</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="form-label" style="font-size:0.75rem;">Result Release Mode</label>
+                    <select class="form-select" id="tbStep1ResultRelease">
+                      <option value="immediate" ${draft.resultReleaseMode === 'immediate' ? 'selected' : ''}>Immediate Result After Submit</option>
+                      <option value="after_completion" ${draft.resultReleaseMode === 'after_completion' ? 'selected' : ''}>After Test Window Completion</option>
+                      <option value="scheduled" ${draft.resultReleaseMode === 'scheduled' ? 'selected' : ''}>Scheduled Result Release</option>
+                    </select>
+                  </div>
+                </div>
+                <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:0.8rem;font-weight:700;">
+                  <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;">
+                    <input type="checkbox" id="tbStep1ShowAns" ${draft.showCorrectAnswers !== false ? 'checked' : ''} /> Show Correct Answers
+                  </label>
+                  <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;">
+                    <input type="checkbox" id="tbStep1ShowExp" ${draft.showExplanation !== false ? 'checked' : ''} /> Show Detailed Explanations
+                  </label>
+                  <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;">
+                    <input type="checkbox" id="tbStep1ShowMarks" ${draft.showMarks !== false ? 'checked' : ''} /> Show Marks &amp; Accuracy
+                  </label>
+                  <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;">
+                    <input type="checkbox" id="tbStep1ShowRank" ${draft.showRank !== false ? 'checked' : ''} /> Show State Rank &amp; Leaderboard
+                  </label>
+                </div>
+              </div>
+            </div>
+          `;
+        }
+
+        // ---- STEP 2: QUESTION SOURCE SELECTION (PART 3) ----
+        else if (tb.wizardStep === 2) {
+          const srcMode = draft.questionSourceMode || 'subject_bank';
+          const pf = draft.pyqFilters || {};
+          stepHtml = `
+            <div class="card" style="border:1.5px solid var(--primary);">
+              <h3 style="font-size:1.02rem;font-weight:800;color:var(--primary);margin-bottom:6px;">🗄️ Step 2: Question Source Selection (प्रश्न स्रोत चयन)</h3>
+              <p style="font-size:0.79rem;color:var(--text-secondary);margin-bottom:14px;">
+                निर्धारित करें कि टेस्ट के लिए प्रश्न <strong>Subject-wise Question Bank</strong> से लिए जाएं, <strong>Exam-wise PYQ Library</strong> से, या <strong>दोनों (Both)</strong> के संयोजन से। यदि किसी प्रश्न में Subject और PYQ दोनों Reference हैं, तो उसकी एक ही <code>questionId</code> होने के कारण वह एक ही टेस्ट में दोबारा नहीं चुना जाएगा।
+              </p>
+
+              <div class="grid-3" style="gap:12px;margin-bottom:14px;">
+                <div class="card" style="cursor:pointer;border:2px solid ${srcMode === 'subject_bank' ? 'var(--primary)' : 'var(--border)'};background:${srcMode === 'subject_bank' ? 'var(--primary-soft)' : 'var(--surface)'};" data-pick-qsource="subject_bank">
+                  <div style="font-size:1rem;font-weight:800;color:var(--primary);margin-bottom:4px;">📚 Option A – Subject-wise Question Bank</div>
+                  <p style="font-size:0.78rem;color:var(--text-secondary);">Central Question Database की Subject एवं Topic Library से सत्यापित प्रश्न चुनें।</p>
+                  <div style="margin-top:8px;"><span class="badge badge-primary">उपलब्ध प्रश्न: ${poolStats.totalEligiblePool} Qs</span></div>
+                </div>
+
+                <div class="card" style="cursor:pointer;border:2px solid ${srcMode === 'pyq_library' ? 'var(--primary)' : 'var(--border)'};background:${srcMode === 'pyq_library' ? 'var(--primary-soft)' : 'var(--surface)'};" data-pick-qsource="pyq_library">
+                  <div style="font-size:1rem;font-weight:800;color:var(--primary);margin-bottom:4px;">🏛️ Option B – Exam-wise PYQ Library</div>
+                  <p style="font-size:0.78rem;color:var(--text-secondary);">विभिन्न प्रतियोगी परीक्षाओं के पूर्व वर्षों के प्रश्न पत्रों (PYQ) से प्रश्न चुनें।</p>
+                  <div style="margin-top:8px;"><span class="badge badge-info">उपलब्ध PYQ प्रश्न: ${poolStats.totalPyqPool} Qs</span></div>
+                </div>
+
+                <div class="card" style="cursor:pointer;border:2px solid ${srcMode === 'both' ? 'var(--primary)' : 'var(--border)'};background:${srcMode === 'both' ? 'var(--primary-soft)' : 'var(--surface)'};" data-pick-qsource="both">
+                  <div style="font-size:1rem;font-weight:800;color:var(--primary);margin-bottom:4px;">⚖️ Option C – Both (Subject Bank + PYQ)</div>
+                  <p style="font-size:0.78rem;color:var(--text-secondary);">सामान्य प्रश्न बैंक और PYQ Library दोनों से निर्धारित अनुपात में प्रश्न चुनें।</p>
+                  <div style="margin-top:8px;"><span class="badge badge-success">Normal + PYQ Mix (Zero Duplicate)</span></div>
+                </div>
+              </div>
+
+              ${srcMode === 'both' ? `
+                <div style="padding:12px;border-radius:10px;background:var(--surface-alt);border:1.5px solid var(--primary);margin-bottom:14px;">
+                  <div style="font-size:0.86rem;font-weight:800;color:var(--primary);margin-bottom:8px;">
+                    ⚖️ Option C: Normal Question Bank बनाम PYQ प्रश्नों का विभाजन (Total Questions = ${draft.totalQuestions})
+                  </div>
+                  <div class="grid-3" style="gap:12px;align-items:end;">
+                    <div>
+                      <label class="form-label">Normal Question Bank Count</label>
+                      <input type="number" min="0" max="${draft.totalQuestions}" class="form-input" id="tbStep2NormalCount" value="${draft.normalQuestionCount}" />
+                    </div>
+                    <div>
+                      <label class="form-label">PYQ Library Question Count</label>
+                      <input type="number" min="0" max="${draft.totalQuestions}" class="form-input" id="tbStep2PyqCount" value="${draft.pyqQuestionCount}" />
+                    </div>
+                    <div style="font-size:0.8rem;font-weight:700;padding:8px 12px;border-radius:8px;background:var(--surface);">
+                      योग: <strong>${Number(draft.normalQuestionCount || 0) + Number(draft.pyqQuestionCount || 0)} / ${draft.totalQuestions}</strong>
+                    </div>
+                  </div>
+                </div>
+              ` : ''}
+
+              ${(srcMode === 'pyq_library' || srcMode === 'both') ? `
+                <div style="padding:12px;border-radius:10px;background:var(--surface-alt);border:1px solid var(--border);">
+                  <div style="font-size:0.86rem;font-weight:800;color:var(--secondary);margin-bottom:8px;">
+                    🏛️ PYQ Library Filters (वैकल्पिक — किसी विशेष परीक्षा या वर्ष के PYQ चुनने हेतु)
+                  </div>
+                  <div class="grid-4" style="gap:10px;">
+                    <div>
+                      <label class="form-label" style="font-size:0.75rem;">PYQ Exam Category</label>
+                      <select class="form-select" id="tbStep2PyqCat">
+                        <option value="ALL" ${pf.examCategory === 'ALL' ? 'selected' : ''}>All Exam Categories (सभी)</option>
+                        ${(catalog.pyqCategories || []).map((pc) => `<option value="${esc(pc.code)}" ${pf.examCategory === pc.code ? 'selected' : ''}>${esc(pc.titleHi)}</option>`).join('')}
+                      </select>
+                    </div>
+                    <div>
+                      <label class="form-label" style="font-size:0.75rem;">PYQ Exam Name</label>
+                      <input class="form-input" id="tbStep2PyqExamName" value="${esc(pf.examName || '')}" placeholder="उदा. CGPSC Prelims, ADEO..." />
+                    </div>
+                    <div>
+                      <label class="form-label" style="font-size:0.75rem;">PYQ Year (वर्ष)</label>
+                      <input class="form-input" id="tbStep2PyqYear" value="${esc(pf.examYear || '')}" placeholder="उदा. 2023, 2024 (या खाली छोड़ें)" />
+                    </div>
+                    <div>
+                      <label class="form-label" style="font-size:0.75rem;">Paper / Shift</label>
+                      <input class="form-input" id="tbStep2PyqShift" value="${esc(pf.paperShift || '')}" placeholder="उदा. Paper 1, Shift 1..." />
+                    </div>
+                  </div>
+                </div>
+              ` : ''}
+            </div>
+          `;
+        }
+
+        // ---- STEP 3: SYLLABUS PROFILE SELECTION (PART 6) ----
+        else if (tb.wizardStep === 3) {
+          const profiles = state.syllabusProfiles || [];
+          stepHtml = `
+            <div class="card" style="border:1.5px solid var(--primary);">
+              <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+                <div>
+                  <h3 style="font-size:1.02rem;font-weight:800;color:var(--primary);">📐 Step 3: Syllabus Profile Selection &amp; Versioning (सिलेबस प्रोफाइल चयन)</h3>
+                  <p style="font-size:0.78rem;color:var(--text-secondary);">
+                    किसी Saved Syllabus Profile को लोड करें या सीधे Step 4 में जाकर इस टेस्ट के लिए कस्टम Subject/Topic अनुपात निर्धारित करें। किसी एक टेस्ट में बदलाव करने से मूल Saved Syllabus Profile अपने आप नहीं बदलेगा।
+                  </p>
+                </div>
+                <button class="btn btn-primary btn-sm" id="tbSaveCurrentAsNewProfileBtn">💾 वर्तमान वितरण को नए Syllabus Profile के रूप में सेव करें</button>
+              </div>
+
+              <div style="padding:10px 12px;border-radius:8px;background:var(--surface-alt);border:1px solid var(--border);margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+                <div>
+                  <span style="font-size:0.8rem;color:var(--text-secondary);">वर्तमान में सक्रिय Syllabus Profile:</span>
+                  <strong style="font-size:0.9rem;color:var(--primary);margin-left:6px;">
+                    ${esc(draft.syllabusProfileName || 'Custom Test Syllabus (कस्टम सिलेबस)')}
+                  </strong>
+                  <span class="badge badge-info" style="margin-left:6px;">Version: ${esc(draft.syllabusVersion || '2025')}</span>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;">
+                  <label style="font-size:0.76rem;font-weight:700;">Syllabus Version:</label>
+                  <input class="form-input" id="tbStep3SylVersion" value="${esc(draft.syllabusVersion || '2025')}" style="width:90px;padding:4px 8px;font-size:0.8rem;" placeholder="2025" />
+                </div>
+              </div>
+
+              <div class="grid-2" style="gap:12px;">
+                ${profiles.map((p) => {
+                  const incSubCount = Object.values(p.subjectDistribution || {}).filter((s) => s.included && Number(s.questionCount) > 0).length;
+                  const isLoaded = draft.syllabusProfileId === p.profileId;
+                  return `
+                    <div class="card" style="border:2px solid ${isLoaded ? 'var(--success)' : 'var(--border)'};background:${isLoaded ? 'var(--success-soft)' : 'var(--surface)'};">
+                      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px;">
+                        <div>
+                          <span class="badge badge-primary">${esc(p.examCategory)}</span>
+                          <span class="badge badge-info">v${esc(p.version || '2025')}</span>
+                          <h4 style="font-size:0.95rem;font-weight:800;margin-top:4px;">${esc(p.profileName)}</h4>
+                        </div>
+                        ${isLoaded ? `<span class="badge badge-success">✓ Loaded</span>` : ''}
+                      </div>
+                      <p style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:8px;">
+                        Exam: <strong>${esc(p.examName)}</strong> • ${p.totalQuestions} Qs • ${p.totalMarks} Marks • ${p.durationMinutes} Min • ${incSubCount} Included Subjects
+                      </p>
+                      ${p.notes ? `<div style="font-size:0.74rem;color:var(--text-muted);margin-bottom:8px;">${esc(p.notes)}</div>` : ''}
+                      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                        <button class="btn btn-primary btn-sm" data-load-syl-profile="${esc(p.profileId)}">📥 इस टेस्ट में लोड करें (Load Profile)</button>
+                        <button class="btn btn-outline btn-sm" data-dup-syl-profile="${esc(p.profileId)}">📋 नया Version / Copy बनाएं</button>
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+          `;
+        }
+
+        // ---- STEP 4: SYLLABUS-BASED SUBJECT DISTRIBUTION (PART 4) ----
+        else if (tb.wizardStep === 4) {
+          const subSearchLow = String(tb.subjectSearch || '').trim().toLowerCase();
+          const catFilter = tb.subjectMainCatFilter || 'ALL';
+          const subjectsList = (catalog.subjects || []).filter((s) => {
+            if (catFilter !== 'ALL' && s.mainCategoryId !== catFilter) return false;
+            if (subSearchLow) {
+              const hay = `${s.titleHi} ${s.titleEn} ${s.mainCategoryTitleHi || ''}`.toLowerCase();
+              if (!hay.includes(subSearchLow)) return false;
+            }
+            return true;
+          });
+
+          stepHtml = `
+            <div class="card" style="border:1.5px solid var(--primary);">
+              <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+                <div>
+                  <h3 style="font-size:1.02rem;font-weight:800;color:var(--primary);">📊 Step 4: Syllabus-Based Subject Distribution (विषयवार प्रश्न वितरण)</h3>
+                  <p style="font-size:0.78rem;color:var(--text-secondary);">
+                    जिस Subject को टेस्ट में शामिल करना है उसे <strong>Include</strong> करें और प्रश्नों की संख्या निर्धारित करें। <strong>Exclude</strong> किए गए Subject से एक भी प्रश्न नहीं चुना जाएगा।
+                  </p>
+                </div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                  <button class="btn btn-outline btn-sm" id="tbStep4EqualDistBtn">⚖️ Included Subjects में बराबर बांटें</button>
+                  <button class="btn btn-outline btn-sm" id="tbStep4SyncTotalBtn">🔄 Test Total (${draft.totalQuestions}) को Subject योग (${sumSubjectQuestions}) के बराबर करें</button>
+                </div>
+              </div>
+
+              ${subjectSumMismatch ? `
+                <div style="padding:10px 14px;border-radius:8px;background:var(--warning-soft);border:1.5px solid var(--warning);color:#92400E;font-size:0.82rem;font-weight:800;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+                  <span>⚠️ चेतावनी: Subjects के कुल प्रश्नों का योग (<strong>${sumSubjectQuestions}</strong>) टेस्ट के Total Questions (<strong>${draft.totalQuestions}</strong>) के बराबर नहीं है!</span>
+                  <span style="font-size:0.76rem;">अंतर: ${Math.abs(Number(draft.totalQuestions || 0) - sumSubjectQuestions)} प्रश्न</span>
+                </div>
+              ` : `
+                <div style="padding:9px 14px;border-radius:8px;background:var(--success-soft);border:1px solid var(--success);color:var(--success);font-size:0.82rem;font-weight:800;margin-bottom:12px;">
+                  ✅ Subject-wise प्रश्नों का योग (${sumSubjectQuestions}) = Test Total Questions (${draft.totalQuestions}) — पूर्णतः संतुलित!
+                </div>
+              `}
+
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+                <select class="form-select" id="tbStep4MainCatFilter" style="width:auto;min-width:220px;">
+                  <option value="ALL" ${catFilter === 'ALL' ? 'selected' : ''}>📁 सभी 6 मुख्य श्रेणियां (All Main Folders)</option>
+                  ${(catalog.mainCategories || []).map((mc) => `<option value="${esc(mc.id)}" ${catFilter === mc.id ? 'selected' : ''}>${esc(mc.icon || '📁')} ${esc(mc.titleHi)} (${esc(mc.titleEn)})</option>`).join('')}
+                </select>
+                <input class="form-input" id="tbStep4SubSearch" value="${esc(tb.subjectSearch || '')}" placeholder="Subject खोजें (उदा. छत्तीसगढ़ का इतिहास, संविधान, Maths)..." style="flex:1;min-width:200px;" />
+              </div>
+
+              <div class="table-wrap">
+                <table class="admin-table">
+                  <thead>
+                    <tr>
+                      <th>Main Category</th>
+                      <th>Subject Name (विषय)</th>
+                      <th>Status (Include / Exclude)</th>
+                      <th>Target Questions (निर्धारित प्रश्न)</th>
+                      <th>Available in Bank (उपलब्ध प्रश्न)</th>
+                      <th>Currently Selected</th>
+                      <th>Topics</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${subjectsList.map((s) => {
+                      const scfg = draft.subjectDistribution[s.subjectId] || { included: false, questionCount: 0 };
+                      const st = poolStats.bySubject[s.subjectId] || { availableTotal: 0, selectedCount: 0 };
+                      const topicCount = (catalog.getTopicsForSubject(s.subjectId) || []).length;
+                      const isShort = scfg.included && Number(scfg.questionCount || 0) > st.availableTotal;
+                      return `
+                        <tr style="background:${scfg.included ? 'var(--primary-soft)' : 'transparent'};">
+                          <td><span class="badge badge-muted" style="font-size:0.68rem;">${esc(s.mainCategoryTitleHi || s.mainCategory)}</span></td>
+                          <td>
+                            <div style="font-weight:800;font-size:0.85rem;">${esc(s.titleHi)}</div>
+                            <div style="font-size:0.73rem;color:var(--text-secondary);">${esc(s.titleEn)}</div>
+                          </td>
+                          <td>
+                            <select class="form-select" data-sub-inc-toggle="${esc(s.subjectId)}" style="width:130px;padding:4px 8px;font-weight:800;color:${scfg.included ? 'var(--success)' : 'var(--danger)'};">
+                              <option value="true" ${scfg.included ? 'selected' : ''}>✅ Include</option>
+                              <option value="false" ${!scfg.included ? 'selected' : ''}>🚫 Exclude</option>
+                            </select>
+                          </td>
+                          <td>
+                            <input type="number" min="0" max="300" class="form-input" data-sub-qcount-input="${esc(s.subjectId)}" value="${scfg.included ? Number(scfg.questionCount || 0) : 0}" ${!scfg.included ? 'disabled' : ''} style="width:95px;padding:4px 8px;font-weight:800;" />
+                            ${isShort ? `<div style="font-size:0.68rem;color:var(--danger);font-weight:800;margin-top:2px;">⚠️ ${Number(scfg.questionCount) - st.availableTotal} प्रश्न कम</div>` : ''}
+                          </td>
+                          <td>
+                            <span class="badge ${st.availableTotal > 0 ? 'badge-info' : 'badge-danger'}">${st.availableTotal} Qs</span>
+                          </td>
+                          <td>
+                            <span class="badge ${st.selectedCount > 0 ? 'badge-success' : 'badge-muted'}">${st.selectedCount} Qs</span>
+                          </td>
+                          <td>
+                            <button class="btn btn-outline btn-sm" data-jump-sub-topics="${esc(s.subjectId)}">🗂️ View Topics (${topicCount})</button>
+                          </td>
+                        </tr>
+                      `;
+                    }).join('')}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          `;
+        }
+
+        // ---- STEP 5: TOPIC-WISE QUESTION DISTRIBUTION (PART 5) ----
+        else if (tb.wizardStep === 5) {
+          const topSearchLow = String(tb.topicSearch || '').trim().toLowerCase();
+          const activeSubFilter = tb.expandedSubjectIdForTopics || (includedSubjectList[0] ? includedSubjectList[0].subjectId : 'ALL');
+
+          const subjectsToRender = includedSubjectList.length > 0
+            ? (activeSubFilter === 'ALL' ? includedSubjectList : includedSubjectList.filter((s) => s.subjectId === activeSubFilter))
+            : [];
+
+          stepHtml = `
+            <div class="card" style="border:1.5px solid var(--primary);">
+              <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+                <div>
+                  <h3 style="font-size:1.02rem;font-weight:800;color:var(--primary);">🗂️ Step 5: Topic-Wise Question Distribution (टॉपिक-वार नियंत्रण: Include / Exclude / Auto)</h3>
+                  <p style="font-size:0.78rem;color:var(--text-secondary);">
+                    <strong>Rule 1 (Include):</strong> निर्धारित संख्या में प्रश्न चुने जाएंगे। <strong>Rule 2 (Exclude):</strong> इस Topic से एक भी प्रश्न नहीं चुना जाएगा (न Auto में, न Manual में)। <strong>Rule 3 (Auto):</strong> शेष प्रश्न Included/Auto Topics से अपने आप चुने जाएंगे।
+                  </p>
+                </div>
+              </div>
+
+              ${includedSubjectList.length === 0 ? `
+                <div style="padding:20px;text-align:center;color:var(--danger);font-weight:800;">
+                  ⚠️ अभी कोई Subject Include नहीं किया गया है। कृपया पहले Step 4 (Subject Distribution) में जाकर कम से कम एक Subject को Include करें।
+                </div>
+              ` : `
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+                  <select class="form-select" id="tbStep5SubFilter" style="width:auto;min-width:250px;">
+                    <option value="ALL" ${activeSubFilter === 'ALL' ? 'selected' : ''}>📚 सभी Included Subjects (${includedSubjectList.length})</option>
+                    ${includedSubjectList.map((s) => `<option value="${esc(s.subjectId)}" ${activeSubFilter === s.subjectId ? 'selected' : ''}>${esc(s.subjectNameHi)} (Target: ${s.questionCount} Qs)</option>`).join('')}
+                  </select>
+                  <input class="form-input" id="tbStep5TopicSearch" value="${esc(tb.topicSearch || '')}" placeholder="🔍 Search Topic (टॉपिक खोजें)..." style="flex:1;min-width:200px;" />
+                </div>
+
+                ${subjectsToRender.map((subCfg) => {
+                  const subTopics = (catalog.getTopicsForSubject(subCfg.subjectId) || []).filter((t) => {
+                    if (!topSearchLow) return true;
+                    return `${t.titleHi} ${t.titleEn}`.toLowerCase().includes(topSearchLow);
+                  });
+                  const fixedTopicSum = subTopics.reduce((acc, t) => {
+                    const tc = draft.topicDistribution[t.topicId];
+                    return acc + (tc && tc.mode === 'Include' ? Number(tc.questionCount || 0) : 0);
+                  }, 0);
+                  const autoRemaining = Math.max(0, Number(subCfg.questionCount || 0) - fixedTopicSum);
+
+                  return `
+                    <div style="margin-bottom:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+                      <div style="padding:10px 14px;background:var(--surface-alt);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+                        <div>
+                          <strong style="font-size:0.92rem;color:var(--primary);">📘 ${esc(subCfg.subjectNameHi)} (${esc(subCfg.subjectNameEn)})</strong>
+                          <span class="badge badge-primary" style="margin-left:6px;">Subject Target: ${subCfg.questionCount} Qs</span>
+                        </div>
+                        <div style="font-size:0.78rem;font-weight:700;">
+                          Fixed Topic Quota: <strong>${fixedTopicSum}</strong> | Auto-Distribute Remaining: <strong>${autoRemaining}</strong>
+                        </div>
+                      </div>
+                      <div class="table-wrap">
+                        <table class="admin-table">
+                          <thead>
+                            <tr>
+                              <th>Topic Name (टॉपिक का नाम)</th>
+                              <th>Selection Mode (Include / Exclude / Auto)</th>
+                              <th>Available Questions</th>
+                              <th>Admin Selected Questions</th>
+                              <th>Topic Availability Status</th>
+                              <th>View Questions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            ${subTopics.map((t) => {
+                              const tcfg = draft.topicDistribution[t.topicId] || { mode: 'Auto', questionCount: 0 };
+                              const tst = poolStats.byTopic[t.topicId] || { availableTotal: 0 };
+                              const reqCount = tcfg.mode === 'Include' ? Number(tcfg.questionCount || 0) : 0;
+                              let statusBadge = '';
+                              if (tcfg.mode === 'Exclude') {
+                                statusBadge = `<span class="badge badge-danger">🚫 Excluded (0 प्रश्न लिए जाएंगे)</span>`;
+                              } else if (tcfg.mode === 'Include') {
+                                if (reqCount <= tst.availableTotal) {
+                                  statusBadge = `<span class="badge badge-success">✅ पर्याप्त प्रश्न उपलब्ध (Available: ${tst.availableTotal} | Selected: ${reqCount})</span>`;
+                                } else {
+                                  statusBadge = `<span class="badge badge-warning">⚠️ ${reqCount - tst.availableTotal} प्रश्न कम हैं (Available: ${tst.availableTotal} | Selected: ${reqCount})</span>`;
+                                }
+                              } else {
+                                statusBadge = `<span class="badge badge-info">🤖 Auto Mode (Available: ${tst.availableTotal} Qs)</span>`;
+                              }
+
+                              return `
+                                <tr style="background:${tcfg.mode === 'Exclude' ? 'rgba(239,68,68,0.05)' : (tcfg.mode === 'Include' ? 'var(--primary-soft)' : 'transparent')};">
+                                  <td>
+                                    <div style="font-weight:700;font-size:0.84rem;">${esc(t.titleHi)}</div>
+                                    <div style="font-size:0.72rem;color:var(--text-secondary);">${esc(t.titleEn)}</div>
+                                  </td>
+                                  <td>
+                                    <select class="form-select" data-top-mode-select="${esc(t.topicId)}" style="width:140px;padding:4px 8px;font-weight:700;">
+                                      <option value="Auto" ${tcfg.mode === 'Auto' ? 'selected' : ''}>🤖 Auto</option>
+                                      <option value="Include" ${tcfg.mode === 'Include' ? 'selected' : ''}>✅ Include (Fixed)</option>
+                                      <option value="Exclude" ${tcfg.mode === 'Exclude' ? 'selected' : ''}>🚫 Exclude (0 Qs)</option>
+                                    </select>
+                                  </td>
+                                  <td><span class="badge ${tst.availableTotal > 0 ? 'badge-info' : 'badge-muted'}">${tst.availableTotal} Qs</span></td>
+                                  <td>
+                                    <input type="number" min="0" max="200" class="form-input" data-top-qcount-input="${esc(t.topicId)}" value="${tcfg.mode === 'Include' ? reqCount : 0}" ${tcfg.mode !== 'Include' ? 'disabled' : ''} style="width:90px;padding:4px 8px;font-weight:700;" />
+                                  </td>
+                                  <td>${statusBadge}</td>
+                                  <td>
+                                    <button class="btn btn-outline btn-sm" data-view-topic-questions="${esc(t.topicId)}">👁️ View (${tst.availableTotal})</button>
+                                  </td>
+                                </tr>
+                              `;
+                            }).join('')}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+              `}
+            </div>
+          `;
+        }
+
+        // ---- STEP 6: AUTOMATIC QUESTION GENERATION + MANUAL SELECTION + REGENERATE / REPLACE (PARTS 7, 8, 9) ----
+        else if (tb.wizardStep === 6) {
+          const ms = tb.manualSearch || {};
+          const selectedQIdsSet = new Set((draft.questions || []).map((q) => String(q.centralQuestionId || q.questionId || q.id)));
+          const excludedSubjectIds = new Set(
+            Object.values(draft.subjectDistribution || {})
+              .filter((s) => !s.included)
+              .map((s) => s.subjectId)
+          );
+          const excludedTopicIds = new Set(
+            Object.values(draft.topicDistribution || {})
+              .filter((t) => t.mode === 'Exclude')
+              .map((t) => t.topicId)
+          );
+
+          // Filter manual browser pool
+          const manualBrowserList = [];
+          (state.questionBank || []).forEach((q) => {
+            const meta = getQuestionCanonicalMeta(q, catalog);
+            if (meta.isDeleted || meta.isUncategorised) return;
+            if (ms.subjectId && ms.subjectId !== 'ALL' && meta.subjectId !== ms.subjectId) return;
+            if (ms.topicId && ms.topicId !== 'ALL' && meta.topicId !== ms.topicId) return;
+            if (ms.sourceType === 'PYQ' && !meta.hasPyq) return;
+            if (ms.sourceType === 'NORMAL' && meta.hasPyq) return;
+            if (ms.language && ms.language !== 'ALL' && meta.langType !== ms.language) return;
+            if (ms.pyqYear && !questionMatchesPyqFilters(q, meta, { examYear: ms.pyqYear })) return;
+            if (ms.query) {
+              const kw = ms.query.toLowerCase();
+              const hay = `${q.questionHi || ''} ${q.questionEn || ''} ${meta.questionId} ${meta.subjectName} ${meta.topicName} ${q.pyqTag || ''}`.toLowerCase();
+              if (!hay.includes(kw)) return;
+            }
+            manualBrowserList.push({ q, meta });
+          });
+
+          stepHtml = `
+            <div class="card" style="border:1.5px solid var(--primary);margin-bottom:14px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px;">
+                <div>
+                  <h3 style="font-size:1.02rem;font-weight:800;color:var(--primary);">⚙️ Step 6: Automatic Question Selection, Regenerate &amp; Manual Selection</h3>
+                  <p style="font-size:0.78rem;color:var(--text-secondary);">
+                    Central Question Database से निर्धारित Syllabus, Subject/Topic वेटेज और PYQ अनुपात के अनुसार प्रश्न जनरेट करें, या नीचे से मैन्युअली प्रश्न चुनें/बदलें।
+                  </p>
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                  <button class="btn btn-primary" id="tbStep6GenerateAutoBtn">⚡ Generate Questions (Auto Select)</button>
+                  <button class="btn btn-outline" id="tbStep6RegenerateBtn" ${(draft.questions || []).length === 0 ? 'disabled' : ''}>🔄 Regenerate Questions (नए प्रश्न चुनें)</button>
+                  <button class="btn btn-outline" id="tbStep6GenerateKeepManualBtn">➕ Auto-Fill Remaining (Keep Manual)</button>
+                </div>
+              </div>
+
+              <div class="grid-4" style="gap:8px;margin-bottom:10px;">
+                <div style="padding:8px 12px;border-radius:8px;background:var(--surface-alt);">
+                  <div style="font-size:0.72rem;color:var(--text-secondary);">Target Total Questions</div>
+                  <div style="font-size:1.05rem;font-weight:800;">${draft.totalQuestions} Qs</div>
+                </div>
+                <div style="padding:8px 12px;border-radius:8px;background:var(--surface-alt);">
+                  <div style="font-size:0.72rem;color:var(--text-secondary);">Currently Selected</div>
+                  <div style="font-size:1.05rem;font-weight:800;color:${(draft.questions || []).length === Number(draft.totalQuestions) ? 'var(--success)' : 'var(--warning)'};">${(draft.questions || []).length} Qs</div>
+                </div>
+                <div style="padding:8px 12px;border-radius:8px;background:var(--surface-alt);">
+                  <div style="font-size:0.72rem;color:var(--text-secondary);">Normal vs PYQ Selected</div>
+                  <div style="font-size:0.92rem;font-weight:800;">Normal: ${blueprint.normalCount} | PYQ: ${blueprint.pyqCount}</div>
+                </div>
+                <div style="padding:8px 12px;border-radius:8px;background:var(--surface-alt);">
+                  <div style="font-size:0.72rem;color:var(--text-secondary);">Duplicate / Excluded Violations</div>
+                  <div style="font-size:0.92rem;font-weight:800;color:${blueprint.duplicateCount === 0 && blueprint.excludedViolationCount === 0 ? 'var(--success)' : 'var(--danger)'};">
+                    ${blueprint.duplicateCount} Dup | ${blueprint.excludedViolationCount} Excl
+                  </div>
+                </div>
+              </div>
+
+              <!-- Question Shortage Alert (Part 7) -->
+              ${(draft.shortageAlerts || []).length > 0 ? `
+                <div style="padding:12px 14px;border-radius:10px;background:var(--warning-soft);border:1.5px solid var(--warning);margin-bottom:12px;">
+                  <div style="font-size:0.9rem;font-weight:800;color:#92400E;margin-bottom:6px;">
+                    ⚠️ Question Shortage Alert (प्रश्न कमी चेतावनी — Excluded Topics से कोई प्रश्न नहीं लिया गया है)
+                  </div>
+                  <ul style="margin:0 0 10px 18px;font-size:0.8rem;color:#78350F;font-weight:700;">
+                    ${draft.shortageAlerts.map((sa) => `<li>${esc(sa.message)}</li>`).join('')}
+                  </ul>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button class="btn btn-primary btn-sm" id="tbShortageOpt1ReduceBtn">1️⃣ विकल्प 1: प्रश्नों की संख्या उपलब्ध प्रश्नों (${(draft.questions || []).length}) के बराबर घटाएं</button>
+                    <button class="btn btn-outline btn-sm" id="tbShortageOpt2AddQBtn">2️⃣ विकल्प 2: संबंधित Topic में नया प्रश्न जोड़ें</button>
+                    <button class="btn btn-outline btn-sm" id="tbShortageOpt3AdjustBtn">3️⃣ विकल्प 3: अन्य Included Topic में संख्या समायोजित करें (Step 5)</button>
+                  </div>
+                </div>
+              ` : ''}
+
+              <!-- Currently Selected Questions List with Replace / Remove -->
+              ${(draft.questions || []).length > 0 ? `
+                <div style="margin-top:8px;">
+                  <div style="font-size:0.86rem;font-weight:800;margin-bottom:6px;">✅ वर्तमान में टेस्ट के लिए चयनित प्रश्न (${draft.questions.length} Questions):</div>
+                  <div style="max-height:280px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding-right:4px;">
+                    ${draft.questions.map((q, idx) => {
+                      const meta = getQuestionCanonicalMeta(q, catalog);
+                      return `
+                        <div style="padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+                          <div style="flex:1;min-width:240px;">
+                            <span style="font-weight:800;color:var(--primary);margin-right:6px;">Q${idx + 1}.</span>
+                            <span style="font-size:0.82rem;font-weight:700;">${esc((q.questionHi || q.questionEn || '').slice(0, 115))}</span>
+                            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:3px;">
+                              <span class="badge badge-primary" style="font-size:0.63rem;">${esc(meta.subjectName)}</span>
+                              <span class="badge badge-info" style="font-size:0.63rem;">${esc(meta.topicName)}</span>
+                              ${meta.hasPyq ? `<span class="badge badge-success" style="font-size:0.63rem;">🏛️ PYQ</span>` : ''}
+                              <span class="badge badge-muted" style="font-size:0.63rem;">${esc(meta.langType)}</span>
+                            </div>
+                          </div>
+                          <div style="display:flex;gap:6px;">
+                            <button class="btn btn-outline btn-sm" data-replace-test-qidx="${idx}">🔁 Replace</button>
+                            <button class="btn btn-danger btn-sm" data-remove-test-qidx="${idx}">🗑️ Remove</button>
+                          </div>
+                        </div>
+                      `;
+                    }).join('')}
+                  </div>
+                </div>
+              ` : ''}
+            </div>
+
+            <!-- PART 8: MANUAL QUESTION SELECTION BROWSER -->
+            <div class="card" style="border:1px solid var(--border);">
+              <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+                <div>
+                  <h4 style="font-size:0.96rem;font-weight:800;color:var(--primary);">🔍 Manual Question Selection Browser (मैन्युअल प्रश्न चयन — Hybrid Auto + Manual)</h4>
+                  <p style="font-size:0.76rem;color:var(--text-secondary);">
+                    Subject, Topic, PYQ, Year, Language या Question ID से खोजें और सीधे टेस्ट में जोड़ें। (Excluded Subject/Topic के प्रश्न स्वतः ब्लॉक हैं।)
+                  </p>
+                </div>
+                <button class="btn btn-success btn-sm" id="tbManualAddCheckedBtn">➕ चयनित (Checked) प्रश्नों को टेस्ट में जोड़ें</button>
+              </div>
+
+              <div class="grid-4" style="gap:8px;margin-bottom:10px;">
+                <input class="form-input" id="tbManualQueryInput" value="${esc(ms.query || '')}" placeholder="प्रश्न टेक्स्ट या Question ID खोजें..." />
+                <select class="form-select" id="tbManualSubjectSelect">
+                  <option value="ALL">सभी Subjects</option>
+                  ${(catalog.subjects || []).map((s) => {
+                    const isEx = excludedSubjectIds.has(s.subjectId);
+                    return `<option value="${esc(s.subjectId)}" ${ms.subjectId === s.subjectId ? 'selected' : ''}>${isEx ? '🚫 [Excluded] ' : '✅ '}${esc(s.titleHi)}</option>`;
+                  }).join('')}
+                </select>
+                <select class="form-select" id="tbManualTopicSelect">
+                  <option value="ALL">सभी Topics</option>
+                  ${(ms.subjectId && ms.subjectId !== 'ALL' ? catalog.getTopicsForSubject(ms.subjectId) : catalog.topics).map((t) => {
+                    const isEx = excludedTopicIds.has(t.topicId);
+                    return `<option value="${esc(t.topicId)}" ${ms.topicId === t.topicId ? 'selected' : ''}>${isEx ? '🚫 [Excluded] ' : ''}${esc(t.titleHi)}</option>`;
+                  }).join('')}
+                </select>
+                <div style="display:flex;gap:4px;">
+                  <select class="form-select" id="tbManualSourceSelect" style="flex:1;">
+                    <option value="ALL" ${ms.sourceType === 'ALL' ? 'selected' : ''}>All Sources</option>
+                    <option value="NORMAL" ${ms.sourceType === 'NORMAL' ? 'selected' : ''}>Normal Only</option>
+                    <option value="PYQ" ${ms.sourceType === 'PYQ' ? 'selected' : ''}>PYQ Only</option>
+                  </select>
+                  <select class="form-select" id="tbManualLangSelect" style="flex:1;">
+                    <option value="ALL" ${ms.language === 'ALL' ? 'selected' : ''}>All Lang</option>
+                    <option value="Bilingual" ${ms.language === 'Bilingual' ? 'selected' : ''}>Bilingual</option>
+                    <option value="Hindi" ${ms.language === 'Hindi' ? 'selected' : ''}>Hindi</option>
+                    <option value="English" ${ms.language === 'English' ? 'selected' : ''}>English</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style="max-height:360px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;">
+                ${manualBrowserList.slice(0, 50).map(({ q, meta }) => {
+                  const alreadyIn = selectedQIdsSet.has(meta.questionId);
+                  const isExcluded = excludedSubjectIds.has(meta.subjectId) || excludedTopicIds.has(meta.topicId);
+                  return `
+                    <div style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:${alreadyIn ? 'var(--success-soft)' : 'var(--surface)'};display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+                      <label style="display:flex;gap:8px;align-items:flex-start;flex:1;cursor:pointer;">
+                        <input type="checkbox" class="tb-manual-q-chk" value="${esc(meta.questionId)}" ${alreadyIn || isExcluded ? 'disabled' : ''} style="margin-top:4px;" />
+                        <div>
+                          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:2px;">
+                            <span class="badge badge-primary" style="font-size:0.63rem;">${esc(meta.subjectName)}</span>
+                            <span class="badge badge-info" style="font-size:0.63rem;">${esc(meta.topicName)}</span>
+                            <span class="badge badge-muted" style="font-size:0.63rem;">ID: ${esc(meta.questionId)}</span>
+                            ${meta.hasPyq ? `<span class="badge badge-success" style="font-size:0.63rem;">🏛️ PYQ</span>` : ''}
+                            ${isExcluded ? `<span class="badge badge-danger" style="font-size:0.63rem;">🚫 Excluded Subject/Topic</span>` : ''}
+                          </div>
+                          <div style="font-size:0.83rem;font-weight:700;">${esc(q.questionHi || q.questionEn)}</div>
+                        </div>
+                      </label>
+                      <div>
+                        ${alreadyIn ? `
+                          <button class="btn btn-danger btn-sm" data-manual-remove-qid="${esc(meta.questionId)}">✕ Remove</button>
+                        ` : `
+                          <button class="btn btn-outline btn-sm" data-manual-add-qid="${esc(meta.questionId)}" ${isExcluded ? 'disabled title="Excluded Subject/Topic"' : ''}>＋ Add</button>
+                        `}
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+          `;
+        }
+
+        // ---- STEP 7: TEST PREVIEW, BLUEPRINT & VALIDATION (PART 10) ----
+        else if (tb.wizardStep === 7) {
+          stepHtml = `
+            <div class="card" style="border:1.5px solid var(--primary);margin-bottom:14px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+                <div>
+                  <h3 style="font-size:1.02rem;font-weight:800;color:var(--primary);">📑 Step 7: Test Blueprint Report, Question Preview &amp; Pre-Publish Validation</h3>
+                  <p style="font-size:0.78rem;color:var(--text-secondary);">
+                    टेस्ट Publish करने से पहले संपूर्ण Blueprint, भाषा उपलब्धता, PYQ अनुपात और प्रत्येक प्रश्न की जांच करें।
+                  </p>
+                </div>
+                <div style="display:flex;gap:8px;">
+                  <button class="btn btn-outline btn-sm" id="tbStep7GoToStep6Btn">🔄 Regenerate / Add More Questions</button>
+                  <button class="btn btn-primary btn-sm" id="tbStep7ProceedStep8Btn">➡️ Step 8: Save / Publish</button>
+                </div>
+              </div>
+
+              <!-- Pre-Publish Validation Status -->
+              ${blueprint.errors.length > 0 ? `
+                <div style="padding:12px 14px;border-radius:10px;background:rgba(239,68,68,0.1);border:1.5px solid var(--danger);margin-bottom:12px;">
+                  <div style="font-size:0.88rem;font-weight:800;color:var(--danger);margin-bottom:4px;">❌ Pre-Publish Validation Errors (पब्लिश करने से पहले इन्हें ठीक करें):</div>
+                  <ul style="margin:0 0 0 18px;font-size:0.8rem;color:var(--danger);font-weight:700;">
+                    ${blueprint.errors.map((e) => `<li>${esc(e)}</li>`).join('')}
+                  </ul>
+                </div>
+              ` : `
+                <div style="padding:10px 14px;border-radius:10px;background:var(--success-soft);border:1.5px solid var(--success);color:var(--success);font-size:0.86rem;font-weight:800;margin-bottom:12px;">
+                  ✅ सभी Pre-Publish Validation जांच सफल! यह टेस्ट Publish या Schedule करने के लिए पूर्णतः तैयार है।
+                </div>
+              `}
+
+              ${blueprint.warnings.length > 0 ? `
+                <div style="padding:10px 14px;border-radius:10px;background:var(--warning-soft);border:1px solid var(--warning);color:#92400E;font-size:0.8rem;font-weight:700;margin-bottom:12px;">
+                  <div><strong>ℹ️ महत्वपूर्ण सूचनाएं (Blueprint Warnings):</strong></div>
+                  <ul style="margin:4px 0 0 18px;">
+                    ${blueprint.warnings.map((w) => `<li>${esc(w)}</li>`).join('')}
+                  </ul>
+                </div>
+              ` : ''}
+
+              <!-- 12-Metric Blueprint Summary Grid -->
+              <div class="grid-4" style="gap:8px;margin-bottom:14px;">
+                <div style="padding:8px 10px;border-radius:8px;background:var(--surface-alt);"><strong>1. Total Questions:</strong> ${blueprint.actualTotal} / ${blueprint.targetTotal}</div>
+                <div style="padding:8px 10px;border-radius:8px;background:var(--surface-alt);"><strong>2. Total Marks:</strong> ${blueprint.totalMarks} (-${draft.negativeMarkingEnabled ? draft.negativeMarking : 0})</div>
+                <div style="padding:8px 10px;border-radius:8px;background:var(--surface-alt);"><strong>3. Duration:</strong> ${blueprint.durationMinutes} Mins</div>
+                <div style="padding:8px 10px;border-radius:8px;background:var(--surface-alt);"><strong>4. Normal Questions:</strong> ${blueprint.normalCount}</div>
+                <div style="padding:8px 10px;border-radius:8px;background:var(--surface-alt);"><strong>5. PYQ Questions:</strong> ${blueprint.pyqCount}</div>
+                <div style="padding:8px 10px;border-radius:8px;background:var(--surface-alt);"><strong>6. Language Split:</strong> Bi:${blueprint.bilingualCount} | Hi:${blueprint.hindiOnlyCount} | En:${blueprint.englishOnlyCount}</div>
+                <div style="padding:8px 10px;border-radius:8px;background:var(--surface-alt);"><strong>7. Missing Questions:</strong> ${blueprint.missingQuestionsCount}</div>
+                <div style="padding:8px 10px;border-radius:8px;background:var(--surface-alt);"><strong>8. Duplicates / Unverified:</strong> ${blueprint.duplicateCount} / ${blueprint.unverifiedOrUncatCount}</div>
+              </div>
+
+              <!-- Subject & Topic Breakdown Tables -->
+              <div class="grid-2" style="gap:12px;margin-bottom:12px;">
+                <div style="padding:10px;border-radius:8px;border:1px solid var(--border);">
+                  <div style="font-size:0.84rem;font-weight:800;margin-bottom:6px;">📚 Subject-wise Question Distribution</div>
+                  ${blueprint.subjectBreakdown.map((sb) => `
+                    <div style="display:flex;justify-content:space-between;font-size:0.78rem;padding:4px 0;border-bottom:1px dashed var(--border);">
+                      <span>${esc(sb.subjectName)}</span>
+                      <strong>Selected: ${sb.actualCount} / Target: ${sb.targetCount}</strong>
+                    </div>
+                  `).join('')}
+                </div>
+                <div style="padding:10px;border-radius:8px;border:1px solid var(--border);">
+                  <div style="font-size:0.84rem;font-weight:800;margin-bottom:6px;">🏛️ Exam-wise PYQ Distribution</div>
+                  ${Object.keys(blueprint.pyqExamBreakdown).length === 0 ? `<div style="font-size:0.78rem;color:var(--text-muted);">कोई PYQ प्रश्न नहीं (Normal Subject Bank)</div>` : Object.entries(blueprint.pyqExamBreakdown).map(([exKey, cnt]) => `
+                    <div style="display:flex;justify-content:space-between;font-size:0.78rem;padding:4px 0;border-bottom:1px dashed var(--border);">
+                      <span>${esc(exKey)}</span>
+                      <strong>${cnt} Qs</strong>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            </div>
+
+            <!-- Full Question Preview List with Edit / Remove / Replace -->
+            <div class="card">
+              <h4 style="font-size:0.96rem;font-weight:800;margin-bottom:10px;">👁️ Complete Question Preview (${(draft.questions || []).length} Questions)</h4>
+              <div style="display:flex;flex-direction:column;gap:10px;max-height:540px;overflow-y:auto;">
+                ${(draft.questions || []).map((q, idx) => {
+                  const meta = getQuestionCanonicalMeta(q, catalog);
+                  const optsHi = Array.isArray(q.optionsHi) && q.optionsHi.length === 4 ? q.optionsHi : [q.optA_Hi, q.optB_Hi, q.optC_Hi, q.optD_Hi];
+                  const optsEn = Array.isArray(q.optionsEn) && q.optionsEn.length === 4 ? q.optionsEn : [q.optA_En, q.optB_En, q.optC_En, q.optD_En];
+                  const corr = Number(q.correctIndex !== undefined ? q.correctIndex : q.correctOptionIndex);
+                  return `
+                    <div style="padding:12px;border-radius:10px;border:1px solid var(--border);background:var(--surface);">
+                      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+                        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+                          <span class="badge badge-primary">Q.${idx + 1}</span>
+                          <span class="badge badge-info">${esc(meta.subjectName)}</span>
+                          <span class="badge badge-muted">${esc(meta.topicName)}</span>
+                          ${meta.hasPyq ? `<span class="badge badge-success">🏛️ PYQ</span>` : `<span class="badge badge-muted">Normal Bank</span>`}
+                          <span class="badge ${meta.langType === 'Bilingual' ? 'badge-success' : 'badge-warning'}">${esc(meta.langType)}</span>
+                        </div>
+                        <div style="display:flex;gap:6px;">
+                          <button class="btn btn-outline btn-sm" data-preview-edit-qidx="${idx}">✏️ Edit Question</button>
+                          <button class="btn btn-outline btn-sm" data-replace-test-qidx="${idx}">🔁 Replace Question</button>
+                          <button class="btn btn-danger btn-sm" data-remove-test-qidx="${idx}">🗑️ Remove</button>
+                        </div>
+                      </div>
+                      <div style="font-size:0.88rem;font-weight:800;margin-bottom:4px;">${esc(q.questionHi || q.questionEn)}</div>
+                      ${q.questionEn && q.questionHi ? `<div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:6px;">${esc(q.questionEn)}</div>` : ''}
+                      <div class="grid-2" style="gap:6px;font-size:0.79rem;margin-bottom:6px;">
+                        ${['A', 'B', 'C', 'D'].map((lbl, oIdx) => `
+                          <div style="padding:5px 8px;border-radius:6px;border:1px solid ${corr === oIdx ? 'var(--success)' : 'var(--border)'};background:${corr === oIdx ? 'var(--success-soft)' : 'var(--surface-alt)'};font-weight:${corr === oIdx ? '800' : '500'};">
+                            (${lbl}) ${esc(optsHi[oIdx] || optsEn[oIdx] || '')} ${corr === oIdx ? '✓' : ''}
+                          </div>
+                        `).join('')}
+                      </div>
+                      ${(q.explanationHi || q.explanationEn) ? `
+                        <div style="font-size:0.75rem;color:var(--text-secondary);background:var(--surface-alt);padding:6px 8px;border-radius:6px;">
+                          <strong>💡 व्याख्या:</strong> ${esc(q.explanationHi || q.explanationEn)}
+                        </div>
+                      ` : ''}
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+          `;
+        }
+
+        // ---- STEP 8: SAVE DRAFT / SCHEDULE / PUBLISH / SAVE TEMPLATE (PART 8, 12, 14) ----
+        else if (tb.wizardStep === 8) {
+          stepHtml = `
+            <div class="card" style="border:2px solid var(--primary);">
+              <h3 style="font-size:1.05rem;font-weight:800;color:var(--primary);margin-bottom:6px;">🚀 Step 8: Save Draft, Schedule or Publish Test</h3>
+              <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:14px;">
+                जब आप टेस्ट को <strong>Publish</strong> करते हैं, तो इसके प्रश्नों की एक स्वतंत्र <strong>Immutable Snapshot</strong> सुरक्षित हो जाती है। बाद में Question Bank में किसी प्रश्न को बदलने या हटाने से पहले से प्रकाशित टेस्ट और छात्रों के परिणाम प्रभावित नहीं होंगे।
+              </p>
+
+              <div class="grid-3" style="gap:12px;margin-bottom:14px;">
+                <div class="card" style="border:1.5px solid var(--warning);">
+                  <h4 style="font-size:0.95rem;font-weight:800;margin-bottom:6px;">📝 1. Save as Draft</h4>
+                  <p style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:10px;">टेस्ट को Draft में सेव करें ताकि आप बाद में और बदलाव कर सकें। यह छात्रों को अभी नहीं दिखेगा।</p>
+                  <button class="btn btn-outline btn-block" id="tbStep8SaveDraftBtn">💾 Save Test as Draft</button>
+                </div>
+
+                <div class="card" style="border:1.5px solid var(--info);">
+                  <h4 style="font-size:0.95rem;font-weight:800;margin-bottom:6px;">📅 2. Schedule Test</h4>
+                  <p style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:10px;">निर्धारित तिथि (${esc(draft.startDate || 'चयनित तिथि')} ${esc(draft.startTime)}) पर टेस्ट अपने आप छात्रों के लिए उपलब्ध हो जाएगा।</p>
+                  <button class="btn btn-primary btn-block" id="tbStep8ScheduleBtn" ${!blueprint.isValidForPublish ? 'disabled' : ''}>📅 Schedule Test</button>
+                </div>
+
+                <div class="card" style="border:1.5px solid var(--success);">
+                  <h4 style="font-size:0.95rem;font-weight:800;margin-bottom:6px;">🚀 3. Publish Live Now</h4>
+                  <p style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:10px;">टेस्ट को तुरंत प्रकाशित करें और CBT इंजन के लिए लाइव करें।</p>
+                  <button class="btn btn-success btn-block" id="tbStep8PublishNowBtn" ${!blueprint.isValidForPublish ? 'disabled' : ''}>🚀 Publish Test Now</button>
+                </div>
+              </div>
+
+              <div style="display:flex;gap:10px;flex-wrap:wrap;padding-top:10px;border-top:1px solid var(--border);">
+                <button class="btn btn-outline btn-sm" id="tbStep8SaveTemplateBtn">📋 इस टेस्ट की Settings को Test Template के रूप में सेव करें</button>
+                <button class="btn btn-outline btn-sm" id="tbStep8SaveProfileBtn">📐 वर्तमान Subject/Topic वितरण को Syllabus Profile में सेव करें</button>
+              </div>
+            </div>
+          `;
+        }
+
+        return `
+          <!-- 8-Step Stepper Navigation -->
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:6px;margin-bottom:12px;">
+            ${steps.map((st) => {
+              const active = tb.wizardStep === st.num;
+              return `
+                <button class="btn ${active ? 'btn-primary' : 'btn-outline'} btn-sm" data-tb-wiz-step="${st.num}" style="display:flex;flex-direction:column;align-items:flex-start;padding:8px 10px;text-align:left;height:auto;">
+                  <span style="font-size:0.76rem;font-weight:800;">${esc(st.title)}</span>
+                  <span style="font-size:0.66rem;opacity:0.85;">${esc(st.sub)}</span>
+                </button>
+              `;
+            }).join('')}
+          </div>
+
+          ${stepHtml}
+
+          <!-- Bottom Step Navigation Bar -->
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding:10px 14px;border-radius:10px;background:var(--surface);border:1px solid var(--border);">
+            <button class="btn btn-outline btn-sm" id="tbWizPrevStepBtn" ${tb.wizardStep <= 1 ? 'disabled' : ''}>⬅️ पिछला चरण (Previous Step)</button>
+            <div style="display:flex;gap:8px;">
+              <button class="btn btn-outline btn-sm" id="tbQuickSaveDraftAnyStepBtn">💾 Save Draft</button>
+              <button class="btn btn-primary btn-sm" id="tbWizNextStepBtn" ${tb.wizardStep >= 8 ? 'disabled' : ''}>अगला चरण (Next Step) ➡️</button>
+            </div>
+          </div>
+        `;
+      }
+
+      // ======================================================================
+      // TAB 2, 5, 6: MANAGE EXISTING TESTS / DRAFT TESTS / PUBLISHED TESTS
+      // ======================================================================
+      if (tb.subTab === 'manage_tests' || tb.subTab === 'draft_tests' || tb.subTab === 'published_tests') {
+        const flt = tb.manageTestsFilter || {};
+        let baseList = allTests;
+        if (tb.subTab === 'draft_tests') baseList = draftTestsList;
+        else if (tb.subTab === 'published_tests') baseList = [...publishedTestsList, ...scheduledTestsList];
+
+        const filteredTests = baseList.filter((t) => {
+          if (flt.examCategory && flt.examCategory !== 'ALL' && (t.examCategory || t.examCode) !== flt.examCategory) return false;
+          if (flt.status && flt.status !== 'ALL' && (t.status || (t.isPublished ? 'published' : 'draft')) !== flt.status) return false;
+          if (flt.testType && flt.testType !== 'ALL' && (t.testType || 'Full Length Test') !== flt.testType) return false;
+          if (flt.folderId && flt.folderId !== 'ALL' && t.folderId !== flt.folderId) return false;
+          if (flt.search) {
+            const kw = flt.search.toLowerCase();
+            const hay = `${t.titleHi || ''} ${t.titleEn || ''} ${t.examCode || ''} ${t.subject || ''}`.toLowerCase();
+            if (!hay.includes(kw)) return false;
+          }
+          return true;
+        });
+
+        return `
+          <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+              <div>
+                <h3 style="font-size:1rem;font-weight:800;color:var(--primary);">
+                  ${tb.subTab === 'draft_tests' ? '📝 Draft & Unpublished Tests' : (tb.subTab === 'published_tests' ? '🚀 Published & Scheduled Tests' : '🗂️ Manage All Existing Tests')} (${filteredTests.length})
+                </h3>
+                <p style="font-size:0.76rem;color:var(--text-secondary);">
+                  किसी भी टेस्ट को Wizard में खोलकर Edit करें, Settings Copy करके नया टेस्ट बनाएं, Preview देखें, या Publish/Unpublish करें।
+                </p>
+              </div>
+              <button class="btn btn-primary btn-sm" id="tbCreateNewFromListBtn">➕ Create New Test</button>
+            </div>
+
+            <div class="grid-4" style="gap:8px;margin-bottom:12px;">
+              <input class="form-input" id="tbManageSearchInput" value="${esc(flt.search || '')}" placeholder="टेस्ट का नाम या विषय खोजें..." />
+              <select class="form-select" id="tbManageExamFilter">
+                <option value="ALL">सभी Exam Categories</option>
+                ${TEST_BUILDER_EXAM_CATEGORIES.map((c) => `<option value="${esc(c.code)}" ${flt.examCategory === c.code ? 'selected' : ''}>${esc(c.labelHi)}</option>`).join('')}
+              </select>
+              <select class="form-select" id="tbManageTypeFilter">
+                <option value="ALL">सभी Test Types</option>
+                ${TEST_BUILDER_TEST_TYPES.map((tt) => `<option value="${esc(tt.id)}" ${flt.testType === tt.id ? 'selected' : ''}>${esc(tt.id)}</option>`).join('')}
+              </select>
+              <select class="form-select" id="tbManageFolderFilter">
+                <option value="ALL">सभी Test Series Folders</option>
+                ${(state.folders || []).map((f) => `<option value="${esc(f.id)}" ${flt.folderId === f.id ? 'selected' : ''}>${esc(f.titleHi)}</option>`).join('')}
+              </select>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              ${filteredTests.length === 0 ? `
+                <div style="padding:24px;text-align:center;color:var(--text-muted);font-weight:700;">कोई टेस्ट नहीं मिला।</div>
+              ` : filteredTests.map((t) => {
+                const isPub = t.status === 'published' || t.isPublished;
+                const isSched = t.status === 'scheduled';
+                const folderObj = (state.folders || []).find((f) => f.id === t.folderId);
+                return `
+                  <div style="padding:12px;border-radius:10px;border:1px solid ${isPub ? 'var(--border)' : 'var(--warning)'};background:var(--surface);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+                    <div style="flex:1;min-width:260px;">
+                      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:4px;">
+                        <span class="badge badge-primary">${esc(t.examCategory || t.examCode || 'CGPSC')}</span>
+                        <span class="badge ${isPub ? 'badge-success' : (isSched ? 'badge-info' : 'badge-warning')}">
+                          ${isPub ? '🟢 PUBLISHED' : (isSched ? `📅 SCHEDULED (${esc(t.startDate)})` : '🟡 DRAFT')}
+                        </span>
+                        <span class="badge badge-muted">${esc(t.testType || 'Full Length Test')}</span>
+                        ${t.syllabusProfileName ? `<span class="badge badge-info">📐 ${esc(t.syllabusProfileName)} (v${esc(t.syllabusVersion || '2025')})</span>` : ''}
+                      </div>
+                      <div style="font-size:0.92rem;font-weight:800;">${esc(t.titleHi || t.titleEn)}</div>
+                      <div style="font-size:0.75rem;color:var(--text-secondary);margin-top:2px;">
+                        Series: <strong>${esc(folderObj ? folderObj.titleHi : 'Default')}</strong> • ${(t.questions || []).length} Qs • ${t.totalMarks} Marks • ${t.durationMinutes}m • -${t.negativeMarking} Neg • ${esc(t.language || 'Bilingual')}
+                      </div>
+                    </div>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                      <button class="btn btn-primary btn-sm" data-open-test-wizard="${esc(t.id)}">✏️ Edit in Wizard</button>
+                      <button class="btn btn-outline btn-sm" data-copy-test-settings="${esc(t.id)}">📋 Copy Settings (Duplicate)</button>
+                      <button class="btn ${isPub ? 'btn-outline' : 'btn-success'} btn-sm" data-toggle-pub-v2="${esc(t.id)}">
+                        ${isPub ? '⏸️ Unpublish' : '🚀 Publish'}
+                      </button>
+                      <button class="btn btn-outline btn-sm" data-preview-cbt-v2="${esc(t.id)}">▶️ Preview CBT</button>
+                      <button class="btn btn-danger btn-sm" data-del-test-v2="${esc(t.id)}">🗑️</button>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        `;
+      }
+
+      // ======================================================================
+      // TAB 3: SAVED SYLLABUS PROFILES (PART 6)
+      // ======================================================================
+      if (tb.subTab === 'syllabus_profiles') {
+        const profiles = state.syllabusProfiles || [];
+        return `
+          <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+              <div>
+                <h3 style="font-size:1rem;font-weight:800;color:var(--primary);">📐 Saved Syllabus Profiles &amp; Versioning (${profiles.length})</h3>
+                <p style="font-size:0.78rem;color:var(--text-secondary);">
+                  प्रत्येक परीक्षा (CGPSC, CG Vyapam, SSC, Railway, Banking, आदि) के लिए Subject और Topic का वेटेज सेव करें। नया सिलेबस आने पर नया Version (जैसे 2025 → 2026) बनाएं।
+                </p>
+              </div>
+              <button class="btn btn-primary btn-sm" id="tbSaveActiveWizardAsProfileBtn">➕ वर्तमान Wizard वितरण से नया Profile बनाएं</button>
+            </div>
+
+            <div class="grid-2" style="gap:12px;">
+              ${profiles.map((p) => {
+                const incSubs = Object.values(p.subjectDistribution || {}).filter((s) => s.included && Number(s.questionCount) > 0);
+                return `
+                  <div class="card" style="border:1.5px solid var(--border);">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px;">
+                      <div>
+                        <span class="badge badge-primary">${esc(p.examCategory)}</span>
+                        <span class="badge badge-info">Version: ${esc(p.version || '2025')}</span>
+                        <h4 style="font-size:0.95rem;font-weight:800;margin-top:4px;">${esc(p.profileName)}</h4>
+                      </div>
+                      <button class="btn btn-danger btn-sm" data-del-syl-profile="${esc(p.profileId)}">🗑️</button>
+                    </div>
+                    <div style="font-size:0.76rem;color:var(--text-secondary);margin-bottom:8px;">
+                      Exam: <strong>${esc(p.examName)}</strong> • Total Qs: <strong>${p.totalQuestions}</strong> • Marks: <strong>${p.totalMarks}</strong> • Duration: <strong>${p.durationMinutes}m</strong>
+                    </div>
+                    <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px;">
+                      ${incSubs.map((s) => `<span class="badge badge-muted" style="font-size:0.66rem;">${esc(s.subjectNameHi)}: ${s.questionCount} Qs</span>`).join('')}
+                    </div>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                      <button class="btn btn-primary btn-sm" data-load-syl-profile="${esc(p.profileId)}">📥 Load into Test Builder</button>
+                      <button class="btn btn-outline btn-sm" data-dup-syl-profile="${esc(p.profileId)}">📋 Create New Version / Duplicate</button>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        `;
+      }
+
+      // ======================================================================
+      // TAB 4: TEST TEMPLATES (PART 1)
+      // ======================================================================
+      if (tb.subTab === 'templates') {
+        const templates = state.testTemplates || [];
+        return `
+          <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+              <div>
+                <h3 style="font-size:1rem;font-weight:800;color:var(--primary);">📋 Saved Test Templates (${templates.length})</h3>
+                <p style="font-size:0.78rem;color:var(--text-secondary);">
+                  पूर्ण टेस्ट संरचना (अंक, समय, नेगेटिव मार्किंग, CBT नियम और सिलेबस अनुपात) को Template के रूप में सेव करें और 1-क्लिक में नया टेस्ट बनाएं।
+                </p>
+              </div>
+              <button class="btn btn-primary btn-sm" id="tbCreateTemplateFromCurrentBtn">➕ वर्तमान Wizard Settings को Template बनाएं</button>
+            </div>
+
+            ${templates.length === 0 ? `
+              <div style="padding:20px;text-align:center;color:var(--text-muted);font-weight:700;">
+                अभी कोई Test Template सेव नहीं है। ऊपर दिए गए बटन से वर्तमान Settings को Template के रूप में सेव करें।
+              </div>
+            ` : `
+              <div class="grid-2" style="gap:12px;">
+                ${templates.map((tpl) => `
+                  <div class="card" style="border:1px solid var(--border);">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+                      <div>
+                        <span class="badge badge-primary">${esc(tpl.examCategory || 'CGPSC')}</span>
+                        <span class="badge badge-info">${esc(tpl.testType || 'Full Length Test')}</span>
+                        <h4 style="font-size:0.95rem;font-weight:800;margin-top:4px;">${esc(tpl.templateName)}</h4>
+                      </div>
+                      <button class="btn btn-danger btn-sm" data-del-test-template="${esc(tpl.templateId)}">🗑️</button>
+                    </div>
+                    <p style="font-size:0.76rem;color:var(--text-secondary);margin:6px 0 10px;">
+                      ${tpl.totalQuestions} Qs • ${tpl.totalMarks} Marks • ${tpl.durationMinutes}m • Neg: -${tpl.negativeMarking} • Source: ${esc(tpl.questionSourceMode)}
+                    </p>
+                    <button class="btn btn-primary btn-sm" data-apply-test-template="${esc(tpl.templateId)}">⚡ इस Template से नया टेस्ट बनाएं</button>
+                  </div>
+                `).join('')}
+              </div>
+            `}
+          </div>
+        `;
+      }
+
+      // ======================================================================
+      // TAB 7: TEST HISTORY & SNAPSHOT PROTECTION LOG (PART 12)
+      // ======================================================================
+      if (tb.subTab === 'test_history') {
+        const logs = state.testHistoryLog || [];
+        return `
+          <div class="card">
+            <h3 style="font-size:1rem;font-weight:800;color:var(--primary);margin-bottom:6px;">🕓 Test History &amp; Immutable Question Snapshot Log</h3>
+            <p style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:12px;">
+              प्रत्येक प्रकाशित टेस्ट की प्रश्न सूची (<code>publishedQuestionsSnapshot</code>) सुरक्षित रहती है ताकि बाद में Question Bank में बदलाव होने पर भी पुराने टेस्ट और छात्रों के परिणाम सुरक्षित रहें।
+            </p>
+            <div class="table-wrap">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>Timestamp</th>
+                    <th>Test Name</th>
+                    <th>Exam &amp; Type</th>
+                    <th>Action</th>
+                    <th>Questions &amp; Marks</th>
+                    <th>Syllabus Profile</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${logs.length === 0 ? `<tr><td colspan="6" style="text-align:center;padding:18px;">अभी कोई Test History लॉग नहीं है।</td></tr>` : logs.slice(0, 60).map((lg) => `
+                    <tr>
+                      <td style="font-size:0.75rem;">${esc(new Date(lg.timestamp).toLocaleString('hi-IN'))}</td>
+                      <td style="font-weight:700;">${esc(lg.testTitle)}</td>
+                      <td><span class="badge badge-primary">${esc(lg.examCategory)}</span> <span class="badge badge-muted">${esc(lg.testType || '')}</span></td>
+                      <td><span class="badge ${lg.action === 'PUBLISHED' ? 'badge-success' : 'badge-info'}">${esc(lg.action)}</span></td>
+                      <td>${lg.questionCount} Qs • ${lg.totalMarks} Marks</td>
+                      <td>${esc(lg.syllabusProfileName || 'Custom')} (v${esc(lg.syllabusVersion || '2025')})</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      }
+
+      // ======================================================================
+      // TAB 8: TEST ANALYTICS (PART 1)
+      // ======================================================================
+      if (tb.subTab === 'analytics') {
+        const attempts = state.attempts || [];
+        return `
+          <div class="card">
+            <h3 style="font-size:1rem;font-weight:800;color:var(--primary);margin-bottom:10px;">📊 Test Series &amp; Question Distribution Analytics</h3>
+            <div class="grid-4" style="gap:10px;margin-bottom:14px;">
+              <div style="padding:12px;border-radius:10px;background:var(--surface-alt);">
+                <div style="font-size:0.75rem;color:var(--text-secondary);">Total Tests Created</div>
+                <div style="font-size:1.3rem;font-weight:800;color:var(--primary);">${allTests.length}</div>
+              </div>
+              <div style="padding:12px;border-radius:10px;background:var(--surface-alt);">
+                <div style="font-size:0.75rem;color:var(--text-secondary);">Published / Scheduled</div>
+                <div style="font-size:1.3rem;font-weight:800;color:var(--success);">${publishedTestsList.length} / ${scheduledTestsList.length}</div>
+              </div>
+              <div style="padding:12px;border-radius:10px;background:var(--surface-alt);">
+                <div style="font-size:0.75rem;color:var(--text-secondary);">Total Student Attempts</div>
+                <div style="font-size:1.3rem;font-weight:800;color:var(--secondary);">${attempts.length}</div>
+              </div>
+              <div style="padding:12px;border-radius:10px;background:var(--surface-alt);">
+                <div style="font-size:0.75rem;color:var(--text-secondary);">Central Eligible Question Pool</div>
+                <div style="font-size:1.3rem;font-weight:800;">${poolStats.totalEligiblePool} Qs</div>
+              </div>
+            </div>
+
+            <div class="table-wrap">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>Test Name</th>
+                    <th>Status</th>
+                    <th>Questions (Normal / PYQ)</th>
+                    <th>Attempts</th>
+                    <th>Avg Score</th>
+                    <th>Top Score</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${allTests.map((t) => {
+                    const tAttempts = attempts.filter((a) => a.testId === t.id);
+                    const avgScore = tAttempts.length > 0
+                      ? (tAttempts.reduce((acc, a) => acc + Number(a.score || 0), 0) / tAttempts.length).toFixed(1)
+                      : '—';
+                    const topScore = tAttempts.length > 0
+                      ? Math.max(...tAttempts.map((a) => Number(a.score || 0))).toFixed(1)
+                      : '—';
+                    return `
+                      <tr>
+                        <td style="font-weight:700;">${esc(t.titleHi || t.titleEn)}</td>
+                        <td><span class="badge ${t.status === 'published' ? 'badge-success' : 'badge-warning'}">${esc((t.status || 'draft').toUpperCase())}</span></td>
+                        <td>${(t.questions || []).length} Qs</td>
+                        <td>${tAttempts.length}</td>
+                        <td>${avgScore} / ${t.totalMarks}</td>
+                        <td>${topScore}</td>
+                      </tr>
+                    `;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      }
+
+      // ======================================================================
+      // TAB 9: TEST SERIES (PACKAGE / FOLDER) MANAGEMENT (PART 13)
+      // ======================================================================
+      if (tb.subTab === 'series_folders') {
+        return `
+          <div class="grid-2" style="gap:12px;margin-bottom:14px;">
+            <div class="card">
+              <h3 style="font-size:0.98rem;font-weight:800;margin-bottom:10px;">📁 Create New Test Series Package / Folder</h3>
+              <div class="grid-2" style="gap:8px;">
+                <div class="form-group">
+                  <label class="form-label">Exam Category *</label>
+                  <select class="form-select" id="admFolderExamCodeV2">
+                    ${TEST_BUILDER_EXAM_CATEGORIES.map((c) => `<option value="${esc(c.code)}">${esc(c.labelHi)}</option>`).join('')}
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Price (₹) — 0 for Free</label>
+                  <input type="number" class="form-input" id="admFolderPriceV2" value="199" />
+                </div>
+              </div>
+              <div class="grid-2" style="gap:8px;">
+                <div class="form-group">
+                  <label class="form-label">Test Series Title (Hindi) *</label>
+                  <input class="form-input" id="admFolderTitleHiV2" placeholder="उदा. CGPSC प्रीलिम्स टेस्ट सीरीज़ 2025" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Test Series Title (English)</label>
+                  <input class="form-input" id="admFolderTitleEnV2" placeholder="e.g. CGPSC Prelims Test Series 2025" />
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Series Description &amp; Instructions</label>
+                <input class="form-input" id="admFolderDescHiV2" placeholder="नवीनतम सिलेबस पर आधारित पूर्ण मॉक टेस्ट सीरीज़" />
+              </div>
+              <button class="btn btn-primary btn-block" id="admCreateFolderBtnV2">➕ Create Test Series</button>
+            </div>
+
+            <div class="card">
+              <h3 style="font-size:0.98rem;font-weight:800;margin-bottom:8px;">ℹ️ Test Series Management Controls (Part 13)</h3>
+              <p style="font-size:0.79rem;color:var(--text-secondary);line-height:1.5;">
+                • किसी भी Test Series में एक से अधिक टेस्ट जोड़ें, क्रम बदलें (⬆️/⬇️ Reorder), या हटाएं।<br/>
+                • संपूर्ण Test Series को एक साथ Publish या Unpublish (Draft) करें।<br/>
+                • Test Series को Duplicate करें (बिना प्रश्नों की डुप्लीकेट कॉपी बनाए)।
+              </p>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:12px;">
+            ${(state.folders || []).map((folder) => {
+              const fTests = (state.tests || []).filter((t) => t.folderId === folder.id);
+              return `
+                <div class="card" style="border:1px solid var(--border);">
+                  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+                    <div>
+                      <span class="badge badge-primary">${esc(folder.examCode)}</span>
+                      <strong style="font-size:0.98rem;margin-left:6px;">${esc(folder.titleHi)}</strong>
+                      <span style="font-size:0.78rem;color:var(--text-muted);margin-left:6px;">(${folder.isFree ? 'FREE' : '₹' + folder.price}) • ${fTests.length} Tests</span>
+                    </div>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                      <button class="btn btn-outline btn-sm" data-series-pub-all="${esc(folder.id)}">🚀 Publish All in Series</button>
+                      <button class="btn btn-outline btn-sm" data-series-unpub-all="${esc(folder.id)}">⏸️ Unpublish Series</button>
+                      <button class="btn btn-outline btn-sm" data-dup-folder-v2="${esc(folder.id)}">📋 Duplicate Series</button>
+                      <button class="btn btn-outline btn-sm" data-edit-folder="${esc(folder.id)}">✏️ Edit</button>
+                      <button class="btn btn-danger btn-sm" data-del-folder="${esc(folder.id)}">🗑️ Delete</button>
+                    </div>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:6px;">
+                    ${fTests.map((t, tIdx) => `
+                      <div style="padding:8px 10px;border-radius:8px;background:var(--surface-alt);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+                        <div>
+                          <strong>#${tIdx + 1} ${esc(t.titleHi)}</strong>
+                          <span class="badge ${t.status === 'published' ? 'badge-success' : 'badge-warning'}" style="margin-left:6px;">${esc((t.status || 'draft').toUpperCase())}</span>
+                          <span style="font-size:0.74rem;color:var(--text-secondary);margin-left:6px;">${(t.questions || []).length} Qs • ${t.totalMarks} Marks</span>
+                        </div>
+                        <div style="display:flex;gap:4px;">
+                          <button class="btn btn-outline btn-sm" data-move-test-up="${esc(t.id)}">⬆️</button>
+                          <button class="btn btn-outline btn-sm" data-move-test-down="${esc(t.id)}">⬇️</button>
+                          <button class="btn btn-primary btn-sm" data-open-test-wizard="${esc(t.id)}">✏️ Edit</button>
+                        </div>
+                      </div>
+                    `).join('')}
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        `;
+      }
+
+      return '';
+    };
+
+    bodyEl.innerHTML = `
+      <!-- Top Dashboard Header & 8-Part Navigation -->
+      <div class="card" style="margin-bottom:12px;padding:12px 14px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px;">
+          <div>
+            <h2 style="font-size:1.1rem;font-weight:800;color:var(--primary);margin:0;">🧠 Advanced Syllabus-Based Intelligent Test Builder</h2>
+            <p style="font-size:0.76rem;color:var(--text-secondary);margin-top:2px;">
+              Connected to Central Question Database (${poolStats.totalEligiblePool} Verified Eligible Qs • ${poolStats.totalPyqPool} PYQs) — Automatic + Manual Hybrid Selection
+            </p>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <span class="badge badge-success">Published: ${publishedTestsList.length}</span>
+            <span class="badge badge-info">Scheduled: ${scheduledTestsList.length}</span>
+            <span class="badge badge-warning">Drafts: ${draftTestsList.length}</span>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          ${navTabs.map((t) => `
+            <button class="btn ${tb.subTab === t.id ? 'btn-primary' : 'btn-outline'} btn-sm" data-tb-subtab="${esc(t.id)}">
+              ${t.icon} ${esc(t.label)}
+            </button>
+          `).join('')}
+        </div>
+      </div>
+
+      ${renderSubTabContent()}
+    `;
+
+    // ========================================================================
+    // EVENT HANDLERS FOR ADVANCED TEST BUILDER
+    // ========================================================================
+
+    // Sync Step 1 inputs into draft before switching steps/tabs
+    const captureStep1FieldsIfPresent = () => {
+      const elTitleHi = document.getElementById('tbStep1TitleHi');
+      if (!elTitleHi) return;
+      draft.titleHi = elTitleHi.value.trim();
+      draft.titleEn = (document.getElementById('tbStep1TitleEn')?.value || '').trim() || draft.titleHi;
+      draft.folderId = document.getElementById('tbStep1FolderId')?.value || draft.folderId;
+      draft.examCategory = document.getElementById('tbStep1ExamCat')?.value || draft.examCategory;
+      draft.examName = (document.getElementById('tbStep1ExamName')?.value || '').trim() || draft.examCategory;
+      draft.testType = document.getElementById('tbStep1TestType')?.value || draft.testType;
+      draft.language = document.getElementById('tbStep1Language')?.value || draft.language;
+      draft.totalQuestions = Math.max(1, Number(document.getElementById('tbStep1TotalQ')?.value || draft.totalQuestions));
+      draft.marksPerQuestion = Math.max(0.25, Number(document.getElementById('tbStep1MarksPerQ')?.value || draft.marksPerQuestion));
+      draft.totalMarks = Math.max(1, Number(document.getElementById('tbStep1TotalMarks')?.value || draft.totalMarks));
+      draft.durationMinutes = Math.max(5, Number(document.getElementById('tbStep1Duration')?.value || draft.durationMinutes));
+      draft.negativeMarkingEnabled = document.getElementById('tbStep1NegEnabled')?.value === 'true';
+      draft.negativeMarking = draft.negativeMarkingEnabled ? Number(document.getElementById('tbStep1NegMarks')?.value || 0) : 0;
+      draft.unattemptedMarks = Number(document.getElementById('tbStep1UnattemptedMarks')?.value || 0);
+      draft.isFree = document.getElementById('tbStep1IsFree')?.value === 'true';
+      draft.descriptionHi = (document.getElementById('tbStep1DescHi')?.value || '').trim();
+      draft.instructionsHi = (document.getElementById('tbStep1InstrHi')?.value || '').trim();
+      draft.scheduleMode = document.getElementById('tbStep1ScheduleMode')?.value || 'immediate';
+      draft.startDate = document.getElementById('tbStep1StartDate')?.value || '';
+      draft.startTime = document.getElementById('tbStep1StartTime')?.value || '09:00';
+      draft.endDate = document.getElementById('tbStep1EndDate')?.value || '';
+      draft.endTime = document.getElementById('tbStep1EndTime')?.value || '23:59';
+      draft.visibility = document.getElementById('tbStep1Visibility')?.value || 'public';
+      draft.questionOrder = document.getElementById('tbStep1QuestionOrder')?.value || 'fixed';
+      draft.optionOrder = document.getElementById('tbStep1OptionOrder')?.value || 'fixed';
+      draft.autoSubmitOnTimeUp = document.getElementById('tbStep1AutoSubmit')?.value !== 'false';
+      draft.resultReleaseMode = document.getElementById('tbStep1ResultRelease')?.value || 'immediate';
+      draft.showCorrectAnswers = Boolean(document.getElementById('tbStep1ShowAns')?.checked);
+      draft.showExplanation = Boolean(document.getElementById('tbStep1ShowExp')?.checked);
+      draft.showMarks = Boolean(document.getElementById('tbStep1ShowMarks')?.checked);
+      draft.showRank = Boolean(document.getElementById('tbStep1ShowRank')?.checked);
+    };
+
+    // Sub-tab navigation
+    bodyEl.querySelectorAll('[data-tb-subtab]').forEach((btn) => {
+      btn.onclick = () => {
+        captureStep1FieldsIfPresent();
+        tb.subTab = btn.getAttribute('data-tb-subtab');
+        renderAdminConsole(rootEl, state, api);
+      };
+    });
+
+    // Wizard step navigation
+    bodyEl.querySelectorAll('[data-tb-wiz-step]').forEach((btn) => {
+      btn.onclick = () => {
+        captureStep1FieldsIfPresent();
+        tb.wizardStep = Number(btn.getAttribute('data-tb-wiz-step') || 1);
+        renderAdminConsole(rootEl, state, api);
+      };
+    });
+
+    const prevStepBtn = document.getElementById('tbWizPrevStepBtn');
+    if (prevStepBtn) {
+      prevStepBtn.onclick = () => {
+        captureStep1FieldsIfPresent();
+        if (tb.wizardStep > 1) tb.wizardStep -= 1;
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+    const nextStepBtn = document.getElementById('tbWizNextStepBtn');
+    if (nextStepBtn) {
+      nextStepBtn.onclick = () => {
+        captureStep1FieldsIfPresent();
+        if (tb.wizardStep < 8) tb.wizardStep += 1;
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+
+    const quickSaveDraftBtn = document.getElementById('tbQuickSaveDraftAnyStepBtn');
+    if (quickSaveDraftBtn) {
+      quickSaveDraftBtn.onclick = () => {
+        captureStep1FieldsIfPresent();
+        if (!draft.titleHi && !draft.titleEn) {
+          draft.titleHi = `${draft.examName || 'CGPSC'} ${draft.testType} (Draft)`;
+          draft.titleEn = draft.titleHi;
+        }
+        persistWizardTestWithStatus(draft, 'draft', state, api, rootEl, catalog);
+      };
+    }
+
+    // Step 1 auto-calculate Total Marks when Total Questions or Marks Per Question changes
+    const elTotalQ = document.getElementById('tbStep1TotalQ');
+    const elMarksPerQ = document.getElementById('tbStep1MarksPerQ');
+    const elTotalMarks = document.getElementById('tbStep1TotalMarks');
+    const recalcTotalMarks = () => {
+      if (elTotalQ && elMarksPerQ && elTotalMarks) {
+        const qn = Number(elTotalQ.value || 0);
+        const mpq = Number(elMarksPerQ.value || 0);
+        if (qn > 0 && mpq > 0) {
+          elTotalMarks.value = String(Number((qn * mpq).toFixed(2)));
+          draft.totalQuestions = qn;
+          draft.marksPerQuestion = mpq;
+          draft.totalMarks = Number(elTotalMarks.value);
+          if (draft.questionSourceMode === 'subject_bank') {
+            draft.normalQuestionCount = qn;
+            draft.pyqQuestionCount = 0;
+          } else if (draft.questionSourceMode === 'pyq_library') {
+            draft.normalQuestionCount = 0;
+            draft.pyqQuestionCount = qn;
+          }
+        }
+      }
+    };
+    if (elTotalQ) elTotalQ.oninput = recalcTotalMarks;
+    if (elMarksPerQ) elMarksPerQ.oninput = recalcTotalMarks;
+
+    const elNegEnabled = document.getElementById('tbStep1NegEnabled');
+    if (elNegEnabled) {
+      elNegEnabled.onchange = () => {
+        captureStep1FieldsIfPresent();
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+
+    const resetWizBtn = document.getElementById('tbResetNewWizardBtn');
+    if (resetWizBtn) {
+      resetWizBtn.onclick = () => {
+        tb.draft = createDefaultWizardDraft(state, catalog);
+        tb.wizardStep = 1;
+        api.toast('✨ नए टेस्ट के लिए फॉर्म रीसेट किया गया।');
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+
+    // Step 2 handlers
+    bodyEl.querySelectorAll('[data-pick-qsource]').forEach((card) => {
+      card.onclick = () => {
+        const mode = card.getAttribute('data-pick-qsource');
+        draft.questionSourceMode = mode;
+        if (mode === 'subject_bank') {
+          draft.normalQuestionCount = draft.totalQuestions;
+          draft.pyqQuestionCount = 0;
+        } else if (mode === 'pyq_library') {
+          draft.normalQuestionCount = 0;
+          draft.pyqQuestionCount = draft.totalQuestions;
+        } else {
+          draft.pyqQuestionCount = Math.round(draft.totalQuestions * 0.3);
+          draft.normalQuestionCount = draft.totalQuestions - draft.pyqQuestionCount;
+        }
+        renderAdminConsole(rootEl, state, api);
+      };
+    });
+
+    const elNormCnt = document.getElementById('tbStep2NormalCount');
+    const elPyqCnt = document.getElementById('tbStep2PyqCount');
+    if (elNormCnt && elPyqCnt) {
+      elNormCnt.onchange = () => {
+        const nv = Math.max(0, Math.min(draft.totalQuestions, Number(elNormCnt.value || 0)));
+        draft.normalQuestionCount = nv;
+        draft.pyqQuestionCount = Math.max(0, draft.totalQuestions - nv);
+        renderAdminConsole(rootEl, state, api);
+      };
+      elPyqCnt.onchange = () => {
+        const pv = Math.max(0, Math.min(draft.totalQuestions, Number(elPyqCnt.value || 0)));
+        draft.pyqQuestionCount = pv;
+        draft.normalQuestionCount = Math.max(0, draft.totalQuestions - pv);
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+
+    const bindPyqFilter = (id, key) => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.onchange = () => {
+          draft.pyqFilters[key] = el.value.trim();
+          renderAdminConsole(rootEl, state, api);
+        };
+      }
+    };
+    bindPyqFilter('tbStep2PyqCat', 'examCategory');
+    bindPyqFilter('tbStep2PyqExamName', 'examName');
+    bindPyqFilter('tbStep2PyqYear', 'examYear');
+    bindPyqFilter('tbStep2PyqShift', 'paperShift');
+
+    // Step 3 & Tab 3 Syllabus Profile handlers
+    const elSylVer = document.getElementById('tbStep3SylVersion');
+    if (elSylVer) {
+      elSylVer.onchange = () => {
+        draft.syllabusVersion = elSylVer.value.trim() || '2025';
+      };
+    }
+
+    const saveCurrentAsNewProfile = () => {
+      const namePrompt = `${draft.examName || 'CGPSC'} Syllabus Profile (${draft.totalQuestions} Qs)`;
+      const newProf = {
+        profileId: `syl_${Date.now()}`,
+        profileName: draft.titleHi ? `${draft.titleHi} - Syllabus Profile` : namePrompt,
+        examCategory: draft.examCategory || 'CGPSC',
+        examName: draft.examName || 'CGPSC Prelims',
+        version: draft.syllabusVersion || '2025',
+        isAdminVerified: true,
+        totalQuestions: draft.totalQuestions,
+        marksPerQuestion: draft.marksPerQuestion,
+        totalMarks: draft.totalMarks,
+        durationMinutes: draft.durationMinutes,
+        negativeMarkingEnabled: draft.negativeMarkingEnabled,
+        negativeMarking: draft.negativeMarking,
+        questionSourceMode: draft.questionSourceMode,
+        normalQuestionCount: draft.normalQuestionCount,
+        pyqQuestionCount: draft.pyqQuestionCount,
+        subjectDistribution: JSON.parse(JSON.stringify(draft.subjectDistribution || {})),
+        topicDistribution: JSON.parse(JSON.stringify(draft.topicDistribution || {})),
+        updatedAt: new Date().toISOString()
+      };
+      state.syllabusProfiles.unshift(newProf);
+      draft.syllabusProfileId = newProf.profileId;
+      draft.syllabusProfileName = newProf.profileName;
+      api.saveState();
+      api.toast(`✅ Syllabus Profile "${newProf.profileName}" (v${newProf.version}) सेव हो गया!`);
+      renderAdminConsole(rootEl, state, api);
+    };
+
+    const btnSaveNewProf = document.getElementById('tbSaveCurrentAsNewProfileBtn') || document.getElementById('tbSaveActiveWizardAsProfileBtn') || document.getElementById('tbStep8SaveProfileBtn');
+    if (btnSaveNewProf) btnSaveNewProf.onclick = saveCurrentAsNewProfile;
+
+    bodyEl.querySelectorAll('[data-load-syl-profile]').forEach((btn) => {
+      btn.onclick = () => {
+        const pid = btn.getAttribute('data-load-syl-profile');
+        const prof = (state.syllabusProfiles || []).find((p) => p.profileId === pid);
+        if (!prof) return;
+        applySyllabusProfileToDraft(prof, draft, catalog);
+        tb.subTab = 'wizard';
+        tb.wizardStep = 4;
+        api.toast(`📥 Syllabus Profile "${prof.profileName}" (v${prof.version}) टेस्ट में लोड हो गया!`);
+        renderAdminConsole(rootEl, state, api);
+      };
+    });
+
+    bodyEl.querySelectorAll('[data-dup-syl-profile]').forEach((btn) => {
+      btn.onclick = () => {
+        const pid = btn.getAttribute('data-dup-syl-profile');
+        const prof = (state.syllabusProfiles || []).find((p) => p.profileId === pid);
+        if (!prof) return;
+        const nextVer = String(Number(prof.version || 2025) + 1);
+        const copy = JSON.parse(JSON.stringify(prof));
+        copy.profileId = `syl_${Date.now()}`;
+        copy.version = nextVer;
+        copy.profileName = `${prof.profileName} (v${nextVer})`;
+        copy.updatedAt = new Date().toISOString();
+        state.syllabusProfiles.unshift(copy);
+        api.saveState();
+        api.toast(`📋 नया Syllabus Version "${copy.profileName}" तैयार हो गया!`);
+        renderAdminConsole(rootEl, state, api);
+      };
+    });
+
+    bodyEl.querySelectorAll('[data-del-syl-profile]').forEach((btn) => {
+      btn.onclick = () => {
+        const pid = btn.getAttribute('data-del-syl-profile');
+        state.syllabusProfiles = (state.syllabusProfiles || []).filter((p) => p.profileId !== pid);
+        api.saveState();
+        api.toast('🗑️ Syllabus Profile हटा दिया गया।');
+        renderAdminConsole(rootEl, state, api);
+      };
+    });
+
+    // Step 4 Subject Distribution handlers
+    const elStep4Cat = document.getElementById('tbStep4MainCatFilter');
+    if (elStep4Cat) {
+      elStep4Cat.onchange = () => {
+        tb.subjectMainCatFilter = elStep4Cat.value;
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+    const elStep4Search = document.getElementById('tbStep4SubSearch');
+    if (elStep4Search) {
+      elStep4Search.oninput = () => {
+        tb.subjectSearch = elStep4Search.value;
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+
+    bodyEl.querySelectorAll('[data-sub-inc-toggle]').forEach((sel) => {
+      sel.onchange = () => {
+        const sid = sel.getAttribute('data-sub-inc-toggle');
+        const inc = sel.value === 'true';
+        if (draft.subjectDistribution[sid]) {
+          draft.subjectDistribution[sid].included = inc;
+          if (!inc) draft.subjectDistribution[sid].questionCount = 0;
+          else if (Number(draft.subjectDistribution[sid].questionCount || 0) === 0) {
+            draft.subjectDistribution[sid].questionCount = 10;
+          }
+        }
+        renderAdminConsole(rootEl, state, api);
+      };
+    });
+
+    bodyEl.querySelectorAll('[data-sub-qcount-input]').forEach((inp) => {
+      inp.onchange = () => {
+        const sid = inp.getAttribute('data-sub-qcount-input');
+        const val = Math.max(0, Number(inp.value || 0));
+        if (draft.subjectDistribution[sid]) {
+          draft.subjectDistribution[sid].questionCount = val;
+          draft.subjectDistribution[sid].included = val > 0;
+        }
+        renderAdminConsole(rootEl, state, api);
+      };
+    });
+
+    bodyEl.querySelectorAll('[data-jump-sub-topics]').forEach((btn) => {
+      btn.onclick = () => {
+        const sid = btn.getAttribute('data-jump-sub-topics');
+        if (draft.subjectDistribution[sid] && !draft.subjectDistribution[sid].included) {
+          draft.subjectDistribution[sid].included = true;
+          if (!draft.subjectDistribution[sid].questionCount) draft.subjectDistribution[sid].questionCount = 10;
+        }
+        tb.expandedSubjectIdForTopics = sid;
+        tb.wizardStep = 5;
+        renderAdminConsole(rootEl, state, api);
+      };
+    });
+
+    const btnEqualDist = document.getElementById('tbStep4EqualDistBtn');
+    if (btnEqualDist) {
+      btnEqualDist.onclick = () => {
+        const incList = Object.values(draft.subjectDistribution || {}).filter((s) => s.included);
+        if (incList.length === 0) {
+          api.toast('⚠️ कृपया पहले कम से कम एक Subject को Include करें।');
+          return;
+        }
+        const base = Math.floor(draft.totalQuestions / incList.length);
+        let rem = draft.totalQuestions % incList.length;
+        incList.forEach((s) => {
+          s.questionCount = base + (rem > 0 ? 1 : 0);
+          if (rem > 0) rem -= 1;
+        });
+        api.toast(`⚖️ ${draft.totalQuestions} प्रश्नों को ${incList.length} Included Subjects में बराबर बांट दिया गया!`);
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+
+    const btnSyncTotal = document.getElementById('tbStep4SyncTotalBtn');
+    if (btnSyncTotal) {
+      btnSyncTotal.onclick = () => {
+        const sum = Object.values(draft.subjectDistribution || {})
+          .filter((s) => s.included)
+          .reduce((acc, s) => acc + Number(s.questionCount || 0), 0);
+        if (sum <= 0) {
+          api.toast('⚠️ Subject प्रश्नों का योग 0 से अधिक होना चाहिए।');
+          return;
+        }
+        draft.totalQuestions = sum;
+        draft.totalMarks = Number((sum * Number(draft.marksPerQuestion || 2)).toFixed(2));
+        if (draft.questionSourceMode === 'subject_bank') draft.normalQuestionCount = sum;
+        else if (draft.questionSourceMode === 'pyq_library') draft.pyqQuestionCount = sum;
+        api.toast(`✅ Test Total Questions को ${sum} पर अपडेट कर दिया गया!`);
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+
+    // Step 5 Topic Distribution handlers
+    const elStep5Sub = document.getElementById('tbStep5SubFilter');
+    if (elStep5Sub) {
+      elStep5Sub.onchange = () => {
+        tb.expandedSubjectIdForTopics = elStep5Sub.value;
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+    const elStep5Search = document.getElementById('tbStep5TopicSearch');
+    if (elStep5Search) {
+      elStep5Search.oninput = () => {
+        tb.topicSearch = elStep5Search.value;
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+
+    bodyEl.querySelectorAll('[data-top-mode-select]').forEach((sel) => {
+      sel.onchange = () => {
+        const tid = sel.getAttribute('data-top-mode-select');
+        const mode = sel.value;
+        if (draft.topicDistribution[tid]) {
+          draft.topicDistribution[tid].mode = mode;
+          if (mode !== 'Include') draft.topicDistribution[tid].questionCount = 0;
+          else if (!draft.topicDistribution[tid].questionCount) draft.topicDistribution[tid].questionCount = 2;
+        }
+        renderAdminConsole(rootEl, state, api);
+      };
+    });
+
+    bodyEl.querySelectorAll('[data-top-qcount-input]').forEach((inp) => {
+      inp.onchange = () => {
+        const tid = inp.getAttribute('data-top-qcount-input');
+        const val = Math.max(0, Number(inp.value || 0));
+        if (draft.topicDistribution[tid]) {
+          draft.topicDistribution[tid].questionCount = val;
+          draft.topicDistribution[tid].mode = val > 0 ? 'Include' : 'Auto';
+        }
+        renderAdminConsole(rootEl, state, api);
+      };
+    });
+
+    bodyEl.querySelectorAll('[data-view-topic-questions]').forEach((btn) => {
+      btn.onclick = () => {
+        const tid = btn.getAttribute('data-view-topic-questions');
+        tb.manualSearch.topicId = tid;
+        tb.wizardStep = 6;
+        renderAdminConsole(rootEl, state, api);
+      };
+    });
+
+    // Step 6 Automatic Selection, Regenerate & Shortage Alert handlers
+    const btnGenAuto = document.getElementById('tbStep6GenerateAutoBtn');
+    if (btnGenAuto) {
+      btnGenAuto.onclick = () => {
+        const res = runIntelligentQuestionSelectionEngine(state, draft, catalog, { regenerate: false, preserveManual: false });
+        if (res.shortageAlerts.length > 0) {
+          api.toast(`⚠️ ${res.questions.length} प्रश्न चुने गए (${res.shortageAlerts.length} Topic/Subject में प्रश्न कम पड़े)।`);
+        } else {
+          api.toast(`✅ सफलतापूर्वक ${res.questions.length} प्रश्न Syllabus के अनुसार चुने गए!`);
+        }
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+
+    const btnRegen = document.getElementById('tbStep6RegenerateBtn');
+    if (btnRegen) {
+      btnRegen.onclick = () => {
+        const res = runIntelligentQuestionSelectionEngine(state, draft, catalog, { regenerate: true, preserveManual: false });
+        api.toast(`🔄 नए प्रश्नों का चयन पूर्ण (${res.questions.length} Questions)!`);
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+
+    const btnGenKeepManual = document.getElementById('tbStep6GenerateKeepManualBtn');
+    if (btnGenKeepManual) {
+      btnGenKeepManual.onclick = () => {
+        const res = runIntelligentQuestionSelectionEngine(state, draft, catalog, { regenerate: false, preserveManual: true });
+        api.toast(`✅ Manual प्रश्नों को रखते हुए कुल ${res.questions.length} प्रश्न तैयार किए गए!`);
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+
+    // Shortage Alert 3 Option Buttons
+    const btnShortOpt1 = document.getElementById('tbShortageOpt1ReduceBtn');
+    if (btnShortOpt1) {
+      btnShortOpt1.onclick = () => {
+        const actualLen = (draft.questions || []).length;
+        if (actualLen <= 0) return;
+        draft.totalQuestions = actualLen;
+        draft.totalMarks = Number((actualLen * Number(draft.marksPerQuestion || 2)).toFixed(2));
+        // Sync subject counts to actual selected
+        const countsBySub = {};
+        draft.questions.forEach((q) => {
+          const m = getQuestionCanonicalMeta(q, catalog);
+          if (m.subjectId) countsBySub[m.subjectId] = (countsBySub[m.subjectId] || 0) + 1;
+        });
+        Object.values(draft.subjectDistribution || {}).forEach((s) => {
+          if (s.included) s.questionCount = countsBySub[s.subjectId] || 0;
+        });
+        draft.shortageAlerts = [];
+        api.toast(`✅ प्रश्नों की संख्या उपलब्ध प्रश्नों (${actualLen}) के बराबर समायोजित कर दी गई!`);
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+
+    const btnShortOpt2 = document.getElementById('tbShortageOpt2AddQBtn');
+    if (btnShortOpt2) {
+      btnShortOpt2.onclick = () => {
+        const firstAlert = (draft.shortageAlerts || [])[0];
+        openQuestionFormModal({
+          title: '➕ कमी वाले Topic में नया प्रश्न जोड़ें',
+          question: {
+            subjectTag: firstAlert ? firstAlert.subjectName : '',
+            topic: firstAlert ? firstAlert.topicName : ''
+          },
+          stateRef: state,
+          onSave: (newFields) => {
+            const newId = `qb_${Date.now()}`;
+            const resolved = resolveCanonicalQuestionHierarchy(newFields, catalog);
+            const qRecord = {
+              id: newId,
+              questionId: newId,
+              ...newFields,
+              mainCategoryId: resolved.mainCategoryId || 'cat_cg_gk',
+              mainCategory: resolved.mainCategory || 'Chhattisgarh GK',
+              subjectId: resolved.subjectId || (firstAlert && firstAlert.subjectId) || '',
+              topicId: resolved.topicId || (firstAlert && firstAlert.topicId) || '',
+              verified: true,
+              adminVerified: true,
+              status: 'verified',
+              verificationStatus: 'verified',
+              needsCategorisation: false,
+              createdAt: new Date().toISOString()
+            };
+            state.questionBank.unshift(qRecord);
+            api.saveState();
+            if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('question_bank', qRecord.id, qRecord);
+            api.toast('✅ नया प्रश्न Central Question Bank में जुड़ गया!');
+            renderAdminConsole(rootEl, state, api);
+          }
+        });
+      };
+    }
+
+    const btnShortOpt3 = document.getElementById('tbShortageOpt3AdjustBtn');
+    if (btnShortOpt3) {
+      btnShortOpt3.onclick = () => {
+        tb.wizardStep = 5;
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+
+    // Replace & Remove question buttons (Step 6 & Step 7)
+    bodyEl.querySelectorAll('[data-replace-test-qidx]').forEach((btn) => {
+      btn.onclick = () => {
+        const idx = Number(btn.getAttribute('data-replace-test-qidx'));
+        openReplaceSingleQuestionModal(idx, draft, state, api, rootEl, catalog);
+      };
+    });
+
+    bodyEl.querySelectorAll('[data-remove-test-qidx]').forEach((btn) => {
+      btn.onclick = () => {
+        const idx = Number(btn.getAttribute('data-remove-test-qidx'));
+        draft.questions.splice(idx, 1);
+        draft.questionIds = draft.questions.map((q) => q.centralQuestionId || q.questionId || q.id);
+        api.toast('🗑️ प्रश्न टेस्ट से हटा दिया गया।');
+        renderAdminConsole(rootEl, state, api);
+      };
+    });
+
+    bodyEl.querySelectorAll('[data-preview-edit-qidx]').forEach((btn) => {
+      btn.onclick = () => {
+        const idx = Number(btn.getAttribute('data-preview-edit-qidx'));
+        const qInTest = draft.questions[idx];
+        if (!qInTest) return;
+        openQuestionFormModal({
+          title: `✏️ प्रश्न संपादित करें (Q.${idx + 1})`,
+          question: qInTest,
+          stateRef: state,
+          onSave: (updatedFields) => {
+            Object.assign(qInTest, updatedFields);
+            // Also update in Central Question Bank if linked
+            const centralQ = (state.questionBank || []).find((cq) => (cq.questionId || cq.id) === (qInTest.centralQuestionId || qInTest.questionId));
+            if (centralQ) {
+              Object.assign(centralQ, updatedFields);
+              if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('question_bank', centralQ.id, centralQ);
+            }
+            api.saveState();
+            api.toast('✅ प्रश्न अपडेट हो गया!');
+            renderAdminConsole(rootEl, state, api);
+          }
+        });
+      };
+    });
+
+    // Manual browser filter bindings
+    const bindManualFilter = (id, key) => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.onchange = () => {
+          tb.manualSearch[key] = el.value;
+          if (key === 'subjectId') tb.manualSearch.topicId = 'ALL';
+          renderAdminConsole(rootEl, state, api);
+        };
+      }
+    };
+    bindManualFilter('tbManualSubjectSelect', 'subjectId');
+    bindManualFilter('tbManualTopicSelect', 'topicId');
+    bindManualFilter('tbManualSourceSelect', 'sourceType');
+    bindManualFilter('tbManualLangSelect', 'language');
+    const elManQuery = document.getElementById('tbManualQueryInput');
+    if (elManQuery) {
+      elManQuery.oninput = () => {
+        tb.manualSearch.query = elManQuery.value;
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+
+    const addManualQuestionById = (qid) => {
+      const qObj = (state.questionBank || []).find((q) => String(q.questionId || q.id) === String(qid));
+      if (!qObj) return false;
+      const meta = getQuestionCanonicalMeta(qObj, catalog);
+      const exists = (draft.questions || []).some((x) => String(x.centralQuestionId || x.questionId || x.id) === meta.questionId);
+      if (exists) return false;
+      const copy = JSON.parse(JSON.stringify(qObj));
+      copy.id = `${draft.id}_q_${draft.questions.length + 1}_${meta.questionId}`;
+      copy.centralQuestionId = meta.questionId;
+      copy.questionId = meta.questionId;
+      copy.mainCategoryId = meta.mainCategoryId;
+      copy.mainCategory = meta.mainCategory;
+      copy.subjectId = meta.subjectId;
+      copy.subjectTag = meta.subjectName;
+      copy.topicId = meta.topicId;
+      copy.topic = meta.topicName;
+      copy._selectionSource = 'manual';
+      copy._isPyqSelection = meta.hasPyq;
+      copy._langType = meta.langType;
+      draft.questions.push(copy);
+      draft.questionIds = draft.questions.map((x) => x.centralQuestionId || x.questionId || x.id);
+      // Ensure Subject is marked Included if Admin manually adds from it
+      if (meta.subjectId && draft.subjectDistribution[meta.subjectId] && !draft.subjectDistribution[meta.subjectId].included) {
+        draft.subjectDistribution[meta.subjectId].included = true;
+        draft.subjectDistribution[meta.subjectId].questionCount = (draft.subjectDistribution[meta.subjectId].questionCount || 0) + 1;
+      }
+      return true;
+    };
+
+    bodyEl.querySelectorAll('[data-manual-add-qid]').forEach((btn) => {
+      btn.onclick = () => {
+        const qid = btn.getAttribute('data-manual-add-qid');
+        if (addManualQuestionById(qid)) {
+          api.toast('➕ प्रश्न मैन्युअली टेस्ट में जोड़ दिया गया!');
+          renderAdminConsole(rootEl, state, api);
+        }
+      };
+    });
+
+    bodyEl.querySelectorAll('[data-manual-remove-qid]').forEach((btn) => {
+      btn.onclick = () => {
+        const qid = btn.getAttribute('data-manual-remove-qid');
+        draft.questions = (draft.questions || []).filter((q) => String(q.centralQuestionId || q.questionId || q.id) !== String(qid));
+        draft.questionIds = draft.questions.map((x) => x.centralQuestionId || x.questionId || x.id);
+        api.toast('🗑️ प्रश्न हटाया गया।');
+        renderAdminConsole(rootEl, state, api);
+      };
+    });
+
+    const btnAddCheckedMan = document.getElementById('tbManualAddCheckedBtn');
+    if (btnAddCheckedMan) {
+      btnAddCheckedMan.onclick = () => {
+        let added = 0;
+        bodyEl.querySelectorAll('.tb-manual-q-chk:checked').forEach((chk) => {
+          if (addManualQuestionById(chk.value)) added += 1;
+        });
+        api.toast(added > 0 ? `✅ ${added} प्रश्न मैन्युअली टेस्ट में जोड़े गए!` : '⚠️ कृपया पहले प्रश्नों को चेक करें।');
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+
+    // Step 7 navigation shortcuts
+    const btnStep7To6 = document.getElementById('tbStep7GoToStep6Btn');
+    if (btnStep7To6) btnStep7To6.onclick = () => { tb.wizardStep = 6; renderAdminConsole(rootEl, state, api); };
+    const btnStep7To8 = document.getElementById('tbStep7ProceedStep8Btn');
+    if (btnStep7To8) btnStep7To8.onclick = () => { tb.wizardStep = 8; renderAdminConsole(rootEl, state, api); };
+
+    // Step 8 Final Actions
+    const btnStep8Draft = document.getElementById('tbStep8SaveDraftBtn');
+    if (btnStep8Draft) {
+      btnStep8Draft.onclick = () => {
+        persistWizardTestWithStatus(draft, 'draft', state, api, rootEl, catalog);
+      };
+    }
+    const btnStep8Sched = document.getElementById('tbStep8ScheduleBtn');
+    if (btnStep8Sched) {
+      btnStep8Sched.onclick = () => {
+        draft.scheduleMode = 'scheduled';
+        if (!draft.startDate) {
+          draft.startDate = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+        }
+        persistWizardTestWithStatus(draft, 'scheduled', state, api, rootEl, catalog);
+      };
+    }
+    const btnStep8Pub = document.getElementById('tbStep8PublishNowBtn');
+    if (btnStep8Pub) {
+      btnStep8Pub.onclick = () => {
+        persistWizardTestWithStatus(draft, 'published', state, api, rootEl, catalog);
+      };
+    }
+
+    const saveCurrentAsTemplate = () => {
+      captureStep1FieldsIfPresent();
+      const tpl = {
+        templateId: `tpl_${Date.now()}`,
+        templateName: `${draft.titleHi || draft.examName || 'CGPSC'} Template (${draft.totalQuestions} Qs)`,
+        examCategory: draft.examCategory,
+        examName: draft.examName,
+        testType: draft.testType,
+        totalQuestions: draft.totalQuestions,
+        marksPerQuestion: draft.marksPerQuestion,
+        totalMarks: draft.totalMarks,
+        durationMinutes: draft.durationMinutes,
+        negativeMarkingEnabled: draft.negativeMarkingEnabled,
+        negativeMarking: draft.negativeMarking,
+        language: draft.language,
+        questionSourceMode: draft.questionSourceMode,
+        normalQuestionCount: draft.normalQuestionCount,
+        pyqQuestionCount: draft.pyqQuestionCount,
+        subjectDistribution: JSON.parse(JSON.stringify(draft.subjectDistribution || {})),
+        topicDistribution: JSON.parse(JSON.stringify(draft.topicDistribution || {})),
+        createdAt: new Date().toISOString()
+      };
+      state.testTemplates.unshift(tpl);
+      api.saveState();
+      api.toast(`📋 Test Template "${tpl.templateName}" सफलतापूर्वक सेव हो गया!`);
+      renderAdminConsole(rootEl, state, api);
+    };
+
+    const btnSaveTpl8 = document.getElementById('tbStep8SaveTemplateBtn') || document.getElementById('tbCreateTemplateFromCurrentBtn');
+    if (btnSaveTpl8) btnSaveTpl8.onclick = saveCurrentAsTemplate;
+
+    bodyEl.querySelectorAll('[data-apply-test-template]').forEach((btn) => {
+      btn.onclick = () => {
+        const tid = btn.getAttribute('data-apply-test-template');
+        const tpl = (state.testTemplates || []).find((x) => x.templateId === tid);
+        if (!tpl) return;
+        const newDraft = createDefaultWizardDraft(state, catalog);
+        Object.assign(newDraft, {
+          examCategory: tpl.examCategory,
+          examName: tpl.examName,
+          testType: tpl.testType,
+          totalQuestions: tpl.totalQuestions,
+          marksPerQuestion: tpl.marksPerQuestion,
+          totalMarks: tpl.totalMarks,
+          durationMinutes: tpl.durationMinutes,
+          negativeMarkingEnabled: tpl.negativeMarkingEnabled,
+          negativeMarking: tpl.negativeMarking,
+          language: tpl.language,
+          questionSourceMode: tpl.questionSourceMode,
+          normalQuestionCount: tpl.normalQuestionCount,
+          pyqQuestionCount: tpl.pyqQuestionCount,
+          subjectDistribution: JSON.parse(JSON.stringify(tpl.subjectDistribution || {})),
+          topicDistribution: JSON.parse(JSON.stringify(tpl.topicDistribution || {}))
+        });
+        tb.draft = newDraft;
+        tb.subTab = 'wizard';
+        tb.wizardStep = 1;
+        api.toast(`⚡ Template "${tpl.templateName}" लोड हो गया!`);
+        renderAdminConsole(rootEl, state, api);
+      };
+    });
+
+    bodyEl.querySelectorAll('[data-del-test-template]').forEach((btn) => {
+      btn.onclick = () => {
+        const tid = btn.getAttribute('data-del-test-template');
+        state.testTemplates = (state.testTemplates || []).filter((x) => x.templateId !== tid);
+        api.saveState();
+        api.toast('🗑️ Template हटा दिया गया।');
+        renderAdminConsole(rootEl, state, api);
+      };
+    });
+
+    // Manage Existing Tests handlers
+    const btnNewFromList = document.getElementById('tbCreateNewFromListBtn');
+    if (btnNewFromList) {
+      btnNewFromList.onclick = () => {
+        tb.draft = createDefaultWizardDraft(state, catalog);
+        tb.subTab = 'wizard';
+        tb.wizardStep = 1;
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+
+    const bindManageFilter = (id, key) => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.onchange = () => {
+          tb.manageTestsFilter[key] = el.value;
+          renderAdminConsole(rootEl, state, api);
+        };
+      }
+    };
+    bindManageFilter('tbManageExamFilter', 'examCategory');
+    bindManageFilter('tbManageTypeFilter', 'testType');
+    bindManageFilter('tbManageFolderFilter', 'folderId');
+    const elManTestSearch = document.getElementById('tbManageSearchInput');
+    if (elManTestSearch) {
+      elManTestSearch.oninput = () => {
+        tb.manageTestsFilter.search = elManTestSearch.value;
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+
+    bodyEl.querySelectorAll('[data-open-test-wizard]').forEach((btn) => {
+      btn.onclick = () => {
+        const tid = btn.getAttribute('data-open-test-wizard');
+        const tObj = (state.tests || []).find((t) => t.id === tid);
+        if (!tObj) return;
+        loadExistingTestIntoWizard(tObj, state, catalog);
+        api.toast(`✏️ टेस्ट "${tObj.titleHi}" अब Wizard में संपादन हेतु खुला है।`);
+        renderAdminConsole(rootEl, state, api);
+      };
+    });
+
+    bodyEl.querySelectorAll('[data-copy-test-settings]').forEach((btn) => {
+      btn.onclick = () => {
+        const tid = btn.getAttribute('data-copy-test-settings');
+        const tObj = (state.tests || []).find((t) => t.id === tid);
+        if (!tObj) return;
+        loadExistingTestIntoWizard(tObj, state, catalog);
+        tb.draft.id = `test_${Date.now()}`;
+        tb.draft.isEditingExisting = false;
+        tb.draft.titleHi = `${tObj.titleHi} (Copy)`;
+        tb.draft.titleEn = `${tObj.titleEn || tObj.titleHi} (Copy)`;
+        tb.draft.status = 'draft';
+        tb.draft.questions = [];
+        tb.draft.questionIds = [];
+        tb.wizardStep = 6;
+        api.toast('📋 पुराने टेस्ट की Settings कॉपी हो गईं! अब नए प्रश्न Generate करें।');
+        renderAdminConsole(rootEl, state, api);
+      };
+    });
+
+    bodyEl.querySelectorAll('[data-toggle-pub-v2]').forEach((btn) => {
+      btn.onclick = () => {
+        const tid = btn.getAttribute('data-toggle-pub-v2');
+        const tObj = (state.tests || []).find((t) => t.id === tid);
+        if (!tObj) return;
+        if (tObj.status === 'published' || tObj.isPublished) {
+          tObj.status = 'unpublished';
+          tObj.isPublished = false;
+          api.toast(`⏸️ "${tObj.titleHi}" को Unpublish कर दिया गया है।`);
+        } else {
+          if (!tObj.questions || tObj.questions.length === 0) {
+            api.toast('⚠️ बिना प्रश्नों के टेस्ट पब्लिश नहीं किया जा सकता।');
+            return;
+          }
+          tObj.status = 'published';
+          tObj.isPublished = true;
+          tObj.publishedAt = new Date().toISOString();
+          tObj.publishedQuestionsSnapshot = JSON.parse(JSON.stringify(tObj.questions));
+          api.toast(`🚀 "${tObj.titleHi}" अब PUBLISHED है!`);
+        }
+        api.saveState();
+        if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('tests', tObj.id, tObj);
+        renderAdminConsole(rootEl, state, api);
+      };
+    });
+
+    bodyEl.querySelectorAll('[data-preview-cbt-v2]').forEach((btn) => {
+      btn.onclick = () => {
+        const tid = btn.getAttribute('data-preview-cbt-v2');
+        if (api && typeof api.startTestFlow === 'function') api.startTestFlow(tid);
+      };
+    });
+
+    bodyEl.querySelectorAll('[data-del-test-v2]').forEach((btn) => {
+      btn.onclick = () => {
+        const tid = btn.getAttribute('data-del-test-v2');
+        const tObj = (state.tests || []).find((t) => t.id === tid);
+        if (!tObj) return;
+        openConfirmationDialog({
+          title: 'टेस्ट हटाएं (Delete Test)',
+          message: `क्या आप वाकई टेस्ट "${tObj.titleHi}" को हटाना चाहते हैं? (Central Question Bank के प्रश्न सुरक्षित रहेंगे।)`,
+          confirmLabel: 'Yes, Delete Test',
+          isDanger: true,
+          onConfirm: () => {
+            state.tests = (state.tests || []).filter((t) => t.id !== tid);
+            api.saveState();
+            if (window.CGpediaCloud) window.CGpediaCloud.deleteCloudDoc('tests', tid);
+            api.toast('🗑️ टेस्ट हटा दिया गया।');
+            renderAdminConsole(rootEl, state, api);
+          }
+        });
+      };
+    });
+
+    // Test Series Package / Folder handlers (Part 13)
+    const createFolderV2Btn = document.getElementById('admCreateFolderBtnV2');
+    if (createFolderV2Btn) {
+      createFolderV2Btn.onclick = () => {
+        const examCode = document.getElementById('admFolderExamCodeV2').value;
+        const price = Number(document.getElementById('admFolderPriceV2').value || 0);
+        const titleHi = document.getElementById('admFolderTitleHiV2').value.trim();
+        const titleEn = document.getElementById('admFolderTitleEnV2').value.trim() || titleHi;
+        const descHi = document.getElementById('admFolderDescHiV2').value.trim() || 'नवीनतम परीक्षा पैटर्न पर आधारित टेस्ट सीरीज़';
+        if (!titleHi) {
+          api.toast('⚠️ कृपया Test Series का नाम दर्ज करें।');
+          return;
+        }
+        const newFolder = {
+          id: `folder_${Date.now()}`,
+          examCode,
+          titleHi,
+          titleEn,
+          descHi,
+          descEn: descHi,
+          totalTests: 10,
+          freeTests: price === 0 ? 10 : 1,
+          price,
+          originalPrice: price > 0 ? price * 2 : 0,
+          isFree: price === 0,
+          badgeHi: price === 0 ? 'निःशुल्क' : 'प्रीमियम सीरीज़',
+          badgeEn: price === 0 ? 'Free' : 'Premium Series'
+        };
+        state.folders.unshift(newFolder);
+        api.saveState();
+        if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('exam_folders', newFolder.id, newFolder);
+        api.toast('✅ नया Test Series Package बन गया!');
+        renderAdminConsole(rootEl, state, api);
+      };
+    }
+
+    bodyEl.querySelectorAll('[data-series-pub-all]').forEach((btn) => {
+      btn.onclick = () => {
+        const fid = btn.getAttribute('data-series-pub-all');
+        let count = 0;
+        (state.tests || []).forEach((t) => {
+          if (t.folderId === fid && (t.questions || []).length > 0) {
+            t.status = 'published';
+            t.isPublished = true;
+            t.publishedAt = t.publishedAt || new Date().toISOString();
+            t.publishedQuestionsSnapshot = JSON.parse(JSON.stringify(t.questions));
+            if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('tests', t.id, t);
+            count += 1;
+          }
+        });
+        api.saveState();
+        api.toast(`🚀 सीरीज़ के ${count} टेस्ट प्रकाशित कर दिए गए!`);
+        renderAdminConsole(rootEl, state, api);
+      };
+    });
+
+    bodyEl.querySelectorAll('[data-series-unpub-all]').forEach((btn) => {
+      btn.onclick = () => {
+        const fid = btn.getAttribute('data-series-unpub-all');
+        let count = 0;
+        (state.tests || []).forEach((t) => {
+          if (t.folderId === fid) {
+            t.status = 'unpublished';
+            t.isPublished = false;
+            if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('tests', t.id, t);
+            count += 1;
+          }
+        });
+        api.saveState();
+        api.toast(`⏸️ सीरीज़ के ${count} टेस्ट Unpublish कर दिए गए।`);
+        renderAdminConsole(rootEl, state, api);
+      };
+    });
+
+    bodyEl.querySelectorAll('[data-dup-folder-v2]').forEach((btn) => {
+      btn.onclick = () => {
+        const fid = btn.getAttribute('data-dup-folder-v2');
+        const orig = (state.folders || []).find((f) => f.id === fid);
+        if (!orig) return;
+        const copyFolder = {
+          ...JSON.parse(JSON.stringify(orig)),
+          id: `folder_${Date.now()}`,
+          titleHi: `${orig.titleHi} (Copy)`,
+          titleEn: `${orig.titleEn || orig.titleHi} (Copy)`
+        };
+        state.folders.unshift(copyFolder);
+        api.saveState();
+        if (window.CGpediaCloud) window.CGpediaCloud.saveCloudDoc('exam_folders', copyFolder.id, copyFolder);
+        api.toast('📋 Test Series सफलतापूर्वक Duplicate हो गई!');
+        renderAdminConsole(rootEl, state, api);
+      };
+    });
+
+    const moveTestInSeries = (tid, dir) => {
+      const idx = (state.tests || []).findIndex((t) => t.id === tid);
+      if (idx < 0) return;
+      const targetIdx = idx + dir;
+      if (targetIdx < 0 || targetIdx >= state.tests.length) return;
+      const tmp = state.tests[idx];
+      state.tests[idx] = state.tests[targetIdx];
+      state.tests[targetIdx] = tmp;
+      api.saveState();
+      renderAdminConsole(rootEl, state, api);
+    };
+    bodyEl.querySelectorAll('[data-move-test-up]').forEach((btn) => {
+      btn.onclick = () => moveTestInSeries(btn.getAttribute('data-move-test-up'), -1);
+    });
+    bodyEl.querySelectorAll('[data-move-test-down]').forEach((btn) => {
+      btn.onclick = () => moveTestInSeries(btn.getAttribute('data-move-test-down'), 1);
+    });
+
+    bodyEl.querySelectorAll('[data-edit-folder]').forEach((btn) => {
+      btn.onclick = () => {
+        const fid = btn.getAttribute('data-edit-folder');
+        openEditFolderModal(fid, state, api, () => renderAdminConsole(rootEl, state, api));
+      };
+    });
+
+    bodyEl.querySelectorAll('[data-del-folder]').forEach((btn) => {
+      btn.onclick = () => {
+        const fid = btn.getAttribute('data-del-folder');
+        const targetFolder = (state.folders || []).find((f) => f.id === fid);
+        if (!targetFolder) return;
+        openConfirmationDialog({
+          title: 'Confirm Test Series Deletion',
+          message: `क्या आप वाकई टेस्ट सीरीज़ "${targetFolder.titleHi}" को हटाना चाहते हैं?`,
+          confirmLabel: 'Yes, Delete Series',
+          isDanger: true,
+          onConfirm: () => {
+            state.folders = state.folders.filter((f) => f.id !== fid);
+            api.saveState();
+            if (window.CGpediaCloud) window.CGpediaCloud.deleteCloudDoc('exam_folders', fid);
+            api.toast('🗑️ Test Series हटा दी गई।');
+            renderAdminConsole(rootEl, state, api);
+          }
+        });
+      };
+    });
   }
 
   function renderQuestionBankManagement(bodyEl, rootEl, state, api) {

@@ -910,9 +910,25 @@
   // =========================================================================
   // 1. Student Home Dashboard
   // =========================================================================
+  function isTestLiveForStudents(t) {
+    if (!t) return false;
+    if (t.visibility === 'hidden') return false;
+    if (t.status === 'published') return true;
+    if (t.status === 'scheduled' && t.startDate) {
+      const startIso = `${t.startDate}T${t.startTime || '00:00'}:00`;
+      const startMs = Date.parse(startIso);
+      if (!Number.isNaN(startMs) && Date.now() >= startMs) {
+        t.status = 'published';
+        t.isPublished = true;
+        return true;
+      }
+    }
+    return false;
+  }
+
   function renderHomeDashboard(root, savedCbtSession) {
     const exams = window.CGpediaCloud ? window.CGpediaCloud.EXAM_CATEGORIES : [];
-    const liveTests = (state.tests || []).filter((t) => t.status === 'published' && (state.selectedExamFilter === 'ALL' || t.examCode === state.selectedExamFilter));
+    const liveTests = (state.tests || []).filter((t) => isTestLiveForStudents(t) && (state.selectedExamFilter === 'ALL' || t.examCode === state.selectedExamFilter));
     const activeStories = getActiveDailyDoseStories();
     const pinnedNotifs = (state.notifications || []).filter((n) => n.isPinned);
 
@@ -1166,7 +1182,7 @@
     });
 
     let publishedTests = (state.tests || []).filter((t) => {
-      if (t.status !== 'published') return false;
+      if (!isTestLiveForStudents(t)) return false;
       if (state.selectedFolderId && t.folderId !== state.selectedFolderId) return false;
       if (state.selectedExamFilter !== 'ALL' && t.examCode !== state.selectedExamFilter) return false;
       if (state.testSeriesFilter === 'FREE' && t.isPaid) return false;
@@ -6560,8 +6576,11 @@
         }
         const testObj = (state.tests || []).find((t) => t.id === tid);
         if (!testObj) return;
-        const qs = (testObj.questions && testObj.questions.length > 0)
-          ? testObj.questions
+        const baseQs = (Array.isArray(testObj.publishedQuestionsSnapshot) && testObj.publishedQuestionsSnapshot.length > 0)
+          ? testObj.publishedQuestionsSnapshot
+          : testObj.questions;
+        const qs = (baseQs && baseQs.length > 0)
+          ? baseQs
           : generateHighYieldBilingualQuestions(testObj.id, testObj.topic || 'General Studies', 10, '');
         window.CGpediaCBT.openPreTestInstructions(testObj, qs, cbtCallbacks);
       };
